@@ -1,0 +1,1465 @@
+<title>Blockcharge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap">
+<style>
+/* ==========================================================
+   BLOCKCHARGE — block puzzle + earned power pieces.
+   Light palette is the default; dark is a full token swap.
+   ========================================================== */
+:root{
+  --bg:#EDEFFA;
+  --bg-2:#E3E7F8;
+  --surface:#FFFFFF;
+  --board:#DFE3F4;
+  --board-in:#D3D8EE;
+  --frame:#FFFFFF;
+  --ink:#221E45;
+  --muted:#615D8B;
+  --dim:#9793B7;
+  --line:#D9DCEF;
+  --accent:#6B4EFF;
+  --accent-soft:#EDE9FF;
+  --charge:#FF9F1C;
+  --charge-2:#FFC65C;
+  --good:#17B981;
+  --bad:#FF4D6D;
+  --shadow:0 10px 28px -14px rgba(40,32,90,.45);
+  --b1:#FF6B6B; --b2:#FF9F1C; --b3:#FFCE33; --b4:#4FC65B; --b5:#3D96FF; --b6:#9B6BFF;
+  --b1d:#D94E4E; --b2d:#D9821A; --b3d:#D9A81F; --b4d:#3AA345; --b5d:#2A76D4; --b6d:#7B4FD9;
+  --f-disp:"Fredoka","Trebuchet MS",system-ui,sans-serif;
+  --f-body:"Nunito","Avenir Next",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#151230; --bg-2:#1B1740; --surface:#241F4C; --board:#2A2557; --board-in:#332C68;
+    --frame:#241F4C; --ink:#F2EFFF; --muted:#A9A4D4; --dim:#7B75A8; --line:#3A3370;
+    --accent:#9B84FF; --accent-soft:#2E2760; --charge:#FFB03A; --charge-2:#FFD08A;
+    --shadow:0 12px 34px -14px rgba(0,0,0,.75);
+    --b1:#FF7D7D; --b2:#FFB03A; --b3:#FFD75E; --b4:#5FD46B; --b5:#59A8FF; --b6:#AC80FF;
+    --b1d:#E05C5C; --b2d:#E0921F; --b3d:#E0B32A; --b4d:#43B04F; --b5d:#3785E0; --b6d:#8B5CE8;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#151230; --bg-2:#1B1740; --surface:#241F4C; --board:#2A2557; --board-in:#332C68;
+  --frame:#241F4C; --ink:#F2EFFF; --muted:#A9A4D4; --dim:#7B75A8; --line:#3A3370;
+  --accent:#9B84FF; --accent-soft:#2E2760; --charge:#FFB03A; --charge-2:#FFD08A;
+  --shadow:0 12px 34px -14px rgba(0,0,0,.75);
+  --b1:#FF7D7D; --b2:#FFB03A; --b3:#FFD75E; --b4:#5FD46B; --b5:#59A8FF; --b6:#AC80FF;
+  --b1d:#E05C5C; --b2d:#E0921F; --b3d:#E0B32A; --b4d:#43B04F; --b5d:#3785E0; --b6d:#8B5CE8;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--f-body); font-weight:600;
+  overscroll-behavior:none; touch-action:manipulation; -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:8px}
+
+#app{
+  position:relative;height:100dvh;width:100%;max-width:460px;margin:0 auto;
+  display:flex;flex-direction:column;overflow:hidden;
+  background:radial-gradient(120% 60% at 50% -5%,var(--bg-2) 0%,var(--bg) 60%);
+}
+@media(min-width:520px){
+  body{background:var(--bg-2)}
+  #app{height:min(860px,100dvh);margin-top:max(0px,calc((100dvh - 860px)/2));
+    border-radius:28px;box-shadow:var(--shadow);overflow:hidden}
+}
+#shake{display:flex;flex-direction:column;flex:1;min-height:0}
+
+/* ---------- header ---------- */
+#hud{padding:12px 16px 6px;display:flex;flex-direction:column;gap:10px;flex:0 0 auto}
+.hud-row{display:flex;align-items:center;gap:10px}
+.score-block{display:flex;flex-direction:column;line-height:1}
+#scoreNum{font-family:var(--f-disp);font-weight:700;font-size:34px;letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums;color:var(--ink)}
+#scoreNum.pop{animation:pop .28s ease-out}
+@keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.13)}100%{transform:scale(1)}}
+.best{font-size:11.5px;color:var(--dim);font-weight:700;letter-spacing:.04em;margin-top:3px}
+.spacer{flex:1}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:999px;
+  background:var(--surface);font-size:12px;font-weight:800;color:var(--muted);
+  box-shadow:0 2px 0 var(--line);white-space:nowrap}
+.chip b{color:var(--accent)}
+.icon-btn{width:40px;height:40px;border-radius:13px;background:var(--surface);
+  display:grid;place-items:center;color:var(--muted);flex:0 0 auto;box-shadow:0 2px 0 var(--line);
+  font-size:15px}
+.icon-btn:active{transform:translateY(2px);box-shadow:none}
+
+/* ---------- charge + powers ---------- */
+.charge-row{display:flex;align-items:center;gap:10px}
+.charge-wrap{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0}
+.charge-lab{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.charge-bar{height:12px;border-radius:999px;background:var(--board);overflow:hidden;position:relative}
+.charge-bar i{display:block;height:100%;width:0%;border-radius:999px;
+  background:linear-gradient(90deg,var(--charge),var(--charge-2));
+  transition:width .32s cubic-bezier(.2,.9,.3,1)}
+.charge-bar.full i{animation:cfull 1.1s ease-in-out infinite}
+@keyframes cfull{0%,100%{filter:brightness(1)}50%{filter:brightness(1.3)}}
+.pw-slots{display:flex;gap:7px;flex:0 0 auto}
+.pw{width:46px;height:46px;border-radius:15px;background:var(--surface);box-shadow:0 3px 0 var(--line);
+  display:grid;place-items:center;font-size:21px;position:relative;transition:transform .12s}
+.pw.empty{background:var(--board);box-shadow:none;font-size:15px;color:var(--dim);opacity:.75}
+.pw.armed{background:var(--accent);color:#fff;box-shadow:0 0 0 4px var(--accent-soft);
+  transform:translateY(-2px)}
+.pw:active{transform:translateY(2px)}
+.pw .pw-n{position:absolute;bottom:-3px;right:-3px;background:var(--charge);color:#3a2400;
+  font-size:9.5px;font-weight:800;padding:1px 5px;border-radius:999px}
+
+/* ---------- board ---------- */
+#stage{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-start;
+  gap:10px;padding:8px 16px calc(14px + env(safe-area-inset-bottom))}
+#boardWrap{position:relative;width:100%;aspect-ratio:1/1;align-self:center;flex:0 1 auto;
+  max-height:56dvh;margin:auto 0}
+#board{position:absolute;inset:0;display:grid;grid-template-columns:repeat(8,1fr);
+  grid-template-rows:repeat(8,1fr);gap:3px;padding:7px;border-radius:20px;
+  background:var(--frame);box-shadow:var(--shadow),0 0 0 1px var(--line)}
+.cell{border-radius:7px;background:var(--board);position:relative;transition:background .12s}
+.cell.on{background:var(--c);box-shadow:inset 0 -3px 0 var(--cd),inset 0 2px 0 rgba(255,255,255,.28)}
+.cell.ghost{background:var(--c);opacity:.42}
+.cell.ghost-bad{background:var(--bad);opacity:.3}
+.cell.willclear{animation:wc .7s ease-in-out infinite}
+@keyframes wc{0%,100%{filter:brightness(1)}50%{filter:brightness(1.42)}}
+.cell.clearing{animation:clr .34s ease-out forwards}
+@keyframes clr{0%{transform:scale(1);opacity:1}
+  40%{transform:scale(1.18);opacity:1;filter:brightness(1.7)}
+  100%{transform:scale(.2);opacity:0}}
+.cell.drop{animation:drop .3s cubic-bezier(.2,1.4,.4,1)}
+@keyframes drop{0%{transform:scale(.55)}60%{transform:scale(1.1)}100%{transform:scale(1)}}
+.cell.aim{animation:aim 1.05s ease-in-out infinite}
+@keyframes aim{0%,100%{box-shadow:inset 0 0 0 3px var(--accent)}
+  50%{box-shadow:inset 0 0 0 3px var(--accent),0 0 16px var(--accent)}}
+#fx{position:absolute;inset:0;pointer-events:none;z-index:3;border-radius:20px}
+#floats{position:absolute;inset:0;pointer-events:none;z-index:4}
+.float{position:absolute;font-family:var(--f-disp);font-weight:700;font-size:20px;
+  color:var(--ink);transform:translate(-50%,-50%);animation:fl 1s ease-out forwards;white-space:nowrap;
+  text-shadow:0 2px 0 var(--frame),0 0 12px var(--frame)}
+@keyframes fl{0%{opacity:0;transform:translate(-50%,-30%) scale(.7)}
+  20%{opacity:1;transform:translate(-50%,-55%) scale(1.1)}
+  100%{opacity:0;transform:translate(-50%,-150%) scale(1)}}
+#banner{position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);z-index:5;
+  font-family:var(--f-disp);font-weight:700;font-size:40px;color:var(--accent);opacity:0;
+  pointer-events:none;text-align:center;line-height:1.05;
+  text-shadow:0 3px 0 var(--frame),0 0 26px var(--frame)}
+#banner.on{animation:bn .82s cubic-bezier(.2,1.3,.35,1)}
+@keyframes bn{0%{opacity:0;transform:translate(-50%,-50%) scale(.5) rotate(-6deg)}
+  25%{opacity:1;transform:translate(-50%,-50%) scale(1.12) rotate(2deg)}
+  75%{opacity:1;transform:translate(-50%,-50%) scale(1) rotate(0)}
+  100%{opacity:0;transform:translate(-50%,-80%) scale(1)}}
+
+/* ---------- tray ---------- */
+#tray{display:flex;gap:10px;flex:0 0 auto;height:110px;align-items:stretch}
+.slot{flex:1;background:var(--surface);border-radius:18px;box-shadow:0 3px 0 var(--line);
+  display:grid;place-items:center;position:relative;transition:transform .14s,opacity .2s;padding:8px}
+.slot.gone{opacity:0;transform:scale(.7)}
+.slot.dragging{opacity:.25}
+.slot.nofit{opacity:.45}
+.slot.nofit::after{content:"✕";position:absolute;top:6px;right:9px;font-size:11px;color:var(--bad);font-weight:800}
+.mini{display:grid;gap:2px}
+.mini i{border-radius:4px;background:var(--c);box-shadow:inset 0 -2px 0 var(--cd)}
+.mini i.o{background:transparent;box-shadow:none}
+#ghost{position:fixed;z-index:60;pointer-events:none;display:none}
+#ghost .mini i{border-radius:6px}
+
+/* ---------- sheets ---------- */
+#overlays{position:absolute;inset:0;z-index:20;pointer-events:none}
+.scrim{position:absolute;inset:0;background:rgba(24,18,58,.5);backdrop-filter:blur(6px);
+  opacity:0;transition:opacity .26s;pointer-events:none}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;
+  background:var(--surface);border-radius:26px 26px 0 0;
+  padding:20px 18px calc(20px + env(safe-area-inset-bottom));
+  transform:translateY(102%);transition:transform .34s cubic-bezier(.2,.9,.25,1);
+  pointer-events:auto;box-shadow:0 -18px 44px -20px rgba(30,20,70,.55)}
+.sheet.on{transform:translateY(0)}
+.sheet .grab{width:40px;height:5px;border-radius:999px;background:var(--line);margin:0 auto 14px}
+.sheet h2{font-family:var(--f-disp);font-weight:700;font-size:27px;margin:0 0 5px;text-wrap:balance}
+.sheet .sub{color:var(--muted);font-size:14px;line-height:1.5;margin:0 0 16px;font-weight:600;max-width:44ch}
+.eyebrow{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+  font-weight:800;margin-bottom:5px}
+.sheet .actions{display:flex;flex-direction:column;gap:9px;margin-top:16px}
+.btn{border-radius:16px;padding:15px 18px;font-family:var(--f-disp);font-weight:600;font-size:16px;
+  text-align:center;transition:transform .1s,box-shadow .1s}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:0 4px 0 #4a32c9}
+.btn-primary:active{transform:translateY(4px);box-shadow:none}
+.btn-ghost{background:var(--board);color:var(--muted);box-shadow:0 4px 0 var(--line)}
+.btn-ghost:active{transform:translateY(4px);box-shadow:none}
+.btn-sm{padding:11px 14px;font-size:14px;border-radius:13px}
+.btn-wide{width:100%}
+.btn-primary:disabled{filter:grayscale(.7) opacity(.6);box-shadow:none;cursor:default}
+
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:14px 0 4px}
+.stat{background:var(--board);border-radius:15px;padding:11px 13px}
+.stat .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:800}
+.stat .v{font-family:var(--f-disp);font-weight:700;font-size:22px;margin-top:2px;
+  font-variant-numeric:tabular-nums}
+.stat.hi .v{color:var(--accent)}
+
+.pick-row{display:flex;gap:10px}
+.pick{flex:1;background:var(--board);border-radius:18px;padding:14px 8px;text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:5px;box-shadow:0 4px 0 var(--line);
+  transition:transform .12s}
+.pick:active{transform:translateY(4px);box-shadow:none}
+.pick .pi{font-size:30px}
+.pick .pn{font-family:var(--f-disp);font-weight:600;font-size:14px}
+.pick .pd{font-size:11px;color:var(--muted);line-height:1.3;font-weight:600}
+
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:13px 2px;border-bottom:1px solid var(--line)}
+.row:last-of-type{border-bottom:0}
+.row .lab{font-size:15px;font-weight:700}
+.row .hint{font-size:11.5px;color:var(--dim);margin-top:2px;font-weight:600}
+.sw{width:50px;height:29px;border-radius:999px;background:var(--board);position:relative;flex:0 0 auto;
+  transition:background .2s}
+.sw i{position:absolute;top:3px;left:3px;width:23px;height:23px;border-radius:50%;
+  background:var(--dim);transition:transform .2s,background .2s}
+.sw.on{background:var(--accent)}
+.sw.on i{transform:translateX(21px);background:#fff}
+
+.howrow{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.howrow:last-child{border-bottom:0}
+.howrow .hi{font-size:26px;width:38px;text-align:center;flex:0 0 auto}
+.howrow .ht{font-family:var(--f-disp);font-weight:600;font-size:15px}
+.howrow .hd{font-size:12.5px;color:var(--muted);line-height:1.4;font-weight:600;margin-top:1px}
+.ad-card{background:linear-gradient(135deg,#2E7BE0,#1E5BB8);color:#fff;border-radius:16px;padding:14px;
+  display:flex;align-items:center;gap:12px;text-align:left;width:100%;box-shadow:0 4px 0 #164a99}
+.ad-card:active{transform:translateY(4px);box-shadow:none}
+.ad-card .at{font-family:var(--f-disp);font-weight:600;font-size:15px}
+.ad-card .ah{font-size:11px;opacity:.85;margin-top:1px;font-weight:600}
+.share-box{font-family:ui-monospace,monospace;font-size:13px;line-height:1.3;background:var(--board);
+  border-radius:14px;padding:12px;white-space:pre;overflow-x:auto;color:var(--muted);margin-top:10px}
+
+/* ---------- title ---------- */
+#title{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:6px;padding:26px;text-align:center;
+  background:radial-gradient(95% 55% at 50% 30%,var(--bg-2),var(--bg));
+  transition:opacity .45s,visibility .45s}
+#title.off{opacity:0;visibility:hidden;pointer-events:none}
+.tl-blocks{display:grid;grid-template-columns:repeat(4,34px);gap:6px;margin-bottom:22px}
+.tl-blocks i{width:34px;height:34px;border-radius:9px;background:var(--c);
+  box-shadow:inset 0 -4px 0 var(--cd);animation:tlb 2.4s ease-in-out infinite}
+@keyframes tlb{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.tl-mark{font-family:var(--f-disp);font-weight:700;font-size:clamp(38px,11vw,50px);
+  letter-spacing:-.02em;line-height:1;color:var(--ink)}
+.tl-mark span{color:var(--accent)}
+.tl-sub{font-size:13px;color:var(--muted);font-weight:700;margin-bottom:24px}
+.tl-menu{display:flex;flex-direction:column;gap:10px;width:100%;max-width:300px}
+.tl-best{margin-top:18px;font-size:12px;color:var(--dim);font-weight:700}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--bad);display:inline-block;
+  margin-left:6px;vertical-align:1px}
+
+/* ---------- coach ---------- */
+#coach{position:absolute;inset:0;z-index:40;pointer-events:none;display:none}
+#coach.on{display:block}
+#coachMask{position:absolute;inset:0;background:transparent;pointer-events:none}
+#coachRing{position:absolute;border-radius:18px;box-shadow:0 0 0 4px var(--accent),0 0 0 9px rgba(107,78,255,.22);
+  transition:all .3s cubic-bezier(.2,.9,.25,1);pointer-events:none}
+#coachCard{position:absolute;left:16px;right:16px;background:var(--surface);border-radius:20px;
+  padding:16px;pointer-events:auto;box-shadow:0 18px 40px -16px rgba(30,20,70,.6);
+  transition:top .3s cubic-bezier(.2,.9,.25,1)}
+#coachCard.slim{padding:12px 15px;border-radius:16px}
+#coachCard .ct{font-family:var(--f-disp);font-weight:600;font-size:17px;margin-bottom:4px}
+#coachCard.slim .ct{font-size:14.5px;margin-bottom:2px}
+#coachCard .cb{font-size:14px;line-height:1.45;color:var(--muted);font-weight:600}
+#coachCard.slim .cb{font-size:13px;line-height:1.35}
+#coachCard .cf{display:flex;align-items:center;gap:10px;margin-top:12px}
+#coachCard .steps{font-size:11.5px;color:var(--dim);font-weight:700}
+#coachNext{padding:10px 20px;border-radius:12px;background:var(--accent);color:#fff;
+  font-family:var(--f-disp);font-weight:600;font-size:14px}
+.hand-point{position:absolute;font-size:28px;pointer-events:none;z-index:41;
+  animation:tap 1.25s ease-in-out infinite;filter:drop-shadow(0 3px 4px rgba(0,0,0,.3))}
+@keyframes tap{0%,100%{transform:translate(-4px,4px) scale(1)}50%{transform:translate(-4px,-7px) scale(1.1)}}
+
+#toast{position:absolute;left:50%;top:14%;transform:translate(-50%,-8px);z-index:50;
+  background:var(--ink);color:var(--bg);padding:10px 17px;border-radius:999px;font-size:13px;
+  font-weight:700;opacity:0;pointer-events:none;transition:opacity .22s,transform .22s;max-width:86%;
+  text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.08s!important}
+}
+</style>
+<div id="app">
+  <div id="shake">
+    <header id="hud">
+      <div class="hud-row">
+        <div class="score-block">
+          <div id="scoreNum">0</div>
+          <div class="best" id="bestLine">Best 0</div>
+        </div>
+        <span class="spacer"></span>
+        <span class="chip" id="levelChip">Level <b>1</b></span>
+        <button class="icon-btn" id="howBtn" aria-label="How to play">?</button>
+        <button class="icon-btn" id="pauseBtn" aria-label="Pause">❚❚</button>
+      </div>
+      <div class="charge-row">
+        <div class="charge-wrap">
+          <div class="charge-lab"><span>⚡</span><span id="chargeLab">Charge — clear lines to fill</span></div>
+          <div class="charge-bar" id="chargeBar"><i></i></div>
+        </div>
+        <div class="pw-slots" id="pwSlots"></div>
+      </div>
+    </header>
+
+    <main id="stage">
+      <div id="boardWrap">
+        <div id="board"></div>
+        <canvas id="fx"></canvas>
+        <div id="floats"></div>
+        <div id="banner"></div>
+      </div>
+      <div id="tray"></div>
+    </main>
+  </div>
+
+  <div id="ghost"></div>
+  <div id="toast"></div>
+
+  <!-- ===== TITLE ===== -->
+  <section id="title">
+    <div class="tl-blocks" id="tlBlocks"></div>
+    <div class="tl-mark">BLOCK<span>CHARGE</span></div>
+    <div class="tl-sub">Fit blocks. Charge up. Blow it open.</div>
+    <div class="tl-menu">
+      <button class="btn btn-primary btn-wide" id="playBtn">Play</button>
+      <button class="btn btn-ghost btn-wide btn-sm" id="dailyBtn">Daily Board<span id="dailyDot" class="dot"></span></button>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-ghost btn-sm" style="flex:1" id="titleHowBtn">How to play</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1" id="settingsBtn">Settings</button>
+      </div>
+    </div>
+    <div class="tl-best" id="tlBest"></div>
+  </section>
+
+  <!-- ===== OVERLAYS ===== -->
+  <div id="overlays">
+    <div class="scrim" id="scrim"></div>
+
+    <!-- pick a power -->
+    <section class="sheet" id="pickSheet">
+      <div class="grab"></div>
+      <div class="eyebrow">⚡ Charged</div>
+      <h2>Pick a power</h2>
+      <p class="sub">It goes in your slot and waits there. Save it for when the board gets tight.</p>
+      <div class="pick-row" id="pickRow"></div>
+    </section>
+
+    <!-- pause -->
+    <section class="sheet" id="pauseSheet">
+      <div class="grab"></div>
+      <div class="eyebrow">Paused</div>
+      <h2>Take your time</h2>
+      <p class="sub">Nothing moves while you're away. There's no timer in this game.</p>
+      <div class="stats">
+        <div class="stat hi"><div class="k">Score</div><div class="v" id="pScore">0</div></div>
+        <div class="stat"><div class="k">Lines</div><div class="v" id="pLines">0</div></div>
+        <div class="stat"><div class="k">Level</div><div class="v" id="pLevel">1</div></div>
+        <div class="stat"><div class="k">Best combo</div><div class="v" id="pCombo">0</div></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary btn-wide" id="resumeBtn">Resume</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="pauseHowBtn">How to play</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="pauseSetBtn">Settings</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="quitBtn" style="color:var(--bad)">End this game</button>
+      </div>
+    </section>
+
+    <!-- stuck / rescue -->
+    <section class="sheet" id="stuckSheet">
+      <div class="grab"></div>
+      <div class="eyebrow" style="color:var(--bad)">No room</div>
+      <h2>Nothing fits</h2>
+      <p class="sub" id="stuckSub">None of your three blocks will go anywhere. You can break the board open instead of losing the run.</p>
+      <div class="actions" id="stuckActions"></div>
+    </section>
+
+    <!-- game over -->
+    <section class="sheet" id="overSheet">
+      <div class="grab"></div>
+      <div class="eyebrow" id="overEyebrow">Game over</div>
+      <h2 id="overTitle">Board's full</h2>
+      <p class="sub" id="overSub">No block would fit anywhere.</p>
+      <div class="stats">
+        <div class="stat hi"><div class="k">Score</div><div class="v" id="oScore">0</div></div>
+        <div class="stat"><div class="k">Best ever</div><div class="v" id="oBest">0</div></div>
+        <div class="stat"><div class="k">Lines cleared</div><div class="v" id="oLines">0</div></div>
+        <div class="stat"><div class="k">Best combo</div><div class="v" id="oCombo">0</div></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary btn-wide" id="againBtn">Play again</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="overShareBtn">Copy result</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="overMenuBtn">Main menu</button>
+      </div>
+    </section>
+
+    <!-- daily result -->
+    <section class="sheet" id="dailySheet">
+      <div class="grab"></div>
+      <div class="eyebrow">Daily board</div>
+      <h2 id="dailyTitle">Today's board</h2>
+      <p class="sub">Everyone gets the same blocks in the same order. One go each day.</p>
+      <div class="stats">
+        <div class="stat hi"><div class="k">Score</div><div class="v" id="dScore">0</div></div>
+        <div class="stat"><div class="k">Lines</div><div class="v" id="dLines">0</div></div>
+      </div>
+      <div class="share-box" id="shareBox"></div>
+      <div class="actions">
+        <button class="btn btn-primary btn-wide" id="copyShareBtn">Copy result</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="dailyMenuBtn">Main menu</button>
+      </div>
+    </section>
+
+    <!-- how to play -->
+    <section class="sheet" id="howSheet">
+      <div class="grab"></div>
+      <div class="eyebrow">How to play</div>
+      <h2>Three things</h2>
+      <div class="howrow"><span class="hi">🧩</span><span><span class="ht">Drag blocks onto the grid</span>
+        <span class="hd">Three at a time. They don't rotate. When you've used all three, three more arrive.</span></span></div>
+      <div class="howrow"><span class="hi">✨</span><span><span class="ht">Fill a full row or column</span>
+        <span class="hd">It clears and you score. Clear more than one at once, or clear on back-to-back moves, and the points multiply.</span></span></div>
+      <div class="howrow"><span class="hi">⚡</span><span><span class="ht">Every clear charges your meter</span>
+        <span class="hd">Fill it and you pick a power — a bomb, a laser, or a fresh set of blocks. Powers wait in your slots until you need them.</span></span></div>
+      <p class="sub" style="margin-top:16px">It only ends when none of your three blocks fit anywhere — and even then, a power can dig you out.</p>
+      <div class="actions"><button class="btn btn-primary btn-wide" id="howClose">Got it</button></div>
+    </section>
+
+    <!-- settings -->
+    <section class="sheet" id="setSheet">
+      <div class="grab"></div>
+      <div class="eyebrow">Settings</div>
+      <h2>Options</h2>
+      <div class="row"><div><div class="lab">Sound</div><div class="hint">Made on the fly, no downloads</div></div><div class="sw" data-set="sound"><i></i></div></div>
+      <div class="row"><div><div class="lab">Vibration</div><div class="hint">A tap on every clear</div></div><div class="sw" data-set="haptics"><i></i></div></div>
+      <div class="row"><div><div class="lab">Calm mode</div><div class="hint">No shake, gentler effects</div></div><div class="sw" data-set="motion"><i></i></div></div>
+      <div class="row"><div><div class="lab">Dark theme</div><div class="hint">Otherwise follows your phone</div></div><div class="sw" data-set="dark"><i></i></div></div>
+      <div class="row"><div><div class="lab">Show the tutorial again</div><div class="hint">And all the tip cards</div></div><button class="btn btn-ghost btn-sm" id="resetTutBtn">Reset</button></div>
+      <div class="row"><div><div class="lab">Clear records</div><div class="hint">Best score and stats</div></div><button class="btn btn-ghost btn-sm" id="wipeBtn" style="color:var(--bad)">Clear</button></div>
+      <div class="actions"><button class="btn btn-primary btn-wide" id="setClose">Done</button></div>
+    </section>
+  </div>
+
+  <!-- ===== COACH ===== -->
+  <div id="coach">
+    <div id="coachMask"></div>
+    <div id="coachRing"></div>
+    <div id="coachCard">
+      <div class="ct" id="coachTitle"></div>
+      <div class="cb" id="coachBody"></div>
+      <div class="cf"><span class="steps" id="coachSteps"></span><span class="spacer"></span>
+        <button id="coachNext">Next</button></div>
+    </div>
+  </div>
+</div>
+<script>
+/* ==========================================================
+   BLOCKCHARGE
+   0 utils · 1 pieces · 2 save/audio · 3 board · 4 drag
+   5 resolve · 6 powers · 7 flow · 8 coach · 9 boot
+   ========================================================== */
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const clamp = (v,a,b) => Math.max(a, Math.min(b,v));
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const fmt = n => Math.round(n).toLocaleString('en-US');
+
+function rngFrom(seed){
+  let a = seed >>> 0;
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const hashStr = s => { let h = 2166136261; for(const ch of s){ h ^= ch.charCodeAt(0); h = Math.imul(h,16777619);} return h>>>0; };
+
+/* ---------- 1. pieces ---------- */
+const G = 8;                                   // 8×8 board
+const ix = (r,c) => r * G + c;
+
+// "110/011" → {cells:[[r,c]...], w, h}
+function shape(str, weight){
+  const rows = str.split('/');
+  const cells = [];
+  rows.forEach((row,r) => [...row].forEach((ch,c) => { if(ch === '1') cells.push([r,c]); }));
+  return { key:str, cells, h:rows.length, w:rows[0].length, weight };
+}
+const SHAPES = [
+  shape('1', 2.2),
+  shape('11', 4), shape('1/1', 4),
+  shape('111', 5), shape('1/1/1', 5),
+  shape('1111', 3), shape('1/1/1/1', 3),
+  shape('11111', 1.4), shape('1/1/1/1/1', 1.4),
+  shape('11/11', 5),
+  shape('111/111', 2), shape('11/11/11', 2),
+  shape('111/111/111', 0.9),
+  shape('10/11', 3), shape('01/11', 3), shape('11/10', 3), shape('11/01', 3),
+  shape('100/100/111', 1.5), shape('111/100/100', 1.5),
+  shape('111/001/001', 1.5), shape('001/001/111', 1.5),
+  shape('111/010', 1.8), shape('010/111', 1.8),
+  shape('10/11/10', 1.4), shape('01/11/01', 1.4),
+  shape('011/110', 1.3), shape('110/011', 1.3),
+  shape('10/11/01', 1.1), shape('01/11/10', 1.1),
+];
+const TOTAL_W = SHAPES.reduce((a,s) => a + s.weight, 0);
+function drawShape(rng){
+  let r = rng() * TOTAL_W;
+  for(const s of SHAPES){ r -= s.weight; if(r <= 0) return s; }
+  return SHAPES[0];
+}
+const COLORS = 6;                              // maps 1:1 to the share-card emoji
+const EMO = ['🟥','🟧','🟨','🟩','🟦','🟪'];
+
+const POWERS = {
+  bomb:{ name:'Bomb', ico:'💣', desc:'Clears a 3×3 patch wherever you tap.', target:true },
+  laser:{ name:'Laser', ico:'⚡', desc:'Clears the whole row and column you tap.', target:true },
+  swap:{ name:'Swap', ico:'🔄', desc:'Throws away your three blocks and deals three new ones.', target:false },
+};
+const POWER_IDS = Object.keys(POWERS);
+const CHARGE_MAX = 12, SLOT_MAX = 2;
+
+/* ---------- 2. save + audio ---------- */
+const SAVE_KEY = 'blockcharge.v1';
+const defaultSave = () => ({
+  settings:{ sound:true, haptics:true, motion:false, dark:false },
+  best:0, seen:{}, tutorialDone:false,
+  stats:{ games:0, lines:0, bestCombo:0, powersUsed:0 },
+  daily:{ date:null, score:0, lines:0, share:'' },
+});
+let save = defaultSave();
+function loadSave(){
+  try{ const raw = localStorage.getItem(SAVE_KEY); if(raw) save = Object.assign(defaultSave(), JSON.parse(raw)); }
+  catch(e){}
+}
+function persist(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(save)); }catch(e){} }
+
+const Sfx = {
+  ctx:null, master:null,
+  init(){
+    if(this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext; if(!AC) return;
+    this.ctx = new AC(); this.master = this.ctx.createGain();
+    this.master.gain.value = 0.26; this.master.connect(this.ctx.destination);
+  },
+  on(){ return save.settings.sound && this.ctx; },
+  tone(freq, dur=0.1, type='triangle', vol=1, slide=0){
+    if(!this.on()) return;
+    const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq*slide), t+dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5*vol, t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t+dur+0.02);
+  },
+  noise(dur=0.2, vol=0.4, hp=600){
+    if(!this.on()) return;
+    const n = Math.floor(this.ctx.sampleRate*dur);
+    const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate), d = buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i] = (Math.random()*2-1) * (1 - i/n);
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const f = this.ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+    const g = this.ctx.createGain(); g.gain.value = vol;
+    src.connect(f); f.connect(g); g.connect(this.master); src.start();
+  },
+  ui(){ this.tone(600, .05, 'square', .3); },
+  place(){ this.tone(320, .07, 'triangle', .5, 1.4); },
+  bad(){ this.tone(160, .14, 'sawtooth', .35, .8); },
+  clear(i){ const f = 480 * Math.pow(2, Math.min(i,14)/12); this.tone(f, .13, 'triangle', .7); this.tone(f*2, .08, 'sine', .3); },
+  combo(n){ this.tone(660 + n*70, .18, 'square', .45, 1.5); },
+  charge(){ [660,880,1180].forEach((f,i)=> setTimeout(()=> this.tone(f,.16,'triangle',.6), i*70)); },
+  power(){ this.noise(.3,.4,300); this.tone(180,.35,'sawtooth',.5,2.4); },
+  level(){ [523,659,784,1047].forEach((f,i)=> setTimeout(()=> this.tone(f,.2,'triangle',.6), i*80)); },
+  over(){ [440,350,260,180].forEach((f,i)=> setTimeout(()=> this.tone(f,.3,'sawtooth',.45), i*140)); },
+};
+function buzz(ms){ if(save.settings.haptics && navigator.vibrate){ try{ navigator.vibrate(ms); }catch(e){} } }
+
+let toastT;
+function toast(msg){
+  const el = $('#toast'); el.textContent = msg; el.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(()=> el.classList.remove('on'), 1800);
+}
+/* ==========================================================
+   3. GAME STATE + RENDERING
+   ========================================================== */
+let game = null;
+let ui = { busy:false, armed:null, selected:-1, forceSlot:-1, forceCell:-1, aimCells:[] };
+
+function newGame(opts = {}){
+  const seed = opts.seed != null ? opts.seed : (Math.random()*4294967295)>>>0;
+  game = {
+    grid:new Int8Array(G*G), rng:rngFrom(seed), seed,
+    isDaily:!!opts.daily, dayKey:opts.dayKey || null,
+    tray:[], score:0, lines:0, level:1, combo:0, bestCombo:0,
+    charge:0, powers:[], adUsed:false, over:false, moves:0,
+  };
+  ui.armed = null; ui.selected = -1; ui.busy = false;
+  refillTray(true);
+  renderAll();
+}
+
+/* ---------- board ---------- */
+const boardEl = $('#board');
+function buildBoard(){
+  boardEl.innerHTML = '';
+  for(let i=0;i<G*G;i++){
+    const d = document.createElement('div');
+    d.className = 'cell'; d.dataset.i = i;
+    boardEl.appendChild(d);
+  }
+}
+const cellEl = i => boardEl.children[i];
+function colorVars(v){ return `--c:var(--b${v});--cd:var(--b${v}d)`; }
+
+function renderBoard(){
+  for(let i=0;i<G*G;i++){
+    const el = cellEl(i), v = game.grid[i];
+    el.className = v ? 'cell on' : 'cell';
+    el.style.cssText = v ? colorVars(v) : '';
+  }
+  if(ui.aimCells) for(const i of ui.aimCells) cellEl(i).classList.add('aim');
+}
+
+/* ---------- tray ---------- */
+const trayEl = $('#tray');
+function refillTray(first){
+  // Fairness: never hand out three blocks that cannot be placed anywhere.
+  // Real players quit over unwinnable deals, not over hard ones.
+  for(let attempt = 0; attempt < 40; attempt++){
+    const t = [];
+    for(let i=0;i<3;i++) t.push({ shape:drawShape(game.rng), color:1 + Math.floor(game.rng()*COLORS), used:false });
+    if(first || t.some(p => anyFit(p.shape))){ game.tray = t; return; }
+  }
+  game.tray = [0,1,2].map(()=> ({ shape:SHAPES[0], color:1 + Math.floor(game.rng()*COLORS), used:false }));
+}
+
+function miniHTML(shape, color, cell, gap){
+  let h = `<div class="mini" style="grid-template-columns:repeat(${shape.w},${cell}px);gap:${gap}px;${colorVars(color)}">`;
+  const set = new Set(shape.cells.map(([r,c]) => r*shape.w + c));
+  for(let r=0;r<shape.h;r++) for(let c=0;c<shape.w;c++)
+    h += `<i class="${set.has(r*shape.w+c) ? '' : 'o'}" style="width:${cell}px;height:${cell}px"></i>`;
+  return h + '</div>';
+}
+
+function renderTray(){
+  trayEl.innerHTML = '';
+  game.tray.forEach((p,i) => {
+    const s = document.createElement('div');
+    s.className = 'slot' + (p.used ? ' gone' : '') + (ui.selected === i ? ' sel' : '');
+    s.dataset.slot = i;
+    if(!p.used){
+      const maxDim = Math.max(p.shape.w, p.shape.h);
+      const cell = maxDim >= 5 ? 13 : maxDim >= 4 ? 15 : maxDim >= 3 ? 18 : 21;
+      s.innerHTML = miniHTML(p.shape, p.color, cell, 2);
+      if(!anyFit(p.shape)) s.classList.add('nofit');
+      if(ui.selected === i) s.style.boxShadow = '0 0 0 3px var(--accent)';
+    }
+    trayEl.appendChild(s);
+  });
+}
+
+/* ---------- HUD ---------- */
+function renderHUD(){
+  $('#scoreNum').textContent = fmt(game.score);
+  $('#bestLine').textContent = 'Best ' + fmt(Math.max(save.best, game.score));
+  $('#levelChip').innerHTML = `Level <b>${game.level}</b>`;
+  const pct = clamp(game.charge / CHARGE_MAX * 100, 0, 100);
+  $('#chargeBar').querySelector('i').style.width = pct + '%';
+  $('#chargeBar').classList.toggle('full', game.charge >= CHARGE_MAX);
+  $('#chargeLab').textContent = game.charge >= CHARGE_MAX
+    ? 'Charged — pick a power'
+    : (game.combo > 1 ? `Combo ×${game.combo} — keep clearing` : 'Charge — clear lines to fill');
+  renderPowers();
+}
+function renderPowers(){
+  const wrap = $('#pwSlots'); wrap.innerHTML = '';
+  for(let i=0;i<SLOT_MAX;i++){
+    const id = game.powers[i];
+    const b = document.createElement('button');
+    b.className = 'pw' + (id ? '' : ' empty') + (ui.armed === i ? ' armed' : '');
+    b.dataset.pw = i;
+    b.innerHTML = id ? POWERS[id].ico : '<span style="opacity:.4">⚡</span>';
+    b.setAttribute('aria-label', id ? 'Use ' + POWERS[id].name : 'Empty power slot');
+    wrap.appendChild(b);
+  }
+}
+function renderAll(){ renderBoard(); renderTray(); renderHUD(); sizeBoard(); }
+
+/* ---------- geometry ---------- */
+let BW = { pad:7, gap:3, cell:40, rect:null };
+function sizeBoard(){
+  const r = boardEl.getBoundingClientRect();
+  if(!r.width) return;
+  BW.rect = r;
+  BW.cell = (r.width - BW.pad*2 - BW.gap*(G-1)) / G;
+  const wrap = $('#boardWrap');
+  const cv = $('#fx'), dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = wrap.clientWidth*dpr; cv.height = wrap.clientHeight*dpr;
+  cv.style.width = wrap.clientWidth+'px'; cv.style.height = wrap.clientHeight+'px';
+  cv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener('resize', ()=> setTimeout(sizeBoard, 50));
+const cellCentre = i => ({
+  x: BW.pad + (i % G) * (BW.cell + BW.gap) + BW.cell/2,
+  y: BW.pad + Math.floor(i / G) * (BW.cell + BW.gap) + BW.cell/2,
+});
+
+/* ---------- placement rules ---------- */
+function fits(shape, r0, c0){
+  for(const [r,c] of shape.cells){
+    const r1 = r0 + r, c1 = c0 + c;
+    if(r1 < 0 || r1 >= G || c1 < 0 || c1 >= G) return false;
+    if(game.grid[ix(r1,c1)]) return false;
+  }
+  return true;
+}
+function anyFit(shape){
+  for(let r=0;r<=G-shape.h;r++) for(let c=0;c<=G-shape.w;c++) if(fits(shape,r,c)) return true;
+  return false;
+}
+function trayHasMove(){ return game.tray.some(p => !p.used && anyFit(p.shape)); }
+
+/* ==========================================================
+   4. DRAG + PREVIEW
+   ========================================================== */
+const ghostEl = $('#ghost');
+let drag = null;
+
+function clearPreview(){
+  $$('.cell.ghost,.cell.ghost-bad,.cell.willclear').forEach(e => {
+    e.classList.remove('ghost','ghost-bad','willclear');
+    if(!game.grid[+e.dataset.i]) e.style.cssText = '';
+    else e.style.cssText = colorVars(game.grid[+e.dataset.i]);
+  });
+}
+
+// Shows exactly where the piece lands and which lines it would clear.
+function preview(shape, color, r0, c0){
+  clearPreview();
+  if(r0 == null) return false;
+  const ok = fits(shape, r0, c0);
+  const touched = [];
+  for(const [r,c] of shape.cells){
+    const r1 = r0+r, c1 = c0+c;
+    if(r1<0||r1>=G||c1<0||c1>=G) continue;
+    const el = cellEl(ix(r1,c1));
+    if(ok){ el.classList.add('ghost'); el.style.cssText = colorVars(color); touched.push(ix(r1,c1)); }
+    else el.classList.add('ghost-bad');
+  }
+  if(!ok) return false;
+  const filled = new Set(touched);
+  const rows = [], cols = [];
+  for(let r=0;r<G;r++){ let full = true;
+    for(let c=0;c<G;c++) if(!game.grid[ix(r,c)] && !filled.has(ix(r,c))) { full = false; break; }
+    if(full) rows.push(r); }
+  for(let c=0;c<G;c++){ let full = true;
+    for(let r=0;r<G;r++) if(!game.grid[ix(r,c)] && !filled.has(ix(r,c))) { full = false; break; }
+    if(full) cols.push(c); }
+  for(const r of rows) for(let c=0;c<G;c++) cellEl(ix(r,c)).classList.add('willclear');
+  for(const c of cols) for(let r=0;r<G;r++) cellEl(ix(r,c)).classList.add('willclear');
+  return true;
+}
+
+function anchorFromPoint(shape, x, y){
+  if(!BW.rect) return null;
+  const step = BW.cell + BW.gap;
+  const left = x - (shape.w * step - BW.gap) / 2;
+  const top  = y - (shape.h * step - BW.gap) - 26;      // held above the finger
+  const c0 = Math.round((left - (BW.rect.left + BW.pad)) / step);
+  const r0 = Math.round((top  - (BW.rect.top  + BW.pad)) / step);
+  return { r0, c0, left, top };
+}
+
+function showGhost(p, a){
+  ghostEl.style.display = 'block';
+  ghostEl.style.left = a.left + 'px';
+  ghostEl.style.top = a.top + 'px';
+  ghostEl.innerHTML = miniHTML(p.shape, p.color, BW.cell, BW.gap);
+}
+
+document.addEventListener('pointerdown', e => {
+  if(ui.busy || !game || game.over) return;
+  Sfx.init();
+
+  const pw = e.target.closest('[data-pw]');
+  if(pw){ armPower(+pw.dataset.pw); return; }
+
+  const slot = e.target.closest('.slot[data-slot]');
+  if(slot){
+    const i = +slot.dataset.slot;
+    const p = game.tray[i];
+    if(!p || p.used) return;
+    if(ui.forceSlot >= 0 && i !== ui.forceSlot){ toast('Use the highlighted block'); return; }
+    ui.armed = null; renderPowers();
+    drag = { i, moved:false, x:e.clientX, y:e.clientY };
+    ui.selected = i; renderTray();
+    slot.classList.add('dragging');
+    return;
+  }
+
+  const cell = e.target.closest('.cell');
+  if(cell){
+    const i = +cell.dataset.i;
+    if(ui.armed != null){ usePowerAt(i); return; }
+    if(ui.selected >= 0){                       // tap-to-place, centred on the tapped cell
+      const p = game.tray[ui.selected];
+      const r0 = Math.floor(i/G) - Math.floor((p.shape.h-1)/2);
+      const c0 = (i%G) - Math.floor((p.shape.w-1)/2);
+      if(fits(p.shape, r0, c0)) placePiece(ui.selected, r0, c0);
+      else { Sfx.bad(); toast("Doesn't fit there"); }
+    }
+  }
+});
+
+document.addEventListener('pointermove', e => {
+  if(!drag || !game) return;
+  if(Math.abs(e.clientX-drag.x) > 5 || Math.abs(e.clientY-drag.y) > 5) drag.moved = true;
+  if(!drag.moved) return;
+  const p = game.tray[drag.i];
+  const a = anchorFromPoint(p.shape, e.clientX, e.clientY);
+  if(!a) return;
+  showGhost(p, a);
+  const inRange = a.r0 > -3 && a.r0 < G+2 && a.c0 > -3 && a.c0 < G+2;
+  preview(p.shape, p.color, inRange ? a.r0 : null, a.c0);
+});
+
+document.addEventListener('pointerup', e => {
+  if(!drag || !game) return;
+  const p = game.tray[drag.i];
+  ghostEl.style.display = 'none';
+  $$('.slot.dragging').forEach(s => s.classList.remove('dragging'));
+  if(drag.moved){
+    const a = anchorFromPoint(p.shape, e.clientX, e.clientY);
+    clearPreview();
+    if(a && fits(p.shape, a.r0, a.c0)){
+      if(ui.forceCell >= 0 && ix(a.r0,a.c0) !== ui.forceCell){
+        toast('Drop it on the highlighted spot'); Sfx.bad();
+      } else placePiece(drag.i, a.r0, a.c0);
+    } else { Sfx.bad(); }
+    ui.selected = -1; renderTray();
+  }
+  drag = null;
+});
+/* ==========================================================
+   5. RESOLVING A MOVE
+   ========================================================== */
+const fxc = $('#fx').getContext('2d');
+const FX = { parts:[], shake:0, running:false };
+function fxLoop(){
+  if(!FX.running) return;
+  requestAnimationFrame(fxLoop);
+  const cv = $('#fx'), dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = cv.width/dpr, h = cv.height/dpr;
+  fxc.clearRect(0,0,w,h);
+  for(let i=FX.parts.length-1;i>=0;i--){
+    const p = FX.parts[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.32; p.vx *= 0.99; p.life -= 0.016; p.rot += p.vr;
+    if(p.life <= 0){ FX.parts.splice(i,1); continue; }
+    fxc.save(); fxc.translate(p.x, p.y); fxc.rotate(p.rot);
+    fxc.globalAlpha = clamp(p.life,0,1);
+    fxc.fillStyle = p.col;
+    const s = p.sz * clamp(p.life+.3,0,1);
+    fxc.beginPath();
+    if(fxc.roundRect) fxc.roundRect(-s/2,-s/2,s,s,s*0.28); else fxc.rect(-s/2,-s/2,s,s);
+    fxc.fill(); fxc.restore();
+  }
+  fxc.globalAlpha = 1;
+  const sh = $('#shake');
+  if(FX.shake > 0.3 && !save.settings.motion){
+    sh.style.transform = `translate(${(Math.random()-.5)*FX.shake}px,${(Math.random()-.5)*FX.shake}px)`;
+    FX.shake *= 0.85;
+  } else { sh.style.transform=''; FX.shake = 0; }
+  if(!FX.parts.length && !FX.shake) FX.running = false;
+}
+function fxGo(){ if(!FX.running){ FX.running = true; requestAnimationFrame(fxLoop); } }
+function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function burst(i, colorIndex, n = 10){
+  const c = cellCentre(i), col = cssVar('--b'+colorIndex) || '#888';
+  for(let k=0;k<n;k++){
+    const a = Math.random()*Math.PI*2, v = 1.4 + Math.random()*3.4;
+    FX.parts.push({ x:c.x, y:c.y, vx:Math.cos(a)*v, vy:Math.sin(a)*v - 2.4, life:1,
+      col, sz:BW.cell*0.32, rot:Math.random()*3, vr:(Math.random()-.5)*.35 });
+  }
+  fxGo();
+}
+function floatText(i, text){
+  const c = cellCentre(i);
+  const el = document.createElement('div');
+  el.className = 'float'; el.textContent = text;
+  el.style.left = c.x+'px'; el.style.top = c.y+'px';
+  $('#floats').appendChild(el);
+  setTimeout(()=> el.remove(), 1050);
+}
+function banner(text){
+  const b = $('#banner'); b.textContent = text;
+  b.classList.remove('on'); void b.offsetWidth; b.classList.add('on');
+}
+
+const LINE_MULT = [1, 1, 1.6, 2.4, 3.4, 4.5, 5.5, 6.5, 7.5];
+const CLEAR_WORDS = { 2:'DOUBLE!', 3:'TRIPLE!', 4:'QUAD!', 5:'FIVE!', 6:'SIX!' };
+
+async function placePiece(slot, r0, c0){
+  const p = game.tray[slot];
+  if(!p || p.used || ui.busy) return;
+  ui.busy = true;
+  const placed = [];
+  for(const [r,c] of p.shape.cells){
+    const i = ix(r0+r, c0+c);
+    game.grid[i] = p.color; placed.push(i);
+  }
+  p.used = true; game.moves++;
+  ui.selected = -1; ui.forceSlot = -1; ui.forceCell = -1;
+  clearPreview(); renderBoard(); renderTray();
+  for(const i of placed){ const el = cellEl(i); el.classList.add('drop'); }
+  addScore(p.shape.cells.length);
+  Sfx.place(); buzz(10);
+  coachAdvance('place');
+  await wait(90);
+
+  const rows = [], cols = [];
+  for(let r=0;r<G;r++){ let f=1; for(let c=0;c<G;c++) if(!game.grid[ix(r,c)]) { f=0; break; } if(f) rows.push(r); }
+  for(let c=0;c<G;c++){ let f=1; for(let r=0;r<G;r++) if(!game.grid[ix(r,c)]) { f=0; break; } if(f) cols.push(c); }
+  const nLines = rows.length + cols.length;
+
+  if(nLines){
+    await resolveClears(rows, cols, nLines);
+  } else {
+    if(game.combo > 1) toast('Combo ended');
+    game.combo = 0;
+  }
+
+  if(game.tray.every(t => t.used)) refillTray(false);
+  renderAll();
+  ui.busy = false;
+
+  if(game.charge >= CHARGE_MAX && !game.over) { openPick(); return; }
+  checkStuck();
+}
+
+async function resolveClears(rows, cols, nLines){
+  const cells = new Set();
+  for(const r of rows) for(let c=0;c<G;c++) cells.add(ix(r,c));
+  for(const c of cols) for(let r=0;r<G;r++) cells.add(ix(r,c));
+
+  game.combo++;
+  game.bestCombo = Math.max(game.bestCombo, game.combo);
+  game.lines += nLines;
+  save.stats.lines += nLines;
+
+  const lineMult = LINE_MULT[Math.min(nLines, LINE_MULT.length-1)];
+  const comboMult = Math.min(3, 1 + 0.25*(game.combo-1));
+  const levelMult = 1 + (game.level-1)*0.05;
+  const gained = Math.round(cells.size * 10 * lineMult * comboMult * levelMult);
+
+  let k = 0;
+  for(const i of cells){
+    const el = cellEl(i);
+    el.classList.add('clearing');
+    burst(i, game.grid[i] || 1, nLines > 1 ? 12 : 8);
+    if(k % 3 === 0) Sfx.clear(k/3 + game.combo);
+    k++;
+  }
+  FX.shake = save.settings.motion ? 0 : Math.min(14, 4 + nLines*2.5 + game.combo);
+  buzz(nLines > 1 ? 30 : 16);
+  fxGo();
+
+  if(nLines > 1){ banner(CLEAR_WORDS[nLines] || nLines + ' LINES!'); Sfx.combo(nLines); }
+  else if(game.combo > 1){ banner('COMBO ×' + game.combo); Sfx.combo(game.combo); }
+
+  const mid = [...cells][Math.floor(cells.size/2)];
+  floatText(mid, '+' + fmt(gained));
+  addScore(gained);
+
+  const gainCharge = nLines*3 + Math.max(0, nLines-1)*2;
+  game.charge = Math.min(CHARGE_MAX, game.charge + gainCharge);
+  renderHUD();
+
+  await wait(330);
+  for(const i of cells){ game.grid[i] = 0; }
+  renderBoard();
+
+  const newLevel = 1 + Math.floor(game.lines / 10);
+  if(newLevel > game.level){
+    game.level = newLevel;
+    banner('LEVEL ' + game.level);
+    Sfx.level();
+    game.charge = Math.min(CHARGE_MAX, game.charge + 2);
+    tip('level', 'Level ' + game.level, 'Every ten lines moves you up a level, and every level is worth 5% more per clear. There is no fail timer — levels are just your pace.');
+    await wait(200);
+  }
+}
+
+function addScore(n){
+  game.score += n;
+  const el = $('#scoreNum');
+  el.textContent = fmt(game.score);
+  el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+  $('#bestLine').textContent = 'Best ' + fmt(Math.max(save.best, game.score));
+}
+
+/* ==========================================================
+   6. POWERS
+   ========================================================== */
+function openPick(){
+  const row = $('#pickRow'); row.innerHTML = '';
+  for(const id of POWER_IDS){
+    const p = POWERS[id];
+    const b = document.createElement('button');
+    b.className = 'pick';
+    b.innerHTML = `<span class="pi">${p.ico}</span><span class="pn">${p.name}</span><span class="pd">${p.desc}</span>`;
+    b.onclick = () => takePower(id);
+    row.appendChild(b);
+  }
+  Sfx.charge(); buzz(24);
+  openSheet('#pickSheet');
+  tip('power', 'Your meter is full', 'This is the part other block games make you pay for. Here you earn it by clearing lines — pick the one that suits the mess you are in.');
+}
+function takePower(id){
+  game.charge = 0;
+  if(game.powers.length < SLOT_MAX) game.powers.push(id);
+  else { game.powers.shift(); game.powers.push(id); }
+  closeSheet('#pickSheet');
+  Sfx.ui(); renderHUD();
+  toast(POWERS[id].name + ' is in your slot');
+  checkStuck();
+}
+
+function armPower(slot){
+  const id = game.powers[slot];
+  if(!id) { toast('Clear lines to charge a power'); return; }
+  if(!POWERS[id].target){ usePower(slot, -1); return; }
+  ui.armed = ui.armed === slot ? null : slot;
+  renderPowers();
+  clearPreview();
+  if(ui.armed != null) toast(id === 'bomb' ? 'Tap where the bomb goes' : 'Tap a row and column to zap');
+}
+
+function usePowerAt(i){
+  const slot = ui.armed; if(slot == null) return;
+  usePower(slot, i);
+}
+
+async function usePower(slot, target){
+  const id = game.powers[slot];
+  if(!id || ui.busy) return;
+  ui.busy = true; ui.armed = null;
+  game.powers.splice(slot, 1);
+  save.stats.powersUsed++; persist();
+  Sfx.power(); buzz(35);
+
+  if(id === 'swap'){
+    refillTray(false);
+    toast('Three fresh blocks');
+  } else {
+    const cells = new Set();
+    const r0 = Math.floor(target/G), c0 = target % G;
+    if(id === 'bomb'){
+      for(let r=r0-1;r<=r0+1;r++) for(let c=c0-1;c<=c0+1;c++)
+        if(r>=0&&r<G&&c>=0&&c<G) cells.add(ix(r,c));
+    } else {
+      for(let c=0;c<G;c++) cells.add(ix(r0,c));
+      for(let r=0;r<G;r++) cells.add(ix(r,c0));
+    }
+    let hit = 0;
+    for(const i of cells){
+      if(game.grid[i]){ hit++; burst(i, game.grid[i], 10); cellEl(i).classList.add('clearing'); }
+    }
+    FX.shake = save.settings.motion ? 0 : 16; fxGo();
+    if(hit){ addScore(hit * 6); floatText(target, '+' + fmt(hit*6)); }
+    await wait(330);
+    for(const i of cells) game.grid[i] = 0;
+    renderBoard();
+  }
+  renderAll();
+  ui.busy = false;
+  coachAdvance('power');
+  checkStuck();
+}
+
+/* ==========================================================
+   7. STUCK, GAME OVER, DAILY
+   ========================================================== */
+function checkStuck(){
+  if(game.over || ui.busy) return;
+  if(trayHasMove()) return;
+  const canRescue = game.powers.length > 0 || !game.adUsed;
+  if(canRescue) openStuck();
+  else gameOver();
+}
+
+function openStuck(){
+  const wrap = $('#stuckActions'); wrap.innerHTML = '';
+  $('#stuckSub').textContent = game.powers.length
+    ? 'None of your three blocks will go anywhere — but a power will open it back up.'
+    : 'None of your three blocks will go anywhere.';
+  game.powers.forEach((id, k) => {
+    const p = POWERS[id];
+    const b = document.createElement('button');
+    b.className = 'btn btn-primary btn-wide';
+    b.textContent = `${p.ico}  Use your ${p.name}`;
+    b.onclick = () => { closeSheet('#stuckSheet'); Sfx.ui();
+      if(POWERS[id].target){ ui.armed = k; renderPowers();
+        toast(id === 'bomb' ? 'Tap where the bomb goes' : 'Tap a row and column to zap'); }
+      else usePower(k, -1); };
+    wrap.appendChild(b);
+  });
+  if(!game.adUsed){
+    const ad = document.createElement('button');
+    ad.className = 'ad-card';
+    ad.innerHTML = `<span style="font-size:22px">▶</span><span style="flex:1">
+      <span class="at">Clear the bottom two rows</span>
+      <span class="ah">Mock rewarded ad · once per game</span></span>`;
+    ad.onclick = () => { closeSheet('#stuckSheet'); adRescue(); };
+    wrap.appendChild(ad);
+  }
+  const q = document.createElement('button');
+  q.className = 'btn btn-ghost btn-wide btn-sm';
+  q.textContent = 'End the game';
+  q.onclick = () => { closeSheet('#stuckSheet'); gameOver(); };
+  wrap.appendChild(q);
+  openSheet('#stuckSheet');
+  tip('stuck', 'This is the moment', 'Most block games just end here. Yours does not have to — a power you banked earlier is exactly what digs you out, which is why it is worth saving one.');
+}
+
+async function adRescue(){
+  game.adUsed = true; ui.busy = true;
+  Sfx.power(); buzz(30);
+  for(let r=G-2;r<G;r++) for(let c=0;c<G;c++){
+    const i = ix(r,c);
+    if(game.grid[i]){ burst(i, game.grid[i], 8); cellEl(i).classList.add('clearing'); }
+  }
+  FX.shake = save.settings.motion ? 0 : 14; fxGo();
+  await wait(340);
+  for(let r=G-2;r<G;r++) for(let c=0;c<G;c++) game.grid[ix(r,c)] = 0;
+  renderAll(); ui.busy = false;
+  toast('Bottom two rows cleared');
+  checkStuck();
+}
+
+function gameOver(){
+  if(game.over) return;
+  game.over = true;
+  Sfx.over();
+  const isBest = game.score > save.best;
+  save.best = Math.max(save.best, game.score);
+  save.stats.games++;
+  save.stats.bestCombo = Math.max(save.stats.bestCombo, game.bestCombo);
+  if(game.isDaily) recordDaily();
+  persist();
+  $('#overEyebrow').textContent = isBest ? 'New personal best' : 'Game over';
+  $('#overTitle').textContent = isBest ? 'Best score yet' : "Nothing fits";
+  const prev = save.stats.prevBest || 0;
+  $('#overSub').textContent = !isBest
+    ? 'None of your three blocks would go anywhere.'
+    : prev > 0 ? `You beat your old best by ${fmt(game.score - prev)}.`
+               : 'That is your score to beat from now on.';
+  $('#oScore').textContent = fmt(game.score);
+  $('#oBest').textContent = fmt(save.best);
+  $('#oLines').textContent = game.lines;
+  $('#oCombo').textContent = '×' + game.bestCombo;
+  save.stats.prevBest = save.best;
+  setTimeout(()=> openSheet('#overSheet'), 420);
+}
+
+function todayKey(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function buildShare(){
+  let grid = '';
+  for(let r=0;r<G;r++){
+    for(let c=0;c<G;c++){ const v = game.grid[ix(r,c)]; grid += v ? EMO[v-1] : '⬛'; }
+    grid += '\n';
+  }
+  const head = game.isDaily ? `Blockcharge · Daily ${game.dayKey}` : 'Blockcharge';
+  return `${head}\n${fmt(game.score)} pts · ${game.lines} lines · combo ×${game.bestCombo}\n\n${grid}`;
+}
+function recordDaily(){
+  save.daily = { date:game.dayKey, score:game.score, lines:game.lines, share:buildShare() };
+  persist();
+  setTimeout(showDaily, 900);
+}
+function showDaily(){
+  closeAllSheets();
+  $('#dScore').textContent = fmt(save.daily.score);
+  $('#dLines').textContent = save.daily.lines;
+  $('#shareBox').textContent = save.daily.share;
+  $('#dailyTitle').textContent = 'Daily ' + save.daily.date;
+  openSheet('#dailySheet');
+}
+function copyText(t){
+  const done = ()=> { toast('Copied — paste it anywhere'); Sfx.ui(); };
+  if(navigator.clipboard && navigator.clipboard.writeText)
+    navigator.clipboard.writeText(t).then(done, ()=> toast('Your browser blocked the copy'));
+  else {
+    const ta = document.createElement('textarea'); ta.value = t;
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){ toast('Your browser blocked the copy'); }
+    ta.remove();
+  }
+}
+/* ==========================================================
+   8. SHEETS + COACH
+   ========================================================== */
+const openStack = [];
+function openSheet(id){
+  if(!openStack.includes(id)) openStack.push(id);
+  $('#scrim').classList.add('on'); $(id).classList.add('on');
+}
+function closeSheet(id){
+  $(id).classList.remove('on');
+  const k = openStack.indexOf(id); if(k>=0) openStack.splice(k,1);
+  if(!openStack.length) $('#scrim').classList.remove('on');
+}
+function closeAllSheets(){ [...openStack].forEach(closeSheet); }
+
+const coach = { active:false, i:0, steps:[], onDone:null, step(){ return this.steps[this.i] || {}; } };
+const coachEl = $('#coach'), maskEl = $('#coachMask'), ringEl = $('#coachRing');
+
+function maskAround(rect){
+  maskEl.innerHTML = '';
+  const app = $('#app').getBoundingClientRect();
+  const parts = rect
+    ? [[0,0,app.width,rect.top-app.top],
+       [0,rect.bottom-app.top,app.width,app.height-(rect.bottom-app.top)],
+       [0,rect.top-app.top,rect.left-app.left,rect.height],
+       [rect.right-app.left,rect.top-app.top,app.width-(rect.right-app.left),rect.height]]
+    : [[0,0,app.width,app.height]];
+  for(const [x,y,w,h] of parts){
+    const d = document.createElement('div');
+    d.style.cssText = `position:absolute;left:${x}px;top:${Math.max(0,y)}px;width:${Math.max(0,w)}px;
+      height:${Math.max(0,h)}px;background:rgba(24,18,58,.55);pointer-events:auto`;
+    maskEl.appendChild(d);
+  }
+}
+
+function coachShow(step){
+  coachEl.classList.add('on');
+  const app = $('#app').getBoundingClientRect();
+  let rect = null;
+  if(step.anchor){ const el = $(step.anchor); if(el) rect = el.getBoundingClientRect(); }
+  if(rect){
+    const pad = 5;
+    ringEl.style.display = 'block';
+    ringEl.style.left = (rect.left-app.left-pad)+'px';
+    ringEl.style.top = (rect.top-app.top-pad)+'px';
+    ringEl.style.width = (rect.width+pad*2)+'px';
+    ringEl.style.height = (rect.height+pad*2)+'px';
+    if(step.require || step.aim) maskEl.innerHTML = '';
+    else maskAround({ top:rect.top-pad, bottom:rect.bottom+pad, left:rect.left-pad,
+                      right:rect.right+pad, height:rect.height+pad*2 });
+  } else { ringEl.style.display = 'none'; maskAround(null); }
+
+  $('#coachTitle').innerHTML = step.title || '';
+  $('#coachBody').innerHTML = step.body || '';
+  $('#coachSteps').textContent = step.count || '';
+  const next = $('#coachNext');
+  next.style.display = step.require ? 'none' : 'block';
+  next.textContent = step.cta || 'Next';
+
+  const card = $('#coachCard');
+  card.classList.toggle('slim', !!step.require);
+  card.style.top = '0px';
+  const h = card.offsetHeight || 130;
+  let top;
+  if(step.require){ top = $('#tray').getBoundingClientRect().top - app.top - h - 12; }
+  else if(rect){
+    const below = rect.bottom - app.top + 16;
+    top = (below + h < app.height - 14) ? below : (rect.top - app.top - h - 16);
+  } else top = app.height/2 - h/2;
+  card.style.top = clamp(top, 12, Math.max(12, app.height - h - 12)) + 'px';
+
+  document.querySelectorAll('.hand-point').forEach(e => e.remove());
+  if(step.hand && rect){
+    const p = document.createElement('div');
+    p.className = 'hand-point'; p.textContent = '☞';
+    p.style.left = (rect.left-app.left+rect.width/2)+'px';
+    p.style.top = (rect.top-app.top+rect.height/2+4)+'px';
+    p.style.transform = 'rotate(-35deg)';
+    coachEl.appendChild(p);
+  }
+}
+
+function startCoach(steps, onDone){
+  coach.active = true; coach.i = 0; coach.steps = steps; coach.onDone = onDone || null;
+  steps.forEach((s,k) => s.count = `${k+1} / ${steps.length}`);
+  applyCoachStep();
+}
+function applyCoachStep(){
+  const s = coach.step();
+  ui.forceSlot = s.slot != null ? s.slot : -1;
+  ui.forceCell = s.cell != null ? s.cell : -1;
+  ui.aimCells = s.aim || [];
+  if(s.before) s.before();
+  renderBoard();
+  coachShow(s);
+}
+function coachAdvance(kind){
+  if(!coach.active) return;
+  const s = coach.step();
+  if(s.require && s.require !== kind) return;
+  setTimeout(coachNext, s.after || 0);
+}
+function coachNext(){
+  coach.i++;
+  if(coach.i >= coach.steps.length){ coachEnd(); return; }
+  applyCoachStep();
+}
+function coachEnd(){
+  coach.active = false; ui.forceSlot = -1; ui.forceCell = -1; ui.aimCells = [];
+  coachEl.classList.remove('on');
+  renderBoard();
+  document.querySelectorAll('.hand-point').forEach(e => e.remove());
+  if(coach.onDone){ const f = coach.onDone; coach.onDone = null; f(); }
+}
+$('#coachNext').onclick = () => { Sfx.ui(); if(coach.active) coachNext(); else coachEnd(); };
+
+function coachCard({ title, body, cta='Got it', onClose }){
+  coach.active = false;
+  coachEl.classList.add('on');
+  ringEl.style.display = 'none';
+  maskAround(null);
+  const app = $('#app').getBoundingClientRect();
+  $('#coachCard').classList.remove('slim');
+  $('#coachTitle').innerHTML = title;
+  $('#coachBody').innerHTML = body;
+  $('#coachSteps').textContent = '';
+  const n = $('#coachNext'); n.style.display = 'block'; n.textContent = cta;
+  $('#coachCard').style.top = (app.height/2 - 100) + 'px';
+  coach.onDone = onClose || null;
+}
+function tip(id, title, body){
+  if(save.seen[id]) return false;
+  save.seen[id] = 1; persist();
+  coachCard({ title, body });
+  return true;
+}
+
+/* ---------- the tutorial: one guaranteed line clear ---------- */
+function runTutorial(){
+  // seed a board that is three cells short of a full bottom row
+  const cols = [0,1,2,3,4];
+  cols.forEach((c,k) => { game.grid[ix(7,c)] = 1 + (k % COLORS); });
+  game.grid[ix(6,0)] = 4; game.grid[ix(6,1)] = 2;
+  game.tray = [
+    { shape:SHAPES.find(s => s.key === '111'), color:5, used:false },
+    { shape:SHAPES.find(s => s.key === '11/11'), color:1, used:false },
+    { shape:SHAPES.find(s => s.key === '1/1'), color:3, used:false },
+  ];
+  renderAll();
+  startCoach([
+    { title:'Fill a row, clear a row',
+      body:'The bottom row is three squares short. Fill those three and the whole row pops.',
+      anchor:'#boardWrap', cta:'Show me' },
+    { title:'Drag it into the gap',
+      body:'Blocks don\'t rotate — you place them as they come.',
+      anchor:'.slot[data-slot="0"]', slot:0, cell:ix(7,5),
+      aim:[ix(7,5),ix(7,6),ix(7,7)], require:'place', after:900, hand:true },
+    { title:'That\'s the whole game',
+      body:'Clear two lines in one move, or clear on back-to-back moves, and the points multiply fast.',
+      anchor:'#hud' },
+    { title:'Lines charge this meter',
+      body:'Fill it and you choose a power — a bomb, a laser, or a fresh set of blocks. It waits in the slot until you need it.',
+      anchor:'.charge-row', cta:'Got it' },
+  ], () => { save.tutorialDone = true; persist(); });
+}
+
+/* ==========================================================
+   9. MENUS, SETTINGS, BOOT
+   ========================================================== */
+function applyTheme(){
+  if(save.settings.dark) document.documentElement.setAttribute('data-theme','dark');
+  else document.documentElement.removeAttribute('data-theme');
+}
+function showTitle(){
+  closeAllSheets(); coachEnd();
+  $('#title').classList.remove('off');
+  $('#dailyDot').style.display = save.daily.date === todayKey() ? 'none' : 'inline-block';
+  const s = save.stats;
+  $('#tlBest').textContent = save.best
+    ? `Best ${fmt(save.best)} · ${fmt(s.lines)} lines cleared · ${s.games} games`
+    : '';
+}
+function hideTitle(){ $('#title').classList.add('off'); }
+
+function beginGame(opts){
+  Sfx.init(); hideTitle();
+  newGame(opts);
+  setTimeout(sizeBoard, 60);
+  if(!save.tutorialDone && !opts.daily) setTimeout(runTutorial, 340);
+  else if(opts.daily) setTimeout(()=> tip('daily','Daily board',
+    'Everyone gets the same blocks in the same order today. One go — then you can copy your board and compare.'), 380);
+}
+
+$('#playBtn').onclick = ()=> { Sfx.ui(); beginGame({}); };
+$('#dailyBtn').onclick = ()=> {
+  Sfx.ui();
+  if(save.daily.date === todayKey()){ showDaily(); return; }
+  beginGame({ daily:true, dayKey:todayKey(), seed:hashStr('blockcharge-'+todayKey()) });
+};
+$('#titleHowBtn').onclick = $('#howBtn').onclick = $('#pauseHowBtn').onclick = ()=> { Sfx.ui(); openSheet('#howSheet'); };
+$('#howClose').onclick = ()=> closeSheet('#howSheet');
+$('#settingsBtn').onclick = $('#pauseSetBtn').onclick = ()=> { Sfx.ui(); renderSettings(); openSheet('#setSheet'); };
+$('#setClose').onclick = ()=> closeSheet('#setSheet');
+
+$('#pauseBtn').onclick = ()=> {
+  if(ui.busy || !game || game.over) return;
+  Sfx.ui();
+  $('#pScore').textContent = fmt(game.score);
+  $('#pLines').textContent = game.lines;
+  $('#pLevel').textContent = game.level;
+  $('#pCombo').textContent = '×' + game.bestCombo;
+  openSheet('#pauseSheet');
+};
+$('#resumeBtn').onclick = ()=> { Sfx.ui(); closeSheet('#pauseSheet'); };
+$('#quitBtn').onclick = ()=> { Sfx.ui(); closeSheet('#pauseSheet'); gameOver(); };
+$('#againBtn').onclick = ()=> { Sfx.ui(); closeAllSheets(); beginGame({}); };
+$('#overMenuBtn').onclick = ()=> { Sfx.ui(); closeAllSheets(); showTitle(); };
+$('#overShareBtn').onclick = ()=> copyText(buildShare());
+$('#copyShareBtn').onclick = ()=> copyText($('#shareBox').textContent);
+$('#dailyMenuBtn').onclick = ()=> { closeAllSheets(); showTitle(); };
+$('#scrim').onclick = ()=> {
+  for(const id of ['#pauseSheet','#howSheet','#setSheet','#dailySheet'])
+    if(openStack.includes(id)){ closeSheet(id); return; }
+};
+
+function renderSettings(){
+  $$('.sw[data-set]').forEach(sw => sw.classList.toggle('on', !!save.settings[sw.dataset.set]));
+}
+$$('.sw[data-set]').forEach(sw => sw.onclick = ()=> {
+  const k = sw.dataset.set;
+  save.settings[k] = !save.settings[k];
+  if(k === 'sound' && save.settings.sound) Sfx.init();
+  if(k === 'dark') applyTheme();
+  persist(); renderSettings(); Sfx.ui();
+});
+$('#resetTutBtn').onclick = ()=> { save.tutorialDone = false; save.seen = {}; persist(); toast('Tutorial will show again'); };
+$('#wipeBtn').onclick = ()=> {
+  const keep = save.settings;
+  save = defaultSave(); save.settings = keep; persist();
+  renderSettings(); showTitle(); toast('Records cleared');
+};
+
+function boot(){
+  loadSave(); applyTheme(); buildBoard();
+  const tl = $('#tlBlocks');
+  for(let i=0;i<8;i++){
+    const b = document.createElement('i');
+    b.style.cssText = colorVars(1 + (i % COLORS)) + `;animation-delay:${i*0.09}s`;
+    tl.appendChild(b);
+  }
+  game = { grid:new Int8Array(G*G), tray:[], score:0, lines:0, level:1, combo:0, bestCombo:0,
+           charge:0, powers:[], over:true, rng:rngFrom(1) };
+  renderAll(); renderSettings(); showTitle();
+  setTimeout(sizeBoard, 80);
+  window.addEventListener('orientationchange', ()=> setTimeout(sizeBoard, 260));
+}
+boot();
+
+</script>
+
