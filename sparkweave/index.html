@@ -1,0 +1,2059 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0b0917">
+<meta name="description" content="Sparkweave — place glyphs on a 5x5 loom, fire a beam through them, chain the cascade. Mobile roguelite prototype.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>html,body{margin:0;padding:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Sparkweave</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* ============================================================
+   SPARKWEAVE — arcane loom roguelite. Single-file prototype.
+   Deliberately single-theme: this is a lit workshop at night.
+   Every colour is painted explicitly so it holds on any ground.
+   ============================================================ */
+:root{
+  --void:#0b0917;
+  --void-2:#120f24;
+  --loom:#1a1533;
+  --loom-2:#221b41;
+  --rule:#332a5c;
+  --thread:#ffb648;      /* primary: lamp-lit thread */
+  --spark:#fff3c4;       /* hot core */
+  --weft:#4ee0c8;        /* charge / tide */
+  --crystal:#b48cff;
+  --iron:#9fb3c8;
+  --rose:#ff5d73;
+  --ink:#f2edff;
+  --muted:#9089b8;       /* violet-biased neutral, chosen not inherited */
+  --dim:#645d8c;
+  --ok:#7ee08a;
+
+  --r-sm:8px; --r-md:14px; --r-lg:22px;
+  --f-disp:"Syne","Trebuchet MS",system-ui,sans-serif;
+  --f-body:"Outfit","Avenir Next",system-ui,sans-serif;
+  --f-mono:"DM Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --shadow:0 18px 40px -18px rgba(0,0,0,.9);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{
+  margin:0; background:var(--void); color:var(--ink);
+  font-family:var(--f-body); font-weight:400;
+  overscroll-behavior:none; touch-action:manipulation;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--thread);outline-offset:2px;border-radius:6px}
+
+/* ---------- device frame ---------- */
+#app{
+  position:relative; height:100dvh; width:100%; max-width:480px; margin:0 auto;
+  display:flex; flex-direction:column; overflow:hidden;
+  background:
+    radial-gradient(120% 70% at 50% -10%, #241c4a 0%, transparent 60%),
+    radial-gradient(90% 50% at 50% 108%, #1b1338 0%, transparent 62%),
+    var(--void);
+}
+@media(min-width:520px){
+  body{background:#07060f}
+  #app{height:min(880px,100dvh); margin-top:max(0px,calc((100dvh - 880px)/2));
+    border:1px solid var(--rule); border-radius:26px; box-shadow:var(--shadow)}
+}
+#shake{display:flex;flex-direction:column;flex:1;min-height:0}
+.vignette{position:absolute;inset:0;pointer-events:none;z-index:6;
+  box-shadow:inset 0 0 120px 20px rgba(6,4,16,.85)}
+
+/* ---------- HUD ---------- */
+#hud{padding:10px 14px 4px;display:flex;flex-direction:column;gap:8px;flex:0 0 auto}
+.hud-top{display:flex;align-items:center;gap:10px}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;
+  background:var(--loom);border:1px solid var(--rule);font-size:12px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted);font-weight:500;white-space:nowrap;
+}
+.chip b{color:var(--ink);font-family:var(--f-mono);letter-spacing:0;font-weight:500}
+.chip.gold b{color:var(--thread)}
+.chip.knot{border-color:#6b2740;background:#2b1226;color:#ffb0be}
+.icon-btn{width:36px;height:36px;border-radius:11px;background:var(--loom);
+  border:1px solid var(--rule);display:grid;place-items:center;color:var(--muted);flex:0 0 auto}
+.icon-btn:active{transform:scale(.94)}
+.spacer{flex:1}
+
+.quota-wrap{display:flex;flex-direction:column;gap:5px}
+.quota-line{display:flex;align-items:baseline;gap:8px;font-size:12px;color:var(--muted)}
+.quota-line .goal{margin-left:auto;font-family:var(--f-mono);color:var(--muted)}
+.quota-line .goal b{color:var(--ink)}
+#scoreNum{font-family:var(--f-mono);font-size:26px;line-height:1;color:var(--spark);
+  font-variant-numeric:tabular-nums;text-shadow:0 0 18px rgba(255,182,72,.45)}
+#scoreNum.pulse{animation:sc .3s ease-out}
+@keyframes sc{0%{transform:scale(1)}40%{transform:scale(1.16)}100%{transform:scale(1)}}
+.bar{height:7px;border-radius:999px;background:#241d45;overflow:hidden;position:relative;
+  border:1px solid var(--rule)}
+.bar i{display:block;height:100%;width:0%;border-radius:999px;
+  background:linear-gradient(90deg,#ff8a3d,var(--thread) 60%,var(--spark));
+  box-shadow:0 0 12px rgba(255,182,72,.6);transition:width .35s cubic-bezier(.2,.8,.3,1)}
+.bar.done i{background:linear-gradient(90deg,#3fbf8a,var(--ok))}
+
+/* ---------- stage / board ---------- */
+#stage{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;
+  justify-content:space-between;padding:6px 14px calc(12px + env(safe-area-inset-bottom))}
+#boardWrap{position:relative;width:100%;aspect-ratio:1/1;max-height:52dvh;margin:0 auto;
+  align-self:center;flex:0 1 auto}
+#board{
+  position:absolute;inset:0;display:grid;grid-template-columns:repeat(5,1fr);
+  grid-template-rows:repeat(5,1fr);gap:6px;
+  padding:8px;border-radius:var(--r-lg);
+  background:linear-gradient(160deg,#1d1739,#141029);
+  border:1px solid var(--rule);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05), var(--shadow);
+}
+.cell{
+  position:relative;border-radius:11px;background:#181234;border:1px solid #2a2350;
+  display:grid;place-items:center;overflow:visible;
+  transition:background .18s,border-color .18s,transform .12s;
+}
+.cell.empty::after{content:"";width:4px;height:4px;border-radius:50%;background:#2f2757}
+.cell.drop{background:#2a2153;border-color:var(--thread);box-shadow:0 0 0 2px rgba(255,182,72,.3) inset}
+.cell.target{animation:tgt 1.1s ease-in-out infinite}
+@keyframes tgt{0%,100%{box-shadow:0 0 0 0 rgba(255,182,72,0);background:#241c48}
+  50%{box-shadow:0 0 0 3px rgba(255,182,72,.6),0 0 22px rgba(255,182,72,.45);background:#33265c}}
+.cell.src{background:#1e2a44;border-color:#3c5a86}
+.cell.fired{animation:fired .34s ease-out}
+@keyframes fired{0%{transform:scale(1)}30%{transform:scale(1.22)}100%{transform:scale(1)}}
+.cell.spent .g-ico{opacity:.35;filter:grayscale(.6)}
+
+.glyph{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:1px;border-radius:10px;position:relative}
+.g-ico{font-size:min(6.2vw,26px);line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.6));
+  font-weight:600}
+.g-lab{font-size:8px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);
+  font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pips{position:absolute;bottom:2px;display:flex;gap:2px}
+.pip{width:3px;height:3px;border-radius:50%;background:var(--thread);opacity:.85}
+.pip.off{background:#3b3268}
+.rot-badge{position:absolute;top:2px;right:3px;font-size:9px;color:var(--dim)}
+.fam-ember{box-shadow:inset 0 0 0 1px rgba(255,182,72,.22)}
+.fam-tide{box-shadow:inset 0 0 0 1px rgba(78,224,200,.22)}
+.fam-crystal{box-shadow:inset 0 0 0 1px rgba(180,140,255,.24)}
+.fam-iron{box-shadow:inset 0 0 0 1px rgba(159,179,200,.22)}
+#fx{position:absolute;inset:0;pointer-events:none;z-index:3;border-radius:var(--r-lg)}
+#floats{position:absolute;inset:0;pointer-events:none;z-index:4;overflow:visible}
+.float{position:absolute;font-family:var(--f-mono);font-size:15px;font-weight:500;
+  color:var(--spark);text-shadow:0 2px 10px rgba(0,0,0,.8);animation:fl .9s ease-out forwards;
+  transform:translate(-50%,-50%);white-space:nowrap}
+.float.mult{color:var(--crystal)} .float.chg{color:var(--weft)} .float.bad{color:var(--rose)}
+@keyframes fl{0%{opacity:0;transform:translate(-50%,-40%) scale(.7)}
+  18%{opacity:1;transform:translate(-50%,-60%) scale(1.08)}
+  100%{opacity:0;transform:translate(-50%,-160%) scale(1)}}
+#chainPop{position:absolute;left:50%;top:14%;transform:translateX(-50%);z-index:5;
+  font-family:var(--f-disp);font-weight:800;font-size:34px;color:var(--spark);
+  opacity:0;pointer-events:none;text-shadow:0 0 26px rgba(255,182,72,.8)}
+#chainPop.on{animation:cp .5s ease-out}
+@keyframes cp{0%{opacity:0;transform:translateX(-50%) scale(.6)}
+  30%{opacity:1;transform:translateX(-50%) scale(1.1)}100%{opacity:0;transform:translateX(-50%) scale(1)}}
+
+/* ---------- meters ---------- */
+#meters{display:flex;gap:8px;flex:0 0 auto}
+.meter{flex:1;background:var(--loom);border:1px solid var(--rule);border-radius:var(--r-md);
+  padding:7px 10px;display:flex;flex-direction:column;gap:5px;min-width:0}
+.meter .k{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:600}
+.meter .v{font-family:var(--f-mono);font-size:17px;line-height:1;font-variant-numeric:tabular-nums}
+.v.charge{color:var(--weft)} .v.mult{color:var(--crystal)} .v.pow{color:var(--thread)}
+.pipbar{display:flex;gap:2px;height:4px}
+.pipbar i{flex:1;border-radius:2px;background:#2c2455}
+.pipbar i.on{background:var(--weft);box-shadow:0 0 6px rgba(78,224,200,.7)}
+.mbar{height:4px;border-radius:2px;background:#2c2455;overflow:hidden}
+.mbar i{display:block;height:100%;width:0%;border-radius:2px;transition:width .25s ease-out}
+#powBar{background:var(--thread);box-shadow:0 0 6px rgba(255,182,72,.6)}
+#multBar{background:var(--crystal);box-shadow:0 0 6px rgba(180,140,255,.6)}
+
+/* ---------- hand ---------- */
+#handRow{display:flex;gap:8px;flex:0 0 auto;min-height:104px}
+#handRow.full{min-height:0}
+#handRow.full .tile-empty{padding:9px 6px}
+.tile{
+  flex:1;background:linear-gradient(165deg,var(--loom-2),var(--loom));
+  border:1px solid var(--rule);border-radius:var(--r-md);padding:8px 6px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  position:relative;transition:transform .14s,border-color .14s,box-shadow .14s;min-width:0;
+}
+.tile .t-ico{font-size:28px;line-height:1}
+.tile .t-name{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  font-weight:600;text-align:center;line-height:1.2}
+.tile .t-desc{font-size:9.5px;color:var(--dim);text-align:center;line-height:1.25;
+  padding:0 2px;height:23px;overflow:hidden}
+.tile.sel{border-color:var(--thread);box-shadow:0 0 0 2px rgba(255,182,72,.28),0 0 22px -6px var(--thread);
+  transform:translateY(-4px)}
+.tile.used{opacity:.28;pointer-events:none}
+.tile.dragging{opacity:.35}
+.tile-empty{border-style:dashed;opacity:.4}
+#ghost{position:fixed;z-index:60;pointer-events:none;width:56px;height:56px;border-radius:12px;
+  display:grid;place-items:center;font-size:28px;background:var(--loom-2);
+  border:1px solid var(--thread);box-shadow:0 0 24px -4px var(--thread);
+  transform:translate(-50%,-50%) scale(1.05);display:none}
+
+/* ---------- primary action ---------- */
+#actionRow{display:flex;gap:8px;flex:0 0 auto}
+.btn{
+  border-radius:var(--r-md);padding:14px 16px;font-family:var(--f-disp);font-weight:800;
+  letter-spacing:.1em;text-transform:uppercase;font-size:14px;text-align:center;
+  transition:transform .12s,filter .2s;
+}
+.btn:active{transform:scale(.97)}
+.btn-primary{flex:1;color:#2a1400;
+  background:linear-gradient(180deg,#ffd07a,var(--thread));
+  box-shadow:0 8px 26px -10px var(--thread),inset 0 1px 0 rgba(255,255,255,.5);
+  position:relative;overflow:hidden}
+.btn-primary::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.5) 50%,transparent 70%);
+  transform:translateX(-120%)}
+.btn-primary.ready::after{animation:sheen 2.4s ease-in-out infinite}
+@keyframes sheen{0%{transform:translateX(-120%)}55%,100%{transform:translateX(120%)}}
+.btn-primary:disabled{filter:saturate(.2) brightness(.65);box-shadow:none;cursor:default}
+.btn-ghost{background:var(--loom);border:1px solid var(--rule);color:var(--muted)}
+.btn-sm{padding:10px 14px;font-size:12px}
+.btn-wide{width:100%}
+
+/* ---------- sheets / panels ---------- */
+#overlays{position:absolute;inset:0;z-index:20;pointer-events:none}
+.scrim{position:absolute;inset:0;background:rgba(6,4,16,.72);backdrop-filter:blur(7px);
+  opacity:0;transition:opacity .28s;pointer-events:none}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{
+  position:absolute;left:0;right:0;bottom:0;max-height:94%;overflow-y:auto;
+  background:linear-gradient(180deg,var(--loom-2),#161130);
+  border-top:1px solid var(--rule);border-radius:24px 24px 0 0;
+  padding:20px 18px calc(20px + env(safe-area-inset-bottom));
+  transform:translateY(102%);transition:transform .34s cubic-bezier(.2,.9,.25,1);
+  pointer-events:auto;box-shadow:0 -20px 50px -20px #000;
+}
+.sheet.on{transform:translateY(0)}
+.sheet .grab{width:38px;height:4px;border-radius:999px;background:var(--rule);margin:0 auto 14px}
+.sheet h2{font-family:var(--f-disp);font-weight:800;font-size:26px;margin:0 0 4px;
+  letter-spacing:-.01em;text-wrap:balance}
+.sheet .sub{color:var(--muted);font-size:13.5px;line-height:1.5;margin:0 0 16px;max-width:44ch}
+.eyebrow{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--thread);
+  font-weight:600;margin-bottom:6px}
+.sheet .actions{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+
+/* stat grid */
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 4px}
+.stat{background:#1c1638;border:1px solid var(--rule);border-radius:var(--r-md);padding:10px 12px}
+.stat .k{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:600}
+.stat .v{font-family:var(--f-mono);font-size:20px;margin-top:3px;font-variant-numeric:tabular-nums}
+.stat.hi .v{color:var(--thread)}
+
+/* shop */
+.offers{display:flex;flex-direction:column;gap:9px}
+.offer{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:var(--r-md);
+  background:#1c1638;border:1px solid var(--rule);text-align:left;width:100%;
+  transition:border-color .16s,transform .12s}
+.offer:active{transform:scale(.985)}
+.offer.afford{border-color:#4a3d7d}
+.offer.broke{opacity:.5}
+.offer .oi{font-size:26px;width:34px;text-align:center;flex:0 0 auto}
+.offer .ob{flex:1;min-width:0}
+.offer .on{font-weight:600;font-size:14px}
+.offer .od{font-size:11.5px;color:var(--muted);line-height:1.35;margin-top:2px}
+.price{font-family:var(--f-mono);font-size:14px;color:var(--thread);flex:0 0 auto;
+  display:flex;align-items:center;gap:3px}
+.tag{display:inline-block;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;
+  padding:2px 5px;border-radius:4px;margin-left:6px;font-weight:600;vertical-align:1px}
+.tag.ember{background:rgba(255,182,72,.14);color:var(--thread)}
+.tag.tide{background:rgba(78,224,200,.14);color:var(--weft)}
+.tag.crystal{background:rgba(180,140,255,.16);color:var(--crystal)}
+.tag.iron{background:rgba(159,179,200,.14);color:var(--iron)}
+.tag.new{background:rgba(255,93,115,.16);color:var(--rose)}
+
+/* codex */
+.codex-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.cx{background:#1c1638;border:1px solid var(--rule);border-radius:var(--r-md);padding:10px 8px;
+  text-align:center;display:flex;flex-direction:column;gap:4px;align-items:center}
+.cx.locked{opacity:.4}
+.cx .ci{font-size:24px}
+.cx .cn{font-size:10.5px;font-weight:600;letter-spacing:.04em}
+.cx .cd{font-size:9.5px;color:var(--muted);line-height:1.3}
+
+/* toggles */
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px 2px;border-bottom:1px solid var(--rule)}
+.row:last-child{border-bottom:0}
+.row .lab{font-size:14px}
+.row .hint{font-size:11px;color:var(--dim);margin-top:2px}
+.sw{width:46px;height:27px;border-radius:999px;background:#2c2455;border:1px solid var(--rule);
+  position:relative;flex:0 0 auto;transition:background .2s}
+.sw i{position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:50%;
+  background:var(--dim);transition:transform .2s,background .2s}
+.sw.on{background:rgba(255,182,72,.28);border-color:var(--thread)}
+.sw.on i{transform:translateX(19px);background:var(--thread)}
+
+/* ---------- title screen ---------- */
+#title{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center;
+  background:radial-gradient(90% 60% at 50% 34%,#2a1f52 0%,#0b0917 68%);
+  transition:opacity .5s,visibility .5s}
+#title.off{opacity:0;visibility:hidden;pointer-events:none}
+#titleCanvas{position:absolute;inset:0;width:100%;height:100%}
+.tl-wrap{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:6px;width:100%}
+.tl-mark{font-family:var(--f-disp);font-weight:800;font-size:clamp(38px,12vw,54px);
+  letter-spacing:-.02em;line-height:.95;
+  background:linear-gradient(180deg,#fff6de,var(--thread) 55%,#ff8a3d);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 6px 30px rgba(255,140,50,.4))}
+.tl-sub{font-size:12.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);
+  font-weight:500;margin-bottom:18px}
+.tl-menu{display:flex;flex-direction:column;gap:9px;width:100%;max-width:290px;margin-top:8px}
+.tl-foot{position:absolute;bottom:16px;left:0;right:0;font-size:10px;color:var(--dim);
+  letter-spacing:.1em;text-transform:uppercase;z-index:2}
+.badge-dot{width:7px;height:7px;border-radius:50%;background:var(--rose);display:inline-block;
+  margin-left:6px;vertical-align:2px;box-shadow:0 0 8px var(--rose)}
+
+/* ---------- tutorial spotlight ---------- */
+#coach{position:absolute;inset:0;z-index:40;pointer-events:none;display:none}
+#coach.on{display:block}
+#coachMask{position:absolute;inset:0;background:transparent;pointer-events:none}
+#coachRing{position:absolute;border-radius:14px;border:2px solid var(--thread);
+  box-shadow:0 0 0 4px rgba(255,182,72,.16),0 0 30px rgba(255,182,72,.5);
+  transition:all .32s cubic-bezier(.2,.9,.25,1);pointer-events:none}
+#coachCard{position:absolute;left:14px;right:14px;background:linear-gradient(180deg,#241d47,#191333);
+  border:1px solid #453a7a;border-radius:var(--r-lg);padding:15px 16px;pointer-events:auto;
+  box-shadow:0 20px 44px -18px #000;transition:top .32s cubic-bezier(.2,.9,.25,1)}
+#coachCard .ct{font-family:var(--f-disp);font-weight:800;font-size:17px;margin-bottom:5px}
+#coachCard .cb{font-size:13.5px;line-height:1.5;color:#cfc7ee}
+#coachCard .cf{display:flex;align-items:center;gap:10px;margin-top:12px}
+#coachCard.slim{padding:11px 14px;border-radius:16px}
+#coachCard.slim .ct{font-size:14px;margin-bottom:2px}
+#coachCard.slim .cb{font-size:12.5px;line-height:1.35}
+#coachCard.slim .cf{margin-top:8px}
+.loop-dia{font-family:var(--f-mono);font-size:19px;line-height:1.35;letter-spacing:.34em;
+  color:var(--thread);background:#15102c;border:1px solid var(--rule);border-radius:12px;
+  padding:12px 14px;margin:11px 0 4px;display:inline-block}
+.loop-dia .d{color:#3c3468}
+#coachCard .steps{font-family:var(--f-mono);font-size:11px;color:var(--dim)}
+#coachNext{padding:9px 18px;border-radius:10px;background:var(--thread);color:#2a1400;
+  font-weight:600;font-size:13px}
+.hand-point{position:absolute;font-size:26px;pointer-events:none;z-index:41;
+  animation:tap 1.3s ease-in-out infinite;filter:drop-shadow(0 3px 6px rgba(0,0,0,.7))}
+@keyframes tap{0%,100%{transform:translate(-6px,4px) scale(1)}50%{transform:translate(-6px,-6px) scale(1.08)}}
+
+/* ---------- toast ---------- */
+#toast{position:absolute;left:50%;top:16%;transform:translate(-50%,-8px);z-index:50;
+  background:#241d47;border:1px solid #453a7a;padding:9px 15px;border-radius:999px;
+  font-size:12.5px;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;
+  box-shadow:var(--shadow);max-width:88%;text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- misc ---------- */
+.kv{display:flex;justify-content:space-between;font-size:13px;padding:7px 0;
+  border-bottom:1px solid var(--rule);color:var(--muted)}
+.kv b{color:var(--ink);font-family:var(--f-mono);font-weight:500}
+.share-box{font-family:var(--f-mono);font-size:12px;line-height:1.45;background:#15102c;
+  border:1px solid var(--rule);border-radius:var(--r-md);padding:12px;white-space:pre;
+  overflow-x:auto;color:var(--muted);margin-top:10px}
+.mod-note{display:flex;gap:9px;align-items:flex-start;background:#2b1226;border:1px solid #6b2740;
+  border-radius:var(--r-md);padding:10px 12px;margin-top:12px}
+.mod-note .mi{font-size:18px;line-height:1.1}
+.mod-note .mt{font-size:12.5px;color:#ffc3cd;line-height:1.4}
+.ad-card{background:linear-gradient(135deg,#20345c,#16223d);border:1px dashed #4d6fa8;
+  border-radius:var(--r-md);padding:12px;display:flex;align-items:center;gap:11px;text-align:left;width:100%}
+.ad-card .ai{font-size:22px}
+.ad-card .at{font-size:13.5px;font-weight:600}
+.ad-card .ah{font-size:10.5px;color:#9ab4dc;margin-top:2px;letter-spacing:.03em}
+.center{text-align:center}
+.dimtext{color:var(--dim);font-size:11px;line-height:1.5}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;
+    transition-duration:.08ms!important}
+}
+.no-motion .btn-primary.ready::after{animation:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="shake">
+    <header id="hud">
+      <div class="hud-top">
+        <span class="chip" id="roundChip">Thread <b>1</b>/8</span>
+        <span class="chip gold" id="filChip">◈ <b>0</b></span>
+        <span class="spacer"></span>
+        <button class="icon-btn" id="helpBtn" aria-label="Glyph codex">?</button>
+        <button class="icon-btn" id="pauseBtn" aria-label="Pause">❚❚</button>
+      </div>
+      <div class="quota-wrap">
+        <div class="quota-line">
+          <span id="scoreNum">0</span>
+          <span class="goal">of <b id="quotaNum">30</b> light</span>
+        </div>
+        <div class="bar" id="quotaBar"><i></i></div>
+      </div>
+    </header>
+
+    <main id="stage">
+      <div id="boardWrap">
+        <div id="board"></div>
+        <canvas id="fx"></canvas>
+        <div id="floats"></div>
+        <div id="chainPop"></div>
+      </div>
+
+      <div id="meters">
+        <div class="meter">
+          <span class="k">Charge</span>
+          <span class="v charge" id="chargeVal">8</span>
+          <div class="pipbar" id="chargePips"></div>
+        </div>
+        <div class="meter">
+          <span class="k">Light</span>
+          <span class="v pow" id="powVal">0</span>
+          <div class="mbar"><i id="powBar"></i></div>
+        </div>
+        <div class="meter">
+          <span class="k">Weave</span>
+          <span class="v mult" id="multVal">×1.0</span>
+          <div class="mbar"><i id="multBar"></i></div>
+        </div>
+      </div>
+
+      <div id="handRow"></div>
+
+      <div id="actionRow">
+        <button class="btn btn-ghost btn-sm" id="rethreadBtn" title="Redraw your hand">↻</button>
+        <button class="btn btn-primary" id="igniteBtn">Ignite</button>
+      </div>
+    </main>
+  </div>
+  <div class="vignette"></div>
+
+  <div id="ghost"></div>
+  <div id="toast"></div>
+
+  <!-- ============ TITLE ============ -->
+  <section id="title">
+    <canvas id="titleCanvas"></canvas>
+    <div class="tl-wrap">
+      <div class="tl-mark">SPARKWEAVE</div>
+      <div class="tl-sub">Place · Ignite · Chain</div>
+      <div class="tl-menu">
+        <button class="btn btn-primary btn-wide" id="playBtn">Begin a Weave</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="dailyBtn">Daily Loom<span id="dailyDot" class="badge-dot"></span></button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="workshopBtn">Workshop</button>
+        <div style="display:flex;gap:9px">
+          <button class="btn btn-ghost btn-sm" style="flex:1" id="codexBtn">Codex</button>
+          <button class="btn btn-ghost btn-sm" style="flex:1" id="settingsBtn">Settings</button>
+        </div>
+      </div>
+    </div>
+    <div class="tl-foot" id="tlFoot">Prototype build · v0.9</div>
+  </section>
+
+  <!-- ============ OVERLAYS ============ -->
+  <div id="overlays">
+    <div class="scrim" id="scrim"></div>
+
+    <!-- Pause -->
+    <section class="sheet" id="pauseSheet">
+      <div class="grab"></div>
+      <div class="eyebrow">Loom held</div>
+      <h2>Paused</h2>
+      <p class="sub">The beam waits. Nothing decays while you're away.</p>
+      <div class="stats">
+        <div class="stat"><div class="k">Thread</div><div class="v" id="pRound">1/8</div></div>
+        <div class="stat hi"><div class="k">Best chain</div><div class="v" id="pChain">0</div></div>
+        <div class="stat"><div class="k">Glyphs set</div><div class="v" id="pGlyphs">0</div></div>
+        <div class="stat"><div class="k">Filament</div><div class="v" id="pFil">0</div></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary btn-wide" id="resumeBtn">Resume</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="pauseHowBtn">How to play</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="pauseSetBtn">Settings</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="abandonBtn" style="color:var(--rose)">Abandon weave</button>
+      </div>
+    </section>
+
+    <!-- Round cleared -->
+    <section class="sheet" id="clearSheet">
+      <div class="grab"></div>
+      <div class="eyebrow" id="clearEyebrow">Thread 1 held</div>
+      <h2 id="clearTitle">Quota met</h2>
+      <p class="sub" id="clearSub">The loom holds. Collect your filament and thread the next.</p>
+      <div class="stats">
+        <div class="stat hi"><div class="k">Light woven</div><div class="v" id="cScore">0</div></div>
+        <div class="stat"><div class="k">Longest chain</div><div class="v" id="cChain">0</div></div>
+      </div>
+      <div class="kv"><span>Thread cleared</span><b id="cBase">+4 ◈</b></div>
+      <div class="kv"><span>Chain bonus</span><b id="cLeft">+0 ◈</b></div>
+      <div class="kv"><span>Overshot the quota</span><b id="cOver">+0 ◈</b></div>
+      <div class="actions"><button class="btn btn-primary btn-wide" id="toShopBtn">Visit the Stall</button></div>
+    </section>
+
+    <!-- Shop -->
+    <section class="sheet" id="shopSheet">
+      <div class="grab"></div>
+      <div class="eyebrow">The Stall · between threads</div>
+      <h2>Trade filament</h2>
+      <p class="sub">Glyphs you buy join your pouch — you'll draw them on later threads. Buy what your board is missing.</p>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span class="chip gold">◈ <b id="shopFil">0</b> filament</span>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost btn-sm" id="rerollBtn">Restock ◈2</button>
+      </div>
+      <div class="offers" id="shopOffers"></div>
+      <div class="actions"><button class="btn btn-primary btn-wide" id="nextThreadBtn">Weave the next thread</button></div>
+    </section>
+
+    <!-- Game over -->
+    <section class="sheet" id="overSheet">
+      <div class="grab"></div>
+      <div class="eyebrow" style="color:var(--rose)">The loom went dark</div>
+      <h2 id="overTitle">Quota missed</h2>
+      <p class="sub" id="overSub">You needed more light than the weave could carry.</p>
+      <div class="stats">
+        <div class="stat hi"><div class="k">Threads held</div><div class="v" id="oRounds">0</div></div>
+        <div class="stat"><div class="k">Best light</div><div class="v" id="oScore">0</div></div>
+        <div class="stat"><div class="k">Longest chain</div><div class="v" id="oChain">0</div></div>
+        <div class="stat"><div class="k">Shards earned</div><div class="v" id="oShards">0</div></div>
+      </div>
+      <div class="actions">
+        <button class="ad-card" id="reviveBtn">
+          <span class="ai">▶</span>
+          <span style="flex:1">
+            <span class="at">Second Wind — reweave this thread</span>
+            <span class="ah">Mock rewarded ad · once per run</span>
+          </span>
+        </button>
+        <button class="btn btn-primary btn-wide" id="retryBtn">New weave</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="overMenuBtn">Back to title</button>
+      </div>
+    </section>
+
+    <!-- Victory -->
+    <section class="sheet" id="winSheet">
+      <div class="grab"></div>
+      <div class="eyebrow" style="color:var(--ok)">All eight threads held</div>
+      <h2>The loom sings</h2>
+      <p class="sub" id="winSub">You carried the beam through every thread. The pattern is finished — but the loom will keep taking threads if you want to push it.</p>
+      <div class="stats">
+        <div class="stat hi"><div class="k">Total light</div><div class="v" id="wScore">0</div></div>
+        <div class="stat"><div class="k">Longest chain</div><div class="v" id="wChain">0</div></div>
+        <div class="stat"><div class="k">Shards earned</div><div class="v" id="wShards">0</div></div>
+        <div class="stat"><div class="k">Glyphs on loom</div><div class="v" id="wGlyphs">0</div></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary btn-wide" id="endlessBtn">Keep weaving (endless)</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="winShareBtn">Copy result</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="winMenuBtn">Back to title</button>
+      </div>
+    </section>
+
+    <!-- Daily result -->
+    <section class="sheet" id="dailySheet">
+      <div class="grab"></div>
+      <div class="eyebrow">Daily loom</div>
+      <h2 id="dailyTitle">Today's pattern</h2>
+      <p class="sub" id="dailySub">Everyone gets the same glyphs in the same order. One attempt. Come back tomorrow for a new pattern.</p>
+      <div class="stats">
+        <div class="stat hi"><div class="k">Light</div><div class="v" id="dScore">0</div></div>
+        <div class="stat"><div class="k">Threads</div><div class="v" id="dRounds">0</div></div>
+      </div>
+      <div class="share-box" id="shareBox"></div>
+      <div class="actions">
+        <button class="btn btn-primary btn-wide" id="copyShareBtn">Copy result</button>
+        <button class="btn btn-ghost btn-wide btn-sm" id="dailyMenuBtn">Back to title</button>
+      </div>
+    </section>
+
+    <!-- Codex -->
+    <section class="sheet" id="codexSheet">
+      <div class="grab"></div>
+      <div class="eyebrow">Codex</div>
+      <h2>Glyphs</h2>
+      <p class="sub">Every glyph you've seen on a loom. Locked ones appear in the Stall as you go deeper.</p>
+      <div class="codex-grid" id="codexGrid"></div>
+      <div class="actions"><button class="btn btn-ghost btn-wide btn-sm" id="codexClose">Close</button></div>
+    </section>
+
+    <!-- Workshop / meta -->
+    <section class="sheet" id="workshopSheet">
+      <div class="grab"></div>
+      <div class="eyebrow">Workshop</div>
+      <h2>Spend shards</h2>
+      <p class="sub">Shards survive between weaves. Everything here is permanent — it changes how every future run starts.</p>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span class="chip gold">✦ <b id="shardCount">0</b> shards</span>
+      </div>
+      <div class="offers" id="metaOffers"></div>
+      <div class="actions"><button class="btn btn-ghost btn-wide btn-sm" id="workshopClose">Close</button></div>
+    </section>
+
+    <!-- Settings -->
+    <section class="sheet" id="setSheet">
+      <div class="grab"></div>
+      <div class="eyebrow">Settings</div>
+      <h2>Comfort</h2>
+      <p class="sub">All of it saves to this device.</p>
+      <div class="row"><div><div class="lab">Sound</div><div class="hint">Synthesised — no downloads</div></div><div class="sw" data-set="sound"><i></i></div></div>
+      <div class="row"><div><div class="lab">Haptics</div><div class="hint">Short buzz on each glyph fire</div></div><div class="sw" data-set="haptics"><i></i></div></div>
+      <div class="row"><div><div class="lab">Reduced motion</div><div class="hint">No shake, gentler particles</div></div><div class="sw" data-set="motion"><i></i></div></div>
+      <div class="row"><div><div class="lab">Fast weave</div><div class="hint">Beam resolves at double speed</div></div><div class="sw" data-set="fast"><i></i></div></div>
+      <div class="row"><div><div class="lab">Replay the tutorial</div><div class="hint">Also re-shows every hint card</div></div><button class="btn btn-ghost btn-sm" id="resetTutBtn">Reset</button></div>
+      <div class="row"><div><div class="lab">Wipe progress</div><div class="hint">Shards, unlocks, records</div></div><button class="btn btn-ghost btn-sm" id="wipeBtn" style="color:var(--rose)">Wipe</button></div>
+      <div class="actions"><button class="btn btn-ghost btn-wide btn-sm" id="setClose">Close</button></div>
+    </section>
+
+    <!-- How to play -->
+    <section class="sheet" id="howSheet">
+      <div class="grab"></div>
+      <div class="eyebrow">How to play</div>
+      <h2>Three rules</h2>
+      <div class="offers">
+        <div class="offer"><span class="oi">✥</span><span class="ob"><span class="on">1 · Place glyphs</span><span class="od">Drag from your hand onto the loom, or tap a glyph then tap a cell. Everything you place stays for the whole run — the board is your machine.</span></span></div>
+        <div class="offer"><span class="oi">➤</span><span class="ob"><span class="on">2 · Ignite</span><span class="od">A beam leaves the source and travels in a straight line. Mirrors and vanes bend it. Each cell it enters costs 1 charge; when charge runs out, the weave ends.</span></span></div>
+        <div class="offer"><span class="oi">✧</span><span class="ob"><span class="on">3 · Chain</span><span class="od">Every glyph the beam touches fires — up to three times each. Light × Weave is your score. Loop the beam back through your best glyphs to chain.</span></span></div>
+      </div>
+      <p class="sub" style="margin-top:14px">Miss the quota and the run ends. Hold all eight threads and the pattern is complete.</p>
+      <div class="actions"><button class="btn btn-primary btn-wide" id="howClose">Got it</button></div>
+    </section>
+  </div>
+
+  <!-- ============ COACH / TUTORIAL ============ -->
+  <div id="coach">
+    <div id="coachMask"></div>
+    <div id="coachRing"></div>
+    <div id="coachCard">
+      <div class="ct" id="coachTitle"></div>
+      <div class="cb" id="coachBody"></div>
+      <div class="cf"><span class="steps" id="coachSteps"></span><span class="spacer"></span>
+        <button id="coachNext">Next</button></div>
+    </div>
+  </div>
+</div>
+<script>
+/* ================================================================
+   SPARKWEAVE — prototype engine
+   Sections: 0 utils · 1 data · 2 state · 3 audio · 4 board/hand
+             5 beam sim · 6 playback fx · 7 flow · 8 panels
+             9 coach/onboarding · 10 boot
+   ================================================================ */
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const clamp = (v,a,b) => Math.max(a, Math.min(b,v));
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const fmt = n => Math.round(n).toLocaleString('en-US');
+
+/* ---------- 0. deterministic RNG (mulberry32) ---------- */
+function rngFrom(seed){
+  let a = seed >>> 0;
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const hashStr = s => { let h = 2166136261; for (const ch of s){ h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619);} return h >>> 0; };
+const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
+
+/* ---------- 1. glyph data ---------- */
+// dir: 0=up 1=right 2=down 3=left
+const DR = [-1,0,1,0], DC = [0,1,0,-1];
+const turnR = d => (d + 1) & 3, turnL = d => (d + 3) & 3, flip = d => (d + 2) & 3;
+const FAM = { ember:'Ember', tide:'Tide', crystal:'Crystal', iron:'Iron' };
+
+/* Each glyph: fire(sim, cell, beam) mutates the sim and returns a label for the float. */
+const GLYPHS = {
+  ember:{ name:'Ember', ico:'✦', fam:'ember', cost:3, rot:0, start:3,
+    desc:'+9 light.',
+    fire:(s)=>{ s.power(9); } },
+
+  mirror:{ name:'Mirror', ico:'╱', ico2:'╲', fam:'iron', cost:4, rot:2, start:2,
+    desc:'Turns the beam 90°. +3 light.',
+    fire:(s,c,b)=>{ s.power(3);
+      b.dir = c.rot===0 ? [1,0,3,2][b.dir] : [3,2,1,0][b.dir]; s.turned = true; } },
+
+  coil:{ name:'Coil', ico:'◎', fam:'tide', cost:5, rot:0, start:1,
+    desc:'+5 charge and +3 light.',
+    fire:(s,c,b)=>{ s.power(3); if(!s.mod.damp){ b.charge += 5; s.charged(5); } } },
+
+  lens:{ name:'Lens', ico:'◇', fam:'crystal', cost:5, rot:0, start:1,
+    desc:'+0.5 weave.',
+    fire:(s)=>{ s.mult(0.5); } },
+
+  vane:{ name:'Vane', ico:'➤', fam:'iron', cost:4, rot:4, start:1,
+    desc:'Sends the beam the way it points. +4 light.',
+    fire:(s,c,b)=>{ s.power(4); b.dir = c.rot; s.turned = true; } },
+
+  prism:{ name:'Prism', ico:'✧', fam:'crystal', cost:8,rot:0,
+    desc:'Splits the beam both ways. +6 light.',
+    fire:(s,c,b)=>{ s.power(6); s.split(c, b); } },
+
+  thorn:{ name:'Thorn', ico:'✖', fam:'ember', cost:5, rot:0,
+    desc:'+26 light, −2 charge.',
+    fire:(s,c,b)=>{ s.power(26); b.charge -= 2; s.charged(-2); } },
+
+  anvil:{ name:'Anvil', ico:'▣', fam:'iron', cost:6, rot:0,
+    desc:'+5 light for each glyph beside it.',
+    fire:(s,c)=>{ s.power(5 * s.neighbours(c.r, c.c)); } },
+
+  chorus:{ name:'Chorus', ico:'❋', fam:'crystal', cost:6, rot:0,
+    desc:'+7 light for every other Crystal glyph on the loom.',
+    fire:(s,c)=>{ s.power(7 * Math.max(0, s.famCount('crystal') - 1)); } },
+
+  bloom:{ name:'Bloom', ico:'❀', fam:'tide', cost:6, rot:0,
+    desc:'+7 light, and gains +5 more for each thread it survives.',
+    fire:(s,c)=>{ s.power(7 + (c.grown||0)); } },
+
+  fuse:{ name:'Fuse', ico:'⊛', fam:'ember', cost:6, rot:0,
+    desc:'+70 light, then burns away.',
+    fire:(s,c)=>{ s.power(70); s.burn(c); } },
+
+  echo:{ name:'Echo', ico:'⟳', fam:'crystal', cost:7, rot:0,
+    desc:'Fires the last glyph again.',
+    fire:(s,c,b)=>{ s.echo(c, b); } },
+
+  bulwark:{ name:'Bulwark', ico:'⊓', fam:'iron', cost:4, rot:0,
+    desc:'Sends the beam back the way it came. +4 light.',
+    fire:(s,c,b)=>{ s.power(4); b.dir = flip(b.dir); s.turned = true; } },
+
+  kiln:{ name:'Kiln', ico:'⌾', fam:'ember', cost:6, rot:0,
+    desc:'+2 light, and every glyph after it this weave gives +2 more.',
+    fire:(s)=>{ s.power(2); s.heat += 2; } },
+
+  sinew:{ name:'Sinew', ico:'∿', fam:'tide', cost:6, rot:0,
+    desc:'+1 charge for every glyph already fired this weave.',
+    fire:(s,c,b)=>{ s.power(2); if(!s.mod.damp){ const g = Math.min(9, s.fires); b.charge += g; s.charged(g); } } },
+
+  wellspring:{ name:'Wellspring', ico:'◈', fam:'tide', cost:7, rot:0,
+    desc:'+5 light. Tops the beam back up to 9 charge.',
+    fire:(s,c,b)=>{ s.power(5); if(!s.mod.damp && b.charge < 9){ const d = 9 - b.charge; b.charge = 9; s.charged(d); } } },
+};
+const GLYPH_IDS = Object.keys(GLYPHS);
+const STARTER_POUCH = (()=>{ const p=[]; for(const id of GLYPH_IDS){ const n = GLYPHS[id].start||0; for(let i=0;i<n;i++) p.push(id);} return p; })();
+
+/* Knot (boss) modifiers */
+const MODS = [
+  { id:'damp',    name:'Damp',    ico:'≋', text:'Coils, Sinew and Wellspring give no charge this thread.' },
+  { id:'fog',     name:'Fog',     ico:'☁', text:'Empty cells cost 2 charge instead of 1.' },
+  { id:'brittle', name:'Brittle', ico:'⌁', text:'Every glyph fires twice at most instead of three times.' },
+  { id:'tithe',   name:'Tithe',   ico:'⚖', text:'The quota is a quarter higher — but you start with +4 charge.' },
+];
+
+/* Workshop (meta) upgrades */
+const META = [
+  { id:'charge1', name:'Deeper reservoir', ico:'◎', cost:6,  desc:'Start every run with +3 max charge.' },
+  { id:'purse',   name:'Fat purse',        ico:'◈', cost:5,  desc:'Start every run with 5 extra filament.' },
+  { id:'edges',   name:'Taut frame',       ico:'⌗', cost:12, desc:'The beam bounces off the loom edge once per weave instead of escaping.' },
+  { id:'g_prism', name:'Prism in pouch',   ico:'✧', cost:8,  desc:'Begin each run with a Prism already in your pouch.' },
+  { id:'g_anvil', name:'Anvil in pouch',   ico:'▣', cost:8,  desc:'Begin each run with an Anvil already in your pouch.' },
+  { id:'rethread',name:'Loose weft',       ico:'↻', cost:7,  desc:'One free hand redraw on every thread.' },
+];
+
+const QUOTAS = [18, 36, 58, 100, 175, 290, 460, 720];
+const KNOTS = [4, 8];
+
+/* ---------- 2. persistent state ---------- */
+const SAVE_KEY = 'sparkweave.v1';
+const defaultSave = () => ({
+  settings:{ sound:true, haptics:true, motion:false, fast:false },
+  shards:0, meta:{}, seen:{}, tutorialDone:false,
+  stats:{ runs:0, wins:0, bestScore:0, bestChain:0, bestThread:0 },
+  seenGlyphs:{ ember:1, mirror:1, coil:1, lens:1 },
+  daily:{ date:null, score:0, rounds:0, share:'' },
+});
+let save = defaultSave();
+function loadSave(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(raw) save = Object.assign(defaultSave(), JSON.parse(raw));
+  }catch(e){ /* private mode, first run — defaults are fine */ }
+}
+function persist(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(save)); }catch(e){} }
+
+/* live run state */
+let run = null;
+let ui = { busy:false, selected:null, screen:'title' };
+
+/* ---------- 3. audio (synthesised, no assets) ---------- */
+const Audio_ = {
+  ctx:null, master:null,
+  init(){
+    if(this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    this.ctx = new AC();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.24;
+    this.master.connect(this.ctx.destination);
+  },
+  on(){ return save.settings.sound && this.ctx; },
+  blip(freq, dur=0.09, type='triangle', vol=1, slide=0){
+    if(!this.on()) return;
+    const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq * slide), t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.55 * vol, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + dur + 0.02);
+  },
+  noise(dur=0.16, vol=0.5, hp=800){
+    if(!this.on()) return;
+    const t = this.ctx.currentTime, n = Math.floor(this.ctx.sampleRate * dur);
+    const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate), d = buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i] = (Math.random()*2-1) * (1 - i/n);
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const f = this.ctx.createBiquadFilter(); f.type='highpass'; f.frequency.value = hp;
+    const g = this.ctx.createGain(); g.gain.value = vol;
+    src.connect(f); f.connect(g); g.connect(this.master); src.start();
+  },
+  ui(){ this.blip(520, 0.05, 'square', 0.35); },
+  place(){ this.blip(300, 0.08, 'triangle', 0.6, 1.6); },
+  rotate(){ this.blip(680, 0.05, 'square', 0.3, 0.8); },
+  step(){ this.blip(1400, 0.03, 'sine', 0.14); },
+  fire(chain){
+    const f = 300 * Math.pow(2, Math.min(chain, 26) / 12);
+    this.blip(f, 0.11, 'triangle', 0.75);
+    this.blip(f * 2, 0.06, 'sine', 0.3);
+  },
+  charge(){ this.blip(880, 0.14, 'sine', 0.5, 1.8); },
+  split(){ this.noise(0.12, 0.3, 1600); this.blip(660, 0.14, 'sawtooth', 0.35, 1.5); },
+  win(){ [523,659,784,1047].forEach((f,i)=> setTimeout(()=> this.blip(f, 0.22, 'triangle', 0.7), i*95)); },
+  lose(){ [400,320,240,170].forEach((f,i)=> setTimeout(()=> this.blip(f, 0.3, 'sawtooth', 0.5), i*130)); },
+  coin(){ this.blip(1050, 0.07, 'square', 0.4); setTimeout(()=> this.blip(1400, 0.1, 'square', 0.35), 60); },
+};
+function buzz(ms){ if(save.settings.haptics && navigator.vibrate) { try{ navigator.vibrate(ms); }catch(e){} } }
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(msg){
+  const el = $('#toast'); el.textContent = msg; el.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(()=> el.classList.remove('on'), 1900);
+}
+/* ================================================================
+   4. RUN · BOARD · HAND
+   ================================================================ */
+const N = 5, SRC = 20;                 // 5×5 loom, source at bottom-left
+const idx = (r,c) => r * N + c;
+const inBoard = (r,c) => r >= 0 && r < N && c >= 0 && c < N;
+
+function newRun(opts = {}){
+  const seed = opts.seed != null ? opts.seed : (Math.random() * 4294967295) >>> 0;
+  const rng = rngFrom(seed);
+  const pouch = STARTER_POUCH.slice();
+  if(save.meta.g_prism) pouch.push('prism');
+  if(save.meta.g_anvil) pouch.push('anvil');
+  run = {
+    seed, rng, isDaily: !!opts.daily, dayKey: opts.dayKey || null,
+    round:1, board:new Array(N*N).fill(null), pouch,
+    hand:[], placedThisRound:[],
+    maxCharge: 10 + (save.meta.charge1 ? 3 : 0),
+    filament: 3 + (save.meta.purse ? 5 : 0),
+    score:0, total:0, bestChain:0, mod:null, quota:QUOTAS[0],
+    shopOffers:null, revived:false, endless:false, freeRethread: !!save.meta.rethread,
+    bonusMult:0, bonusCharge:0, wonAll:false,
+    log:[],
+  };
+  startThread();
+}
+
+function threadQuota(){
+  const r = run.round;
+  let q = r <= QUOTAS.length ? QUOTAS[r-1] : Math.round(QUOTAS[QUOTAS.length-1] * Math.pow(1.55, r - QUOTAS.length));
+  if(run.mod && run.mod.id === 'tithe') q = Math.round(q * 1.25);
+  return q;
+}
+
+function startThread(){
+  run.mod = KNOTS.includes(run.round) ? MODS[Math.floor(run.rng() * MODS.length)] : null;
+  run.quota = threadQuota();
+  run.score = 0;
+  run.placedThisRound = [];
+  run.freeRethread = !!save.meta.rethread;
+  run.bonusCharge = 0;
+  // Bloom grows for every thread it survives
+  for(const c of run.board) if(c && c.id === 'bloom') c.grown = (c.grown || 0) + 5;
+  dealHand();
+  ui.busy = false;
+  renderAll();
+}
+
+function dealHand(){
+  run.hand = [];
+  const free = run.board.filter((c,i) => !c && i !== SRC).length;
+  const n = Math.min(3, free);
+  for(let i=0;i<n;i++){
+    const id = pick(run.rng, run.pouch);
+    run.hand.push({ id, rot: GLYPHS[id].rot === 4 ? 0 : 0, used:false });
+  }
+}
+
+/* ---------- board rendering ---------- */
+const boardEl = $('#board');
+function buildBoard(){
+  boardEl.innerHTML = '';
+  for(let i=0;i<N*N;i++){
+    const d = document.createElement('div');
+    d.className = 'cell'; d.dataset.i = i;
+    boardEl.appendChild(d);
+  }
+}
+function cellEl(i){ return boardEl.children[i]; }
+
+function renderBoard(){
+  for(let i=0;i<N*N;i++){
+    const el = cellEl(i), cell = run.board[i];
+    el.className = 'cell';
+    if(i === SRC){
+      el.classList.add('src');
+      el.innerHTML = '<div class="glyph"><span class="g-ico" style="color:var(--weft)">◉</span><span class="g-lab">source</span></div>';
+      continue;
+    }
+    if(!cell){ el.classList.add('empty'); el.innerHTML = ''; continue; }
+    const g = GLYPHS[cell.id];
+    let ico = g.ico;
+    if(cell.id === 'mirror') ico = cell.rot === 0 ? g.ico : g.ico2;
+    let style = '';
+    if(g.rot === 4) style = `transform:rotate(${cell.rot * 90 - 90}deg)`;
+    const famCol = { ember:'var(--thread)', tide:'var(--weft)', crystal:'var(--crystal)', iron:'var(--iron)' }[g.fam];
+    el.innerHTML =
+      `<div class="glyph fam-${g.fam}">
+         <span class="g-ico" style="color:${famCol};${style}">${ico}</span>
+         <span class="g-lab">${g.name}</span>
+       </div>`;
+    if(cell.id === 'bloom' && cell.grown) el.querySelector('.g-lab').textContent = '+' + (7 + cell.grown);
+  }
+}
+
+/* ---------- hand rendering ---------- */
+const handEl = $('#handRow');
+function renderHand(){
+  handEl.innerHTML = '';
+  handEl.classList.toggle('full', !run.hand.length);
+  if(!run.hand.length){
+    handEl.innerHTML = '<div class="tile tile-empty"><span class="t-name">Loom full — ignite it</span></div>';
+    return;
+  }
+  run.hand.forEach((h,i) => {
+    const g = GLYPHS[h.id];
+    const t = document.createElement('div');
+    t.className = 'tile' + (h.used ? ' used' : '') + (ui.selected === i ? ' sel' : '');
+    t.dataset.hand = i;
+    const famCol = { ember:'var(--thread)', tide:'var(--weft)', crystal:'var(--crystal)', iron:'var(--iron)' }[g.fam];
+    const ico = h.id === 'mirror' ? (h.rot === 0 ? g.ico : g.ico2) : g.ico;
+    t.innerHTML =
+      `<span class="t-ico" style="color:${famCol}">${ico}</span>
+       <span class="t-name">${g.name}</span>
+       <span class="t-desc">${g.desc}</span>`;
+    handEl.appendChild(t);
+  });
+}
+
+/* ---------- HUD ---------- */
+function renderHUD(){
+  $('#roundChip').innerHTML = run.endless
+    ? `Thread <b>${run.round}</b> · endless`
+    : `Thread <b>${run.round}</b>/8`;
+  $('#roundChip').classList.toggle('knot', !!run.mod);
+  if(run.mod) $('#roundChip').innerHTML = `${run.mod.ico} Knot <b>${run.round}</b>`;
+  $('#filChip').innerHTML = `◈ <b>${run.filament}</b>`;
+  $('#quotaNum').textContent = fmt(run.quota);
+  $('#scoreNum').textContent = fmt(run.score);
+  const pct = clamp(run.score / run.quota * 100, 0, 100);
+  $('#quotaBar').querySelector('i').style.width = pct + '%';
+  $('#quotaBar').classList.toggle('done', run.score >= run.quota);
+  setCharge(run.maxCharge + (run.mod && run.mod.id === 'tithe' ? 4 : 0) + (run.bonusCharge || 0));
+  setLive(0, 1 + (run.bonusMult || 0));
+  const anyPlaced = run.hand.some(h => h.used) || !run.hand.length;
+  $('#igniteBtn').classList.toggle('ready', anyPlaced);
+  $('#rethreadBtn').textContent = run.freeRethread ? '↻ free' : '↻ ◈2';
+}
+function setCharge(v){
+  $('#chargeVal').textContent = Math.max(0, Math.round(v));
+  const pips = $('#chargePips');
+  const max = Math.max(10, run ? run.maxCharge + 4 : 10);
+  if(pips.children.length !== max){
+    pips.innerHTML = '';
+    for(let i=0;i<max;i++) pips.appendChild(document.createElement('i'));
+  }
+  [...pips.children].forEach((p,i) => p.classList.toggle('on', i < v));
+}
+function setLive(power, mult){
+  $('#powVal').textContent = fmt(power);
+  $('#multVal').textContent = '×' + mult.toFixed(1);
+  $('#powBar').style.width = clamp(power / run.quota * 100, 0, 100) + '%';
+  $('#multBar').style.width = clamp((mult - 1) / 4 * 100, 0, 100) + '%';
+}
+function renderAll(){ renderBoard(); renderHand(); renderHUD(); sizeCanvas(); }
+
+/* ================================================================
+   PLACEMENT — drag or tap-to-place
+   ================================================================ */
+const ghost = $('#ghost');
+let drag = null, pressTimer = null, pressCell = null;
+
+function canPlace(i){
+  if(i === SRC || run.board[i]) return false;
+  if(ui.forceCell != null && i !== ui.forceCell) return false;
+  return true;
+}
+
+function placeGlyph(handIndex, i){
+  const h = run.hand[handIndex];
+  if(!h || h.used || !canPlace(i) || ui.busy) return false;
+  run.board[i] = { id:h.id, r:Math.floor(i/N), c:i%N, rot:h.rot, grown:0, placedRound:run.round };
+  h.used = true;
+  run.placedThisRound.push(i);
+  save.seenGlyphs[h.id] = 1;
+  ui.selected = null;
+  Audio_.place(); buzz(12);
+  cellEl(i).classList.add('fired');
+  setTimeout(()=> cellEl(i).classList.remove('fired'), 340);
+  renderAll();
+  coachAdvance('place');
+  return true;
+}
+
+function rotateAt(i){
+  const cell = run.board[i]; if(!cell) return;
+  const g = GLYPHS[cell.id]; if(!g.rot) { describe(cell.id); return; }
+  cell.rot = (cell.rot + 1) % g.rot;
+  Audio_.rotate(); buzz(8);
+  renderBoard();
+  coachAdvance('rotate');
+}
+function describe(id){ const g = GLYPHS[id]; toast(`${g.name} — ${g.desc}`); }
+
+function pickBackUp(i){
+  const cell = run.board[i];
+  if(!cell || cell.placedRound !== run.round) return false;
+  const slot = run.hand.find(h => h.used && h.id === cell.id);
+  if(!slot) return false;
+  slot.used = false; slot.rot = cell.rot;
+  run.board[i] = null;
+  run.placedThisRound = run.placedThisRound.filter(x => x !== i);
+  Audio_.ui(); toast('Returned to hand');
+  renderAll();
+  return true;
+}
+
+function cellFromPoint(x, y){
+  const list = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [document.elementFromPoint(x, y)];
+  for(const el of list){
+    if(!el) continue;
+    const c = el.closest && el.closest('.cell');
+    if(c) return +c.dataset.i;
+  }
+  return -1;
+}
+function clearDrop(){ $$('.cell.drop').forEach(e => e.classList.remove('drop')); }
+
+document.addEventListener('pointerdown', e => {
+  if(ui.busy) return;
+  const tile = e.target.closest('.tile[data-hand]');
+  if(tile){
+    const i = +tile.dataset.hand;
+    if(run.hand[i].used) return;
+    Audio_.init();
+    drag = { hand:i, moved:false, x:e.clientX, y:e.clientY };
+    ui.selected = i;
+    const g = GLYPHS[run.hand[i].id];
+    ghost.textContent = run.hand[i].id === 'mirror' ? (run.hand[i].rot ? g.ico2 : g.ico) : g.ico;
+    ghost.style.left = e.clientX + 'px'; ghost.style.top = (e.clientY - 34) + 'px';
+    renderHand();
+    return;
+  }
+  const cell = e.target.closest('.cell');
+  if(cell){
+    const i = +cell.dataset.i;
+    Audio_.init();
+    if(ui.unpick){
+      if(run.board[i]){
+        run.board[i] = null; ui.unpick = false;
+        Audio_.noise(0.2, 0.4, 600); renderAll();
+        toast('Unpicked');
+        setTimeout(()=> openSheet('#shopSheet'), 220);
+      } else toast('Tap a glyph, not an empty cell');
+      return;
+    }
+    if(ui.selected != null && canPlace(i)){ placeGlyph(ui.selected, i); return; }
+    if(ui.selected != null && ui.forceCell != null){ toast('Try the glowing cell'); return; }
+    pressCell = i;
+    pressTimer = setTimeout(()=>{
+      pressTimer = null;
+      if(run.board[i]){
+        if(!pickBackUp(i)) describe(run.board[i].id);
+        else buzz(18);
+      }
+    }, 420);
+  }
+});
+
+document.addEventListener('pointermove', e => {
+  if(drag){
+    if(Math.abs(e.clientX - drag.x) > 6 || Math.abs(e.clientY - drag.y) > 6) drag.moved = true;
+    if(drag.moved){
+      ghost.style.display = 'grid';
+      ghost.style.left = e.clientX + 'px';
+      ghost.style.top = (e.clientY - 34) + 'px';
+      clearDrop();
+      const i = cellFromPoint(e.clientX, e.clientY - 34);
+      if(i >= 0 && canPlace(i)) cellEl(i).classList.add('drop');
+    }
+  }
+  if(pressTimer && (Math.abs(e.movementX) > 3 || Math.abs(e.movementY) > 3)){
+    clearTimeout(pressTimer); pressTimer = null;
+  }
+});
+
+document.addEventListener('pointerup', e => {
+  if(drag){
+    ghost.style.display = 'none'; clearDrop();
+    if(drag.moved){
+      const i = cellFromPoint(e.clientX, e.clientY - 34);
+      if(i >= 0 && canPlace(i)) placeGlyph(drag.hand, i);
+      else { ui.selected = null; renderHand(); }
+    }
+    drag = null;
+  }
+  if(pressTimer){
+    clearTimeout(pressTimer); pressTimer = null;
+    const i = pressCell;
+    if(i != null && i >= 0 && run.board[i] && i !== SRC) rotateAt(i);
+  }
+  pressCell = null;
+});
+/* ================================================================
+   5. BEAM SIMULATION — pure, deterministic, produces an event log
+   ================================================================ */
+function simulate(){
+  const modId = run.mod ? run.mod.id : null;
+  const mod = { damp: modId === 'damp', fog: modId === 'fog', brittle: modId === 'brittle' };
+  const maxUses = mod.brittle ? 2 : 3;
+  for(const c of run.board) if(c) c.uses = maxUses;
+
+  const ev = [];
+  const s = {
+    powerTotal:0, multTotal:1 + (run.bonusMult || 0), heat:0, fires:0, chain:0, mod, lastFired:null, lastCell:null,
+    queue:[], depth:0,
+    power(n){ if(n <= 0) return; const v = n + s.heat; s.powerTotal += v; s.gained += v; },
+    mult(n){ s.multTotal += n; s.gainedMult += n; },
+    charged(n){ s.gainedCharge += n; },
+    burn(c){ s.burned = true; },
+    neighbours(r,c){
+      let n = 0;
+      for(let d=0; d<4; d++){ const rr = r+DR[d], cc = c+DC[d];
+        if(inBoard(rr,cc) && (run.board[idx(rr,cc)] || idx(rr,cc) === SRC)) n++; }
+      return n;
+    },
+    famCount(f){ return run.board.filter(c => c && GLYPHS[c.id].fam === f).length; },
+    split(c, b){
+      const half = Math.max(2, Math.ceil(b.charge / 2));
+      s.queue.push({ r:c.r, c:c.c, dir:turnL(b.dir), charge:half, bounced:b.bounced });
+      s.queue.push({ r:c.r, c:c.c, dir:turnR(b.dir), charge:half, bounced:b.bounced });
+      b.dead = true; s.didSplit = true;
+    },
+    echo(c, b){
+      if(!s.lastFired || s.depth > 0) { s.power(4); return; }
+      s.depth++;
+      const proxy = { r:c.r, c:c.c, rot:s.lastCell ? s.lastCell.rot : 0, grown:s.lastCell ? s.lastCell.grown : 0, id:s.lastFired };
+      GLYPHS[s.lastFired].fire(s, proxy, b);
+      s.depth--; s.didEcho = s.lastFired;
+    },
+  };
+
+  const startCharge = run.maxCharge + (modId === 'tithe' ? 4 : 0) + (run.bonusCharge || 0);
+  s.queue.push({ r:4, c:0, dir:0, charge:startCharge, bounced:false });
+
+  let steps = 0;
+  const bounceAllowed = !!save.meta.edges;
+  while(s.queue.length && steps < 900){
+    const b = s.queue.shift();
+    ev.push({ t:'spawn', r:b.r, c:b.c, dir:b.dir, charge:b.charge });
+    while(steps < 900){
+      steps++;
+      const nr = b.r + DR[b.dir], nc = b.c + DC[b.dir];
+      if(!inBoard(nr, nc)){
+        if(bounceAllowed && !b.bounced){
+          b.bounced = true; b.dir = flip(b.dir);
+          ev.push({ t:'bounce', r:b.r, c:b.c }); continue;
+        }
+        ev.push({ t:'exit', r:b.r, c:b.c, dir:b.dir }); break;
+      }
+      const i = idx(nr, nc), cell = run.board[i];
+      const cost = cell || i === SRC ? 1 : (mod.fog ? 2 : 1);
+      b.charge -= cost; b.r = nr; b.c = nc;
+      ev.push({ t:'move', r:nr, c:nc, dir:b.dir, charge:b.charge });
+      if(b.charge <= 0){ ev.push({ t:'fizzle', r:nr, c:nc }); break; }
+      if(cell && cell.uses > 0){
+        cell.uses--;
+        s.gained = 0; s.gainedMult = 0; s.gainedCharge = 0;
+        s.burned = false; s.didSplit = false; s.didEcho = null;
+        s.fires++; s.chain++;
+        const before = b.dir;
+        GLYPHS[cell.id].fire(s, cell, b);
+        if(cell.id !== 'echo'){ s.lastFired = cell.id; s.lastCell = cell; }
+        ev.push({ t:'fire', r:nr, c:nc, id:cell.id, gained:s.gained, gainedMult:s.gainedMult,
+                  gainedCharge:s.gainedCharge, power:s.powerTotal, mult:s.multTotal, chain:s.chain,
+                  charge:b.charge, uses:cell.uses, turned:before !== b.dir, burned:s.burned,
+                  split:s.didSplit, echo:s.didEcho });
+        if(s.burned){ ev.push({ t:'burn', r:nr, c:nc }); run.board[i] = null; }
+        if(s.didSplit){ ev.push({ t:'split', r:nr, c:nc }); break; }
+        if(b.dead) break;
+        if(b.charge <= 0){ ev.push({ t:'fizzle', r:nr, c:nc }); break; }
+      }
+    }
+  }
+  const score = Math.floor(s.powerTotal * s.multTotal);
+  ev.push({ t:'end', power:s.powerTotal, mult:s.multTotal, score, chain:s.chain });
+  return { events:ev, score, chain:s.chain, power:s.powerTotal, mult:s.multTotal };
+}
+
+/* ================================================================
+   6. PLAYBACK — canvas beam, particles, floats, shake
+   ================================================================ */
+const fxCanvas = $('#fx'), fx = fxCanvas.getContext('2d');
+let CENTERS = [], cellW = 40, dpr = 1;
+function sizeCanvas(){
+  const wrap = $('#boardWrap');
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if(!w || !h) return;
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  fxCanvas.width = w * dpr; fxCanvas.height = h * dpr;
+  fxCanvas.style.width = w + 'px'; fxCanvas.style.height = h + 'px';
+  fx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const base = wrap.getBoundingClientRect();
+  CENTERS = [];
+  for(let i=0;i<N*N;i++){
+    const r = cellEl(i).getBoundingClientRect();
+    CENTERS.push({ x: r.left - base.left + r.width/2, y: r.top - base.top + r.height/2 });
+    cellW = r.width;
+  }
+}
+window.addEventListener('resize', () => { sizeCanvas(); });
+
+const P = { trail:[], parts:[], head:null, shake:0, running:false, flash:0 };
+function fxLoop(){
+  if(!P.running) return;
+  requestAnimationFrame(fxLoop);
+  const w = fxCanvas.width / dpr, h = fxCanvas.height / dpr;
+  fx.clearRect(0, 0, w, h);
+
+  // thread trail — glowing segments that cool over time
+  fx.lineCap = 'round';
+  for(let i = P.trail.length - 1; i >= 0; i--){
+    const s = P.trail[i];
+    s.life -= 0.006;
+    if(s.life <= 0){ P.trail.splice(i,1); continue; }
+    fx.globalAlpha = Math.min(1, s.life) * 0.9;
+    fx.strokeStyle = '#ff9c3d'; fx.lineWidth = 7;
+    fx.beginPath(); fx.moveTo(s.x1, s.y1); fx.lineTo(s.x2, s.y2); fx.stroke();
+    fx.globalAlpha = Math.min(1, s.life);
+    fx.strokeStyle = '#fff3c4'; fx.lineWidth = 2.4;
+    fx.beginPath(); fx.moveTo(s.x1, s.y1); fx.lineTo(s.x2, s.y2); fx.stroke();
+  }
+  fx.globalAlpha = 1;
+
+  // moving head
+  if(P.head){
+    const { from, to, t0, dur } = P.head;
+    const k = clamp((performance.now() - t0) / dur, 0, 1);
+    const x = from.x + (to.x - from.x) * k, y = from.y + (to.y - from.y) * k;
+    const g = fx.createRadialGradient(x, y, 0, x, y, cellW * 0.55);
+    g.addColorStop(0, 'rgba(255,247,214,.95)');
+    g.addColorStop(.4, 'rgba(255,168,60,.55)');
+    g.addColorStop(1, 'rgba(255,140,40,0)');
+    fx.fillStyle = g;
+    fx.beginPath(); fx.arc(x, y, cellW * 0.55, 0, 7); fx.fill();
+    fx.fillStyle = '#fffbe8';
+    fx.beginPath(); fx.arc(x, y, 3.6, 0, 7); fx.fill();
+    if(k < 1 && Math.random() < 0.6 && !save.settings.motion)
+      P.parts.push({ x, y, vx:(Math.random()-.5)*.5, vy:(Math.random()-.5)*.5, life:.5, col:'#ffcc7a', sz:1.7 });
+  }
+
+  // particles
+  for(let i = P.parts.length - 1; i >= 0; i--){
+    const p = P.parts[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.045; p.life -= 0.018;
+    if(p.life <= 0){ P.parts.splice(i,1); continue; }
+    fx.globalAlpha = clamp(p.life, 0, 1);
+    fx.fillStyle = p.col;
+    fx.beginPath(); fx.arc(p.x, p.y, p.sz * p.life + .4, 0, 7); fx.fill();
+  }
+  fx.globalAlpha = 1;
+
+  if(P.flash > 0){
+    fx.fillStyle = `rgba(255,240,200,${P.flash * .25})`;
+    fx.fillRect(0, 0, w, h); P.flash -= 0.06;
+  }
+
+  // screen shake
+  const sh = $('#shake');
+  if(P.shake > 0.2 && !save.settings.motion){
+    sh.style.transform = `translate(${(Math.random()-.5)*P.shake}px,${(Math.random()-.5)*P.shake}px)`;
+    P.shake *= 0.86;
+  } else { sh.style.transform = ''; P.shake = 0; }
+}
+function fxStart(){ if(!P.running){ P.running = true; requestAnimationFrame(fxLoop); } }
+function fxStop(){ P.running = false; P.trail = []; P.parts = []; P.head = null;
+  fx.clearRect(0,0,fxCanvas.width,fxCanvas.height); $('#shake').style.transform = ''; }
+
+function burst(i, col, n = 14, spd = 2.6){
+  const c = CENTERS[i]; if(!c) return;
+  for(let k=0;k<n;k++){
+    const a = Math.random() * Math.PI * 2, v = spd * (0.4 + Math.random());
+    P.parts.push({ x:c.x, y:c.y, vx:Math.cos(a)*v, vy:Math.sin(a)*v, life:1, col, sz:2.4 });
+  }
+}
+function floatText(i, text, cls = ''){
+  const c = CENTERS[i]; if(!c) return;
+  const el = document.createElement('div');
+  el.className = 'float ' + cls; el.textContent = text;
+  el.style.left = c.x + 'px'; el.style.top = c.y + 'px';
+  $('#floats').appendChild(el);
+  setTimeout(()=> el.remove(), 950);
+}
+
+const FAMCOL = { ember:'#ffb648', tide:'#4ee0c8', crystal:'#b48cff', iron:'#c8d6e4' };
+
+async function playCascade(sim){
+  ui.busy = true; fxStart();
+  $('#igniteBtn').disabled = true;
+  const fast = save.settings.fast ? 0.55 : 1;
+  let prev = CENTERS[SRC];
+  let stepMs = 92 * fast;
+
+  for(const e of sim.events){
+    if(e.t === 'spawn'){
+      prev = CENTERS[idx(e.r, e.c)];
+      P.head = null;
+      Audio_.blip(240, .12, 'sine', .4, 2.2);
+      await wait(140 * fast);
+    }
+    else if(e.t === 'move'){
+      const to = CENTERS[idx(e.r, e.c)];
+      const dur = Math.max(34, stepMs);
+      P.head = { from:prev, to, t0:performance.now(), dur };
+      P.trail.push({ x1:prev.x, y1:prev.y, x2:to.x, y2:to.y, life:1.6 });
+      setCharge(e.charge);
+      Audio_.step();
+      await wait(dur);
+      prev = to;
+    }
+    else if(e.t === 'fire'){
+      const i = idx(e.r, e.c), g = GLYPHS[e.id];
+      const el = cellEl(i);
+      el.classList.remove('fired'); void el.offsetWidth; el.classList.add('fired');
+      if(e.uses === 0) el.classList.add('spent');
+      burst(i, FAMCOL[g.fam], 16, 2.8);
+      P.flash = Math.min(1, 0.35 + e.chain * 0.03);
+      P.shake = save.settings.motion ? 0 : Math.min(9, 2.4 + e.chain * 0.35);
+      if(e.gained > 0) floatText(i, '+' + fmt(e.gained));
+      if(e.gainedMult > 0) floatText(i, '×+' + e.gainedMult.toFixed(1), 'mult');
+      if(e.gainedCharge) floatText(i, (e.gainedCharge > 0 ? '+' : '') + e.gainedCharge + '⚡',
+        e.gainedCharge > 0 ? 'chg' : 'bad');
+      if(e.echo) floatText(i, '⟳ ' + GLYPHS[e.echo].name, 'mult');
+      setLive(e.power, e.mult);
+      setCharge(e.charge);
+      const live = Math.floor(e.power * e.mult);
+      $('#scoreNum').textContent = fmt(live);
+      $('#scoreNum').classList.remove('pulse'); void $('#scoreNum').offsetWidth;
+      $('#scoreNum').classList.add('pulse');
+      const pct = clamp(live / run.quota * 100, 0, 100);
+      $('#quotaBar').querySelector('i').style.width = pct + '%';
+      $('#quotaBar').classList.toggle('done', live >= run.quota);
+      Audio_.fire(e.chain); buzz(e.chain > 8 ? 18 : 10);
+      if(e.chain % 5 === 0 && e.chain >= 5){
+        const pop = $('#chainPop');
+        pop.textContent = 'CHAIN ×' + e.chain;
+        pop.classList.remove('on'); void pop.offsetWidth; pop.classList.add('on');
+      }
+      stepMs = Math.max(38 * fast, stepMs * 0.955);
+      await wait(Math.max(50, 90 * fast));
+    }
+    else if(e.t === 'burn'){
+      const i = idx(e.r, e.c);
+      burst(i, '#ff7a45', 26, 3.6);
+      P.shake = save.settings.motion ? 0 : 11;
+      Audio_.noise(0.3, 0.5, 400);
+      run.board[i] = null; renderBoard();
+      await wait(180 * fast);
+    }
+    else if(e.t === 'split'){
+      burst(idx(e.r, e.c), '#b48cff', 22, 3.2);
+      Audio_.split(); P.flash = 0.8;
+      await wait(220 * fast);
+    }
+    else if(e.t === 'bounce'){
+      burst(idx(e.r, e.c), '#9fb3c8', 10, 2);
+      Audio_.blip(500, .08, 'square', .4, .6);
+      await wait(80 * fast);
+    }
+    else if(e.t === 'fizzle'){
+      burst(idx(e.r, e.c), '#645d8c', 12, 1.6);
+      Audio_.blip(200, .3, 'sine', .35, .4);
+      setCharge(0);
+      await wait(260 * fast);
+    }
+    else if(e.t === 'exit'){
+      Audio_.blip(160, .22, 'sine', .3, .5);
+      await wait(200 * fast);
+    }
+  }
+  await wait(360 * fast);
+  $('#igniteBtn').disabled = false;
+  fxStop();
+}
+/* ================================================================
+   7. SHEETS
+   ================================================================ */
+const openStack = [];
+function openSheet(id){
+  if(!openStack.includes(id)) openStack.push(id);
+  $('#scrim').classList.add('on');
+  $(id).classList.add('on');
+}
+function closeSheet(id){
+  $(id).classList.remove('on');
+  const k = openStack.indexOf(id); if(k >= 0) openStack.splice(k, 1);
+  if(!openStack.length) $('#scrim').classList.remove('on');
+}
+function closeAllSheets(){ [...openStack].forEach(closeSheet); }
+
+/* ================================================================
+   8. RUN FLOW
+   ================================================================ */
+async function ignite(){
+  if(ui.busy || !run) return;
+  if(coach.active && coach.step().require === 'ignite') coachAdvance('ignite');
+  else if(coach.active) return;
+  ui.selected = null; renderHand();
+  const sim = simulate();
+  await playCascade(sim);
+  run.score = sim.score;
+  run.total += sim.score;
+  run.bestChain = Math.max(run.bestChain, sim.chain);
+  ui.busy = false;
+  const resolve = () => { if(sim.score >= run.quota) threadCleared(sim); else threadFailed(sim); };
+  if(!save.seen.firstweave && sim.chain > 0){
+    save.seen.firstweave = 1; persist();
+    coachCard({
+      title:'That was a chain',
+      body:'Three glyphs, three fires. Chains get big when the beam <b>loops</b> — mirrors facing each other, vanes pointing back into your best glyphs. Each glyph fires up to three times per weave, so a good loop pays three times over.',
+      cta:'Keep going', onClose:resolve });
+  } else resolve();
+}
+
+function threadCleared(sim){
+  Audio_.win();
+  const over = Math.floor(sim.score / run.quota);
+  const bonus = { base:4, over: Math.min(8, (over - 1) * 2), chain: Math.floor(sim.chain / 6) };
+  const total = bonus.base + bonus.over + bonus.chain;
+  run.filament += total;
+  $('#clearEyebrow').textContent = (run.mod ? 'Knot' : 'Thread') + ' ' + run.round + ' held';
+  $('#clearTitle').textContent = over >= 3 ? 'The loom blazes' : 'Quota met';
+  $('#clearSub').textContent = over >= 3
+    ? 'Far past the quota. That pattern has room to grow.'
+    : 'The loom holds. Collect your filament and thread the next.';
+  $('#cScore').textContent = fmt(sim.score);
+  $('#cChain').textContent = sim.chain;
+  $('#cBase').textContent = '+4 ◈';
+  $('#cLeft').textContent = '+' + bonus.chain + ' ◈';
+  $('#cOver').textContent = '+' + bonus.over + ' ◈';
+  renderHUD();
+  if(run.round >= 8 && !run.endless){ setTimeout(()=> victory(), 420); return; }
+  setTimeout(()=> openSheet('#clearSheet'), 380);
+}
+
+function threadFailed(sim){
+  Audio_.lose();
+  const fizzled = sim.events.some(e => e.t === 'fizzle');
+  if(fizzled && !save.seen.fizzle){
+    save.seen.fizzle = 1; persist();
+    setTimeout(()=> coachCard({ title:'The beam ran out of charge',
+      body:'It burned a charge on every cell it entered — including empty ones. Keep the path tight, and put a <b>Coil ◎</b> where the beam will actually reach it.',
+      cta:'I see' }), 200);
+  }
+  const shards = shardsEarned();
+  save.shards += shards;
+  save.stats.runs++;
+  save.stats.bestScore = Math.max(save.stats.bestScore, run.total);
+  save.stats.bestChain = Math.max(save.stats.bestChain, run.bestChain);
+  save.stats.bestThread = Math.max(save.stats.bestThread, run.round - 1);
+  if(run.isDaily) recordDaily();
+  persist();
+  $('#overTitle').textContent = sim.score >= run.quota * 0.8 ? 'So close' : 'Quota missed';
+  $('#overSub').textContent = `You wove ${fmt(sim.score)} of the ${fmt(run.quota)} light this thread needed.`;
+  $('#oRounds').textContent = (run.round - 1) + (run.endless ? '' : '/8');
+  $('#oScore').textContent = fmt(run.total);
+  $('#oChain').textContent = run.bestChain;
+  $('#oShards').textContent = '✦' + shards;
+  $('#reviveBtn').style.display = run.revived ? 'none' : 'flex';
+  setTimeout(()=>{
+    openSheet('#overSheet');
+    tip('over', 'Runs are meant to end', 'Every weave pays out shards whether you win or lose. Spend them in the Workshop — they change how the next run starts.');
+  }, 500);
+}
+
+function shardsEarned(){
+  return Math.floor(run.total / 300) + (run.round - 1) * 2 + (run.endless ? 10 : 0);
+}
+
+function victory(){
+  Audio_.win();
+  run.wonAll = true;
+  const shards = shardsEarned() + 10;
+  save.shards += shards; save.stats.runs++; save.stats.wins++;
+  save.stats.bestScore = Math.max(save.stats.bestScore, run.total);
+  save.stats.bestChain = Math.max(save.stats.bestChain, run.bestChain);
+  save.stats.bestThread = 8;
+  if(run.isDaily) recordDaily();
+  persist();
+  $('#wScore').textContent = fmt(run.total);
+  $('#wChain').textContent = run.bestChain;
+  $('#wShards').textContent = '✦' + shards;
+  $('#wGlyphs').textContent = run.board.filter(Boolean).length;
+  openSheet('#winSheet');
+}
+
+/* ---------- the Stall (shop) ---------- */
+const UTILITIES = [
+  { id:'charge', name:'Wider reservoir', ico:'◎', cost:5, fam:'tide',
+    desc:'+2 max charge for the rest of this run.', buy:()=>{ run.maxCharge += 2; } },
+  { id:'unpick', name:'Unpick a glyph', ico:'✂', cost:4, fam:'iron',
+    desc:'Pull one glyph off the loom to free the cell.', buy:()=>{ startUnpick(); } },
+  { id:'polish', name:'Polish the lens', ico:'◈', cost:7, fam:'crystal',
+    desc:'Every weave this run starts at +0.3 weave.', buy:()=>{ run.bonusMult += 0.3; } },
+];
+
+function rollShop(){
+  const pool = GLYPH_IDS.filter(id => !GLYPHS[id].start);
+  const g1 = pick(run.rng, pool);
+  let g2 = pick(run.rng, pool.filter(x => x !== g1));
+  const util = pick(run.rng, UTILITIES);
+  run.shopOffers = [
+    { kind:'glyph', id:g1, cost:GLYPHS[g1].cost },
+    { kind:'glyph', id:g2, cost:GLYPHS[g2].cost },
+    { kind:'util', id:util.id, cost:util.cost },
+  ].map(o => ({ ...o, bought:false }));
+}
+
+function renderShop(){
+  $('#shopFil').textContent = run.filament;
+  const wrap = $('#shopOffers'); wrap.innerHTML = '';
+  run.shopOffers.forEach((o, k) => {
+    const isG = o.kind === 'glyph';
+    const d = isG ? GLYPHS[o.id] : UTILITIES.find(u => u.id === o.id);
+    const b = document.createElement('button');
+    const afford = run.filament >= o.cost && !o.bought;
+    b.className = 'offer ' + (o.bought ? 'broke' : afford ? 'afford' : 'broke');
+    b.innerHTML =
+      `<span class="oi" style="color:${FAMCOL[d.fam]}">${d.ico}</span>
+       <span class="ob">
+         <span class="on">${d.name}${isG && !save.seenGlyphs[o.id] ? '<span class="tag new">new</span>' : ''}
+           ${isG ? `<span class="tag ${d.fam}">${FAM[d.fam]}</span>` : ''}</span>
+         <span class="od">${o.bought ? 'Taken.' : d.desc}</span>
+       </span>
+       <span class="price">${o.bought ? '✓' : '◈' + o.cost}</span>`;
+    b.onclick = () => buyOffer(k);
+    wrap.appendChild(b);
+  });
+  $('#rerollBtn').textContent = 'Restock ◈2';
+}
+
+function buyOffer(k){
+  const o = run.shopOffers[k];
+  if(o.bought) return;
+  if(run.filament < o.cost){ toast('Not enough filament'); Audio_.blip(180,.12,'square',.4); return; }
+  run.filament -= o.cost; o.bought = true;
+  Audio_.coin();
+  if(o.kind === 'glyph'){
+    run.pouch.push(o.id);
+    save.seenGlyphs[o.id] = 1; persist();
+    toast(`${GLYPHS[o.id].name} joined your pouch`);
+  } else {
+    UTILITIES.find(u => u.id === o.id).buy();
+  }
+  renderShop(); renderHUD();
+}
+
+function startUnpick(){
+  ui.unpick = true;
+  closeSheet('#shopSheet');
+  toast('Tap a glyph on the loom to unpick it');
+}
+
+$('#rerollBtn').onclick = () => {
+  if(run.filament < 2){ toast('Not enough filament'); return; }
+  run.filament -= 2; rollShop(); renderShop(); renderHUD(); Audio_.ui();
+};
+$('#nextThreadBtn').onclick = () => {
+  closeSheet('#shopSheet');
+  run.round++;
+  startThread();
+  if(run.mod) setTimeout(()=> knotCard(), 260);
+  else if(run.round === 3) setTimeout(()=> tip('loops', 'Close a loop',
+    'Four turns make a circuit. A <b>Vane ➤</b> pointing up, then mirrors at the other three corners — the beam comes back round to the vane and runs it again.' +
+    '<div class="loop-dia">╱<span class="d">···</span>╲<br>' +
+    '<span class="d">·</span><span style="opacity:0">···</span><span class="d">·</span><br>' +
+    '<span class="d">·</span><span style="opacity:0">···</span><span class="d">·</span><br>' +
+    '➤<span class="d">···</span>╱</div>' +
+    '<br>Every glyph on the ring fires once per lap, three laps before it burns out. Line the ring with Embers and drop a <b>Coil ◎</b> on it to pay for the extra charge.'), 320);
+};
+$('#toShopBtn').onclick = () => {
+  closeSheet('#clearSheet');
+  rollShop(); renderShop();
+  setTimeout(()=>{
+    openSheet('#shopSheet');
+    tip('shop', 'The Stall', 'Glyphs you buy go into your pouch, not straight onto the loom — you will draw them on a later thread. Utilities take effect right away.');
+  }, 200);
+};
+
+function knotCard(){
+  const m = run.mod;
+  coachCard({
+    title: m.ico + '  Knot: ' + m.name,
+    body: m.text + '<br><br>Knots sit on threads 4 and 8. The quota is the same shape — the rules are not.',
+    cta:'Weave it',
+  });
+}
+
+/* ---------- ignite / rethread buttons ---------- */
+$('#igniteBtn').onclick = ignite;
+$('#rethreadBtn').onclick = () => {
+  if(ui.busy || !run) return;
+  if(run.hand.every(h => h.used)){ toast('Nothing left to redraw'); return; }
+  if(run.freeRethread){ run.freeRethread = false; }
+  else if(run.filament >= 2){ run.filament -= 2; }
+  else { toast('Needs ◈2 — or the Loose weft upgrade'); return; }
+  const keep = run.hand.filter(h => h.used);
+  dealHand();
+  run.hand = keep.concat(run.hand).slice(0, 3);
+  Audio_.ui(); renderAll();
+};
+
+/* ================================================================
+   9. COACH — tutorial + one-time onboarding cards
+   ================================================================ */
+const coach = {
+  active:false, i:0, steps:[], onDone:null,
+  step(){ return this.steps[this.i] || {}; },
+};
+const coachEl = $('#coach'), maskEl = $('#coachMask'), ringEl = $('#coachRing');
+maskEl.style.background = 'transparent';
+
+function maskAround(rect){
+  maskEl.innerHTML = '';
+  const app = $('#app').getBoundingClientRect();
+  const parts = rect
+    ? [ [0, 0, app.width, rect.top - app.top],
+        [0, rect.bottom - app.top, app.width, app.height - (rect.bottom - app.top)],
+        [0, rect.top - app.top, rect.left - app.left, rect.height],
+        [rect.right - app.left, rect.top - app.top, app.width - (rect.right - app.left), rect.height] ]
+    : [ [0, 0, app.width, app.height] ];
+  for(const [x, y, w, h] of parts){
+    const d = document.createElement('div');
+    d.style.cssText = `position:absolute;left:${x}px;top:${Math.max(0,y)}px;width:${Math.max(0,w)}px;
+      height:${Math.max(0,h)}px;background:rgba(6,4,16,.78);pointer-events:auto`;
+    maskEl.appendChild(d);
+  }
+}
+
+function coachShow(step){
+  coachEl.classList.add('on');
+  const app = $('#app').getBoundingClientRect();
+  let rect = null;
+  if(step.anchor){
+    const el = typeof step.anchor === 'number' ? cellEl(step.anchor) : $(step.anchor);
+    if(el) rect = el.getBoundingClientRect();
+  }
+  if(rect){
+    const pad = 6;
+    ringEl.style.display = 'block';
+    ringEl.style.left = (rect.left - app.left - pad) + 'px';
+    ringEl.style.top = (rect.top - app.top - pad) + 'px';
+    ringEl.style.width = (rect.width + pad*2) + 'px';
+    ringEl.style.height = (rect.height + pad*2) + 'px';
+    if(step.target != null) maskEl.innerHTML = '';   // keep the loom readable while aiming
+    else maskAround({ top:rect.top - pad, bottom:rect.bottom + pad, left:rect.left - pad,
+                      right:rect.right + pad, height:rect.height + pad*2 });
+  } else {
+    ringEl.style.display = 'none';
+    maskAround(null);
+  }
+  $('#coachTitle').innerHTML = step.title || '';
+  $('#coachBody').innerHTML = step.body || '';
+  $('#coachSteps').textContent = step.count || '';
+  const next = $('#coachNext');
+  next.style.display = step.require ? 'none' : 'block';
+  next.textContent = step.cta || 'Next';
+
+  // Position so the card never sits on top of what the player has to touch.
+  // Action steps get a slim bar parked just above the hand; info steps get the
+  // full card on the far side of whatever is spotlit.
+  const card = $('#coachCard');
+  card.classList.toggle('slim', !!step.require);
+  card.style.top = '0px';
+  const h = card.offsetHeight || 140;
+  let top;
+  if(step.require){
+    const hand = $('#handRow').getBoundingClientRect();
+    top = hand.top - app.top - h - 10;
+  } else if(rect){
+    const below = rect.bottom - app.top + 16;
+    top = (below + h < app.height - 12) ? below : (rect.top - app.top - h - 16);
+  } else {
+    top = app.height / 2 - h / 2;
+  }
+  card.style.top = clamp(top, 10, Math.max(10, app.height - h - 10)) + 'px';
+  document.querySelectorAll('.hand-point').forEach(e => e.remove());
+  if(step.hand && rect){
+    const h = document.createElement('div');
+    h.className = 'hand-point'; h.textContent = '☞';
+    h.style.left = (rect.left - app.left + rect.width/2) + 'px';
+    h.style.top = (rect.top - app.top + rect.height/2 + 6) + 'px';
+    h.style.transform = 'rotate(-35deg)';
+    coachEl.appendChild(h);
+  }
+}
+
+function startCoach(steps, onDone){
+  coach.active = true; coach.i = 0; coach.steps = steps; coach.onDone = onDone || null;
+  steps.forEach((s, k) => s.count = `${k+1} / ${steps.length}`);
+  applyCoachStep();
+}
+function applyCoachStep(){
+  const s = coach.step();
+  ui.forceCell = s.target != null ? s.target : null;
+  $$('.cell.target').forEach(e => e.classList.remove('target'));
+  if(s.target != null) cellEl(s.target).classList.add('target');
+  if(s.before) s.before();
+  coachShow(s);
+}
+function coachAdvance(kind){
+  if(!coach.active) return;
+  const s = coach.step();
+  if(s.require && s.require !== kind) return;
+  coachNext();
+}
+function coachNext(){
+  coach.i++;
+  if(coach.i >= coach.steps.length){ coachEnd(); return; }
+  applyCoachStep();
+}
+function coachEnd(){
+  coach.active = false; ui.forceCell = null;
+  coachEl.classList.remove('on');
+  $$('.cell.target').forEach(e => e.classList.remove('target'));
+  document.querySelectorAll('.hand-point').forEach(e => e.remove());
+  if(coach.onDone){ const f = coach.onDone; coach.onDone = null; f(); }
+}
+$('#coachNext').onclick = () => { Audio_.ui(); if(coach.active) coachNext(); else coachEnd(); };
+
+/* one-off card, outside the step machine */
+function coachCard({ title, body, cta = 'Got it', onClose }){
+  coach.active = false;
+  coachEl.classList.add('on');
+  ringEl.style.display = 'none';
+  maskAround(null);
+  const app = $('#app').getBoundingClientRect();
+  $('#coachCard').style.top = (app.height / 2 - 90) + 'px';
+  $('#coachTitle').innerHTML = title;
+  $('#coachBody').innerHTML = body;
+  $('#coachSteps').textContent = '';
+  const n = $('#coachNext'); n.style.display = 'block'; n.textContent = cta;
+  coach.onDone = onClose || null;
+}
+function tip(id, title, body){
+  if(save.seen[id]) return false;
+  save.seen[id] = 1; persist();
+  coachCard({ title, body });
+  return true;
+}
+
+/* ---------- the scripted first-run tutorial ---------- */
+function runTutorial(){
+  run.hand = [{ id:'ember', rot:0, used:false },
+              { id:'mirror', rot:0, used:false },
+              { id:'ember', rot:0, used:false }];
+  renderAll();
+  startCoach([
+    { title:'This is your loom',
+      body:'Five by five. The <b style="color:var(--weft)">source ◉</b> sits bottom-left and fires a beam straight up. Everything you place stays there for the whole run.',
+      anchor:'#boardWrap', cta:'Show me' },
+    { title:'Place an Ember',
+      body:'Drag it onto the glowing cell, right in the beam\'s path.',
+      anchor:'.tile[data-hand="0"]', target:15, require:'place', hand:true },
+    { title:'Now bend the beam',
+      body:'A <b>Mirror</b> turns the beam 90°. Set it further up the column.',
+      anchor:'.tile[data-hand="1"]', target:5, require:'place', hand:true },
+    { title:'Catch what you turned',
+      body:'The beam leaves the mirror heading right. Catch it.',
+      anchor:'.tile[data-hand="2"]', target:6, require:'place', hand:true },
+    { title:'Charge is your fuse',
+      body:'Every cell the beam enters burns 1 charge — <b>empty cells too</b>. When it hits zero the weave stops, so a tight path beats a long one.',
+      anchor:'#meters' },
+    { title:'Light it',
+      body:'Each glyph the beam touches fires. <b>Light × Weave</b> is your score.',
+      anchor:'#igniteBtn', require:'ignite', hand:true },
+  ], () => {
+    save.tutorialDone = true; persist();
+  });
+}
+
+/* ================================================================
+   10. TITLE, MENUS, META, BOOT
+   ================================================================ */
+/* ---- animated title backdrop: drifting threads of light ---- */
+(function titleFx(){
+  const cv = $('#titleCanvas'), c = cv.getContext('2d');
+  let W = 0, H = 0, threads = [];
+  function reset(){
+    const r = cv.getBoundingClientRect();
+    W = cv.width = r.width * 2; H = cv.height = r.height * 2;
+    threads = [];
+    for(let i=0;i<16;i++) threads.push({
+      x: Math.random()*W, y: Math.random()*H,
+      len: 60 + Math.random()*260, sp: .25 + Math.random()*.7,
+      a: Math.random()*Math.PI*2, hue: Math.random() < .78 ? '255,182,72' : '180,140,255',
+      w: .6 + Math.random()*1.8, o: .12 + Math.random()*.35,
+    });
+  }
+  reset(); window.addEventListener('resize', reset);
+  (function loop(){
+    requestAnimationFrame(loop);
+    if($('#title').classList.contains('off')) return;
+    c.clearRect(0,0,W,H);
+    for(const t of threads){
+      t.x += Math.cos(t.a) * t.sp * 2; t.y += Math.sin(t.a) * t.sp * 2;
+      if(t.x < -300 || t.x > W+300 || t.y < -300 || t.y > H+300){
+        t.x = Math.random()*W; t.y = H + 100; t.a = -Math.PI/2 + (Math.random()-.5);
+      }
+      const g = c.createLinearGradient(t.x, t.y, t.x - Math.cos(t.a)*t.len, t.y - Math.sin(t.a)*t.len);
+      g.addColorStop(0, `rgba(${t.hue},${t.o})`); g.addColorStop(1, `rgba(${t.hue},0)`);
+      c.strokeStyle = g; c.lineWidth = t.w * 2; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(t.x, t.y);
+      c.lineTo(t.x - Math.cos(t.a)*t.len, t.y - Math.sin(t.a)*t.len); c.stroke();
+    }
+  })();
+})();
+
+function showTitle(){
+  ui.screen = 'title';
+  closeAllSheets();
+  $('#title').classList.remove('off');
+  $('#dailyDot').style.display = save.daily.date === todayKey() ? 'none' : 'inline-block';
+  const s = save.stats;
+  $('#tlFoot').textContent = s.runs
+    ? `Best ${fmt(s.bestScore)} light · longest chain ${s.bestChain} · ✦${save.shards} shards`
+    : 'Prototype build · v0.9';
+}
+function hideTitle(){ $('#title').classList.add('off'); ui.screen = 'run'; }
+
+function beginRun(opts){
+  Audio_.init();
+  hideTitle();
+  newRun(opts);
+  sizeCanvas();
+  if(!save.tutorialDone && !opts.daily){ setTimeout(runTutorial, 380); }
+  else if(opts.daily){
+    setTimeout(()=> tip('daily', 'Daily Loom',
+      'Everyone gets the same seed today: the same glyphs, in the same order, with the same stall. One attempt — then you can copy your pattern and compare.'), 400);
+  }
+}
+
+$('#playBtn').onclick = () => { Audio_.ui(); beginRun({}); };
+$('#dailyBtn').onclick = () => {
+  Audio_.ui();
+  if(save.daily.date === todayKey()){ showDailyResult(); return; }
+  beginRun({ daily:true, seed: hashStr('sparkweave-' + todayKey()), dayKey: todayKey() });
+};
+$('#codexBtn').onclick = () => { Audio_.ui(); renderCodex(); openSheet('#codexSheet'); };
+$('#codexClose').onclick = () => closeSheet('#codexSheet');
+$('#helpBtn').onclick = () => { Audio_.ui(); renderCodex(); openSheet('#codexSheet'); };
+$('#settingsBtn').onclick = $('#pauseSetBtn').onclick = () => { Audio_.ui(); renderSettings(); openSheet('#setSheet'); };
+$('#setClose').onclick = () => closeSheet('#setSheet');
+$('#workshopBtn').onclick = () => {
+  Audio_.ui(); renderMeta(); openSheet('#workshopSheet');
+  tip('workshop', 'The Workshop',
+    'Shards come out of every run, win or lose. What you buy here is permanent and stacks across runs — it is the reason a bad run is still worth finishing.');
+};
+$('#workshopClose').onclick = () => closeSheet('#workshopSheet');
+$('#pauseHowBtn').onclick = () => { Audio_.ui(); openSheet('#howSheet'); };
+$('#howClose').onclick = () => closeSheet('#howSheet');
+
+/* ---- pause ---- */
+$('#pauseBtn').onclick = () => {
+  if(ui.busy) return;
+  Audio_.ui();
+  $('#pRound').textContent = run.round + (run.endless ? '' : '/8');
+  $('#pChain').textContent = run.bestChain;
+  $('#pGlyphs').textContent = run.board.filter(Boolean).length;
+  $('#pFil').textContent = '◈' + run.filament;
+  openSheet('#pauseSheet');
+};
+$('#resumeBtn').onclick = () => { Audio_.ui(); closeSheet('#pauseSheet'); };
+$('#abandonBtn').onclick = () => {
+  Audio_.ui();
+  save.shards += shardsEarned(); save.stats.runs++;
+  save.stats.bestScore = Math.max(save.stats.bestScore, run.total);
+  persist();
+  closeAllSheets(); showTitle();
+};
+$('#scrim').onclick = () => {
+  if(openStack.includes('#pauseSheet')) closeSheet('#pauseSheet');
+  else if(openStack.includes('#codexSheet')) closeSheet('#codexSheet');
+  else if(openStack.includes('#setSheet')) closeSheet('#setSheet');
+  else if(openStack.includes('#workshopSheet')) closeSheet('#workshopSheet');
+  else if(openStack.includes('#howSheet')) closeSheet('#howSheet');
+};
+
+/* ---- game over actions ---- */
+$('#retryBtn').onclick = () => { Audio_.ui(); closeAllSheets(); beginRun({}); };
+$('#overMenuBtn').onclick = () => { Audio_.ui(); closeAllSheets(); showTitle(); };
+$('#winMenuBtn').onclick = () => { Audio_.ui(); closeAllSheets(); showTitle(); };
+$('#endlessBtn').onclick = () => {
+  Audio_.ui(); closeAllSheets();
+  run.endless = true; run.round++; startThread();
+  toast('Endless threads — quota climbs 55% each time');
+};
+$('#reviveBtn').onclick = () => {
+  Audio_.ui();
+  run.revived = true;
+  run.bonusCharge = 4;
+  run.score = 0;
+  dealHand();
+  closeAllSheets();
+  renderAll();
+  toast('Second wind — +4 charge on this thread');
+};
+$('#winShareBtn').onclick = () => copyText(buildShare('run'));
+$('#copyShareBtn').onclick = () => copyText($('#shareBox').textContent);
+$('#dailyMenuBtn').onclick = () => { closeAllSheets(); showTitle(); };
+
+/* ---- codex ---- */
+function renderCodex(){
+  const g = $('#codexGrid'); g.innerHTML = '';
+  for(const id of GLYPH_IDS){
+    const d = GLYPHS[id], known = !!save.seenGlyphs[id];
+    const el = document.createElement('div');
+    el.className = 'cx' + (known ? '' : ' locked');
+    el.innerHTML = known
+      ? `<span class="ci" style="color:${FAMCOL[d.fam]}">${d.ico}</span>
+         <span class="cn">${d.name}</span><span class="cd">${d.desc}</span>
+         <span class="tag ${d.fam}">${FAM[d.fam]}</span>`
+      : `<span class="ci">?</span><span class="cn">Unseen</span>
+         <span class="cd">Find it in the Stall</span>`;
+    g.appendChild(el);
+  }
+}
+
+/* ---- workshop ---- */
+function renderMeta(){
+  $('#shardCount').textContent = save.shards;
+  const wrap = $('#metaOffers'); wrap.innerHTML = '';
+  for(const m of META){
+    const owned = !!save.meta[m.id], afford = save.shards >= m.cost;
+    const b = document.createElement('button');
+    b.className = 'offer ' + (owned ? 'broke' : afford ? 'afford' : 'broke');
+    b.innerHTML =
+      `<span class="oi" style="color:var(--thread)">${m.ico}</span>
+       <span class="ob"><span class="on">${m.name}</span><span class="od">${m.desc}</span></span>
+       <span class="price">${owned ? '✓' : '✦' + m.cost}</span>`;
+    b.onclick = () => {
+      if(owned) return;
+      if(save.shards < m.cost){ toast('Not enough shards — finish a run'); return; }
+      save.shards -= m.cost; save.meta[m.id] = 1; persist();
+      Audio_.coin(); toast(m.name + ' installed'); renderMeta();
+    };
+    wrap.appendChild(b);
+  }
+}
+
+/* ---- settings ---- */
+function renderSettings(){
+  $$('.sw[data-set]').forEach(sw => sw.classList.toggle('on', !!save.settings[sw.dataset.set]));
+  document.body.classList.toggle('no-motion', !!save.settings.motion);
+}
+$$('.sw[data-set]').forEach(sw => sw.onclick = () => {
+  const k = sw.dataset.set;
+  save.settings[k] = !save.settings[k];
+  if(k === 'sound' && save.settings.sound) Audio_.init();
+  persist(); renderSettings(); Audio_.ui();
+});
+$('#resetTutBtn').onclick = () => {
+  save.tutorialDone = false; save.seen = {}; persist();
+  toast('Tutorial and hints will show again');
+};
+$('#wipeBtn').onclick = () => {
+  save = defaultSave(); persist(); renderSettings(); renderMeta();
+  toast('Progress wiped'); showTitle();
+};
+
+/* ---- daily ---- */
+function todayKey(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+const EMO = { ember:'🟧', tide:'🟩', crystal:'🟪', iron:'⬜' };
+function buildShare(kind){
+  let grid = '';
+  for(let r=0;r<N;r++){
+    for(let c=0;c<N;c++){
+      const i = idx(r,c);
+      grid += i === SRC ? '🔵' : run.board[i] ? EMO[GLYPHS[run.board[i].id].fam] : '⬛';
+    }
+    grid += '\n';
+  }
+  const head = kind === 'daily' ? `Sparkweave · Daily ${run.dayKey}` : 'Sparkweave · free weave';
+  const held = run.wonAll ? 8 : run.round - 1;
+  return `${head}\nThreads ${held}${run.endless ? '+' : '/8'} · ${fmt(run.total)} light · chain ${run.bestChain}\n\n${grid}`;
+}
+function recordDaily(){
+  save.daily = { date: run.dayKey, score: run.total, rounds: run.round - 1, share: buildShare('daily') };
+  persist();
+  setTimeout(showDailyResult, 900);
+}
+function showDailyResult(){
+  closeAllSheets();
+  $('#dScore').textContent = fmt(save.daily.score);
+  $('#dRounds').textContent = save.daily.rounds + '/8';
+  $('#shareBox').textContent = save.daily.share;
+  $('#dailyTitle').textContent = 'Daily ' + save.daily.date;
+  openSheet('#dailySheet');
+}
+function copyText(t){
+  const done = () => { toast('Copied — paste it anywhere'); Audio_.coin(); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(done, () => toast('Copy blocked by the browser'));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = t; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){ toast('Copy blocked by the browser'); }
+    ta.remove();
+  }
+}
+
+/* ---- boot ---- */
+function boot(){
+  loadSave();
+  buildBoard();
+  run = { board:new Array(N*N).fill(null), round:1, quota:18, score:0, filament:0,
+          maxCharge:8, hand:[], bestChain:0, endless:false, mod:null };
+  renderAll();
+  renderSettings();
+  showTitle();
+  window.addEventListener('orientationchange', () => setTimeout(sizeCanvas, 250));
+  setTimeout(sizeCanvas, 60);
+  document.addEventListener('visibilitychange', () => { if(document.hidden && run && ui.screen === 'run' && !ui.busy) { /* nothing decays */ } });
+}
+boot();
+
+</script>
+
+</body>
+</html>
