@@ -62,3 +62,10 @@ The numbers are not eyeballed; they come out of a simulation of ~34 waves
 
 Orb HP grows 1.26× per wave, so the top size passes 10,000 HP around wave 22 and
 180,000 by wave 34. Damage per bullet passes 200 around upgrade level 30.
+
+#### Documents
+
+| File | Contents |
+|---|---|
+| [`UNITY_PORT_SPEC.md`](neon-cannon/UNITY_PORT_SPEC.md) | Full implementation spec for rebuilding this game in Unity — coordinate model, every constant, all algorithms, code hierarchy, class reference, test plan. Includes one addition to the design: a Level Cleared panel between waves. |
+| [`UNITY_ART_ASSETS.md`](neon-cannon/UNITY_ART_ASSETS.md) | What art the Unity port needs sourced versus what can be generated in-engine. The HTML build ships zero image files, so the list is short. |
