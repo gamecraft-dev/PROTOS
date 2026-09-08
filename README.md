@@ -20,10 +20,30 @@ is over.
 |---|---|
 | Touch | Hold anywhere to fire, drag left/right to roll |
 | Mouse | Hold to fire, drag to roll |
-| Keyboard | `←`/`→` or `A`/`D` to roll, `Space` to fire, `1`–`4` to buy upgrades |
+| Keyboard | `←`/`→` or `A`/`D` to roll, `Space` to fire, `1`–`4` to buy upgrades, `T` for the tuner |
 
 **Upgrades** — spend scrap on damage, fire rate, barrels (up to 5) and shields
 (absorb one landing, max 3).
+
+#### Physics tuner
+
+**Tune** in the top bar opens three live dials, applied mid-run and saved per
+browser:
+
+| Dial | Range | Effect |
+|---|---|---|
+| Fall speed | 0.35–1.50× | Gravity. Sets the *tempo* of a bounce only |
+| Bounce | 0.50–1.40× | How high orbs reach |
+| Drift | 0.30–1.80× | Sideways speed |
+
+Fall speed and bounce are independent because apex height is defined as a
+fraction of the field: bounce velocity is derived as `√(2·g·apex)`, so the `g`
+in the launch cancels the `g` in the fall. Halving gravity makes an orb take
+`1/√0.5` ≈ 1.41× as long to complete a bounce while still reaching exactly the
+same height. Bounce period works out to `2·√(2·apex·refHeight / g)` — no screen
+dimension in it, which is why the game plays identically at any window size and
+why opening the tuner mid-run (which shrinks the field) doesn't disturb the
+timing you are tuning.
 
 #### Balance model
 

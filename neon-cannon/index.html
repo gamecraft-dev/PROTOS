@@ -61,7 +61,7 @@ body{
 /* --- top readout -------------------------------------------- */
 #hud{
   display:grid;
-  grid-template-columns:1fr auto 1fr;
+  grid-template-columns:1fr auto 1fr auto;
   align-items:center;
   gap:var(--sp);
   padding:10px 14px 8px;
@@ -258,10 +258,78 @@ body{
 }
 @media (pointer:coarse){ .up .key{display:none} }
 
+/* --- physics tuner ------------------------------------------ */
+#tuneBtn{
+  justify-self:end;
+  font-family:inherit; font-size:9px; font-weight:700;
+  letter-spacing:.18em; text-transform:uppercase;
+  color:var(--violet); background:transparent;
+  border:1px solid color-mix(in srgb, var(--violet) 45%, transparent);
+  border-radius:999px; padding:6px 11px; cursor:pointer;
+  transition:color .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+#tuneBtn:hover{color:var(--ink)}
+#tuneBtn[aria-expanded="true"]{
+  color:var(--ink); border-color:var(--violet); box-shadow:0 0 15px -2px var(--violet);
+}
+#tuneBtn:focus-visible{outline:2px solid var(--lime); outline-offset:2px}
+
+#tuner{
+  flex:0 0 auto;
+  display:grid; gap:8px;
+  margin:9px 10px 0; padding:11px 13px 12px;
+  border:1px solid var(--edge); border-radius:12px;
+  background:linear-gradient(180deg, var(--panel), #0d0720);
+}
+#tuner[hidden]{display:none}
+#tuner .head{
+  display:flex; justify-content:space-between; align-items:center;
+  font-size:9px; letter-spacing:.22em; text-transform:uppercase; color:var(--muted);
+}
+#tuner .row{display:grid; grid-template-columns:76px 1fr 48px; gap:10px; align-items:center}
+#tuner label{font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink)}
+#tuner output{
+  font-size:12px; font-weight:700; font-variant-numeric:tabular-nums;
+  color:var(--violet); text-align:right;
+}
+#tuner .hint{font-size:10px; line-height:1.4; color:var(--muted)}
+#tReset{
+  font-family:inherit; font-size:9px; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--muted); background:transparent; border:0; padding:2px 0; cursor:pointer;
+}
+#tReset:hover{color:var(--ink)}
+#tReset:focus-visible{outline:2px solid var(--lime); outline-offset:2px}
+
+#tuner input[type=range]{
+  -webkit-appearance:none; appearance:none;
+  width:100%; height:20px; background:transparent; cursor:pointer;
+}
+#tuner input[type=range]::-webkit-slider-runnable-track{
+  height:3px; border-radius:2px;
+  background:linear-gradient(90deg, var(--violet), var(--edge));
+}
+#tuner input[type=range]::-moz-range-track{
+  height:3px; border-radius:2px;
+  background:linear-gradient(90deg, var(--violet), var(--edge));
+}
+#tuner input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none;
+  width:15px; height:15px; margin-top:-6px; border-radius:50%;
+  background:var(--violet); border:2px solid #0d0720;
+  box-shadow:0 0 10px var(--violet);
+}
+#tuner input[type=range]::-moz-range-thumb{
+  width:15px; height:15px; border-radius:50%;
+  background:var(--violet); border:2px solid #0d0720;
+  box-shadow:0 0 10px var(--violet);
+}
+#tuner input[type=range]:focus-visible{outline:2px solid var(--lime); outline-offset:3px}
+
 @media (max-height:560px){
   .brief{display:none}
   #console{padding:7px 10px}
   .up{padding:6px 3px}
+  #tuner .hint{display:none}
 }
 
 @media (prefers-reduced-motion:reduce){
@@ -283,6 +351,7 @@ body{
       <span class="lbl">Scrap</span>
       <span class="val" id="coinVal">0</span>
     </div>
+    <button id="tuneBtn" aria-expanded="false" aria-controls="tuner" title="Physics tuning (T)">Tune</button>
   </header>
 
   <div id="stage">
@@ -315,6 +384,26 @@ body{
       <p class="tagline" id="oBest"></p>
       <button class="cta" id="againBtn">Rebuild</button>
     </div>
+  </div>
+
+  <div id="tuner" hidden>
+    <div class="head"><span>Orb physics · live</span><button id="tReset">Reset</button></div>
+    <div class="row">
+      <label for="tFall">Fall speed</label>
+      <input type="range" id="tFall" min="35" max="150" step="5" value="65">
+      <output id="oFall" for="tFall">0.65×</output>
+    </div>
+    <div class="row">
+      <label for="tBounce">Bounce</label>
+      <input type="range" id="tBounce" min="50" max="140" step="5" value="100">
+      <output id="oBounce" for="tBounce">1.00×</output>
+    </div>
+    <div class="row">
+      <label for="tDrift">Drift</label>
+      <input type="range" id="tDrift" min="30" max="180" step="5" value="100">
+      <output id="oDrift" for="tDrift">1.00×</output>
+    </div>
+    <p class="hint">Fall speed changes the tempo only — orbs still reach the same height. Bounce sets that height, drift sets sideways speed. Saved for next run.</p>
   </div>
 
   <div id="console">
@@ -382,6 +471,20 @@ const CFG = {
   spawnGap: 1.15,         // seconds between arrivals
 };
 
+/* Live physics dials, adjustable from the Tune drawer and saved per browser.
+ * fall scales gravity, which sets the tempo of a bounce; because apex height is
+ * defined as a fraction of the field, orbs still reach the same height, they
+ * just take longer to get there and back. bounce scales that height. */
+const TUNE_DEFAULTS = Object.freeze({ fall: 0.65, bounce: 1, drift: 1 });
+const TUNE = Object.assign({}, TUNE_DEFAULTS);
+try {
+  const saved = JSON.parse(localStorage.getItem('neon-cannon-tune') || 'null');
+  if (saved) for (const k of Object.keys(TUNE_DEFAULTS)) {
+    if (typeof saved[k] === 'number' && isFinite(saved[k])) TUNE[k] = clamp(saved[k], 0.2, 2);
+  }
+} catch (e) {}
+const saveTune = () => { try { localStorage.setItem('neon-cannon-tune', JSON.stringify(TUNE)); } catch (e) {} };
+
 /* Damage ladder: +16% a level, never less than +1. Level ~30 is 200 dmg. */
 const DMG = [0, 1];
 for (let L = 2; L <= 400; L++) DMG[L] = Math.max(DMG[L - 1] + 1, Math.round(DMG[L - 1] * 1.16));
@@ -437,15 +540,30 @@ const geo = () => {
 function resize() {
   const r = stage.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const oldW = G.W, oldH = G.H, oldS = G.S;
+
   G.W = r.width; G.H = r.height;
   cv.width = Math.max(1, Math.round(r.width * dpr));
   cv.height = Math.max(1, Math.round(r.height * dpr));
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   G.S = G.H / CFG.refH;
   G.groundY = G.H - 30 * G.S;
+
+  // carry live entities across the change — opening the tuner, rotating a
+  // phone. Bounce timing is independent of field size, so this is seamless.
+  if (oldW > 0 && oldH > 0) {
+    const kx = G.W / oldW, ky = G.H / oldH, ks = G.S / oldS;
+    for (const b of G.balls) {
+      b.x *= kx; b.y *= ky; b.r *= ks; b.vx *= ks; b.vy *= ks;
+    }
+    for (const p of G.bullets) {
+      p.x *= kx; p.y *= ky; p.px *= kx; p.py *= ky; p.vx *= ks; p.vy *= ks;
+    }
+    G.cannon.x *= kx;
+  }
+
   const g = geo();
-  G.cannon.x = G.cannon.x || G.W / 2;
-  G.cannon.x = clamp(G.cannon.x, g.halfW, G.W - g.halfW);
+  G.cannon.x = clamp(G.cannon.x || G.W / 2, g.halfW, G.W - g.halfW);
   G.cannon.target = G.cannon.x;
 }
 new ResizeObserver(resize).observe(stage);
@@ -454,7 +572,8 @@ resize();
 /* ==========================================================
    4. entities
    ========================================================== */
-const bounceV = tier => Math.sqrt(2 * CFG.gravity * G.S * CFG.tierApex[tier] * G.H);
+const bounceV = tier =>
+  Math.sqrt(2 * CFG.gravity * TUNE.fall * G.S * CFG.tierApex[tier] * TUNE.bounce * G.H);
 
 function makeBall(tier, hp, x, y, vx, vy, entered) {
   return {
@@ -513,7 +632,7 @@ function releaseBall() {
   const r = CFG.tierR[s.tier] * G.S;
   const x = s.side < 0 ? -r * 0.8 : G.W + r * 0.8;
   const y = G.H * rand(0.15, 0.28);
-  const vx = CFG.tierVX[s.tier] * G.S * (s.side < 0 ? 1 : -1);
+  const vx = CFG.tierVX[s.tier] * TUNE.drift * G.S * (s.side < 0 ? 1 : -1);
   G.balls.push(makeBall(s.tier, s.hp, x, y, vx, 0, false));
   G.biggest = Math.max(G.biggest, s.hp);
 }
@@ -579,7 +698,8 @@ function killBall(b, i) {
     const chp = Math.max(1, Math.ceil(b.max / 2));
     const lift = bounceV(ct) * 0.5;
     for (const dir of [-1, 1]) {
-      const nb = makeBall(ct, chp, b.x + dir * b.r * 0.45, b.y, dir * CFG.tierVX[ct] * G.S * 1.15, -lift, true);
+      const nb = makeBall(ct, chp, b.x + dir * b.r * 0.45, b.y,
+        dir * CFG.tierVX[ct] * TUNE.drift * G.S * 1.15, -lift, true);
       nb.flash = 1;
       G.balls.push(nb);
     }
@@ -656,7 +776,7 @@ function update(dt) {
   }
 
   /* --- balls -------------------------------------------------- */
-  const grav = CFG.gravity * G.S;
+  const grav = CFG.gravity * TUNE.fall * G.S;
   G.danger = 0;
   for (let i = G.balls.length - 1; i >= 0; i--) {
     const b = G.balls[i];
@@ -1130,6 +1250,53 @@ function banner(title, sub) {
   bannerEl.classList.add('show');
 }
 
+/* --- tuner ---------------------------------------------------- */
+const tuneBtn = el('tuneBtn'), tuner = el('tuner');
+const dials = [
+  { key: 'fall',   input: el('tFall'),   out: el('oFall') },
+  { key: 'bounce', input: el('tBounce'), out: el('oBounce') },
+  { key: 'drift',  input: el('tDrift'),  out: el('oDrift') },
+];
+
+function paintTune() {
+  for (const d of dials) {
+    d.input.value = Math.round(TUNE[d.key] * 100);
+    d.out.textContent = TUNE[d.key].toFixed(2) + '×';
+  }
+}
+
+/** Drift is stored on each orb's velocity, so a change has to be applied to
+ *  the orbs already in flight — otherwise the slider looks dead mid-wave. */
+function setDrift(v) {
+  const k = v / TUNE.drift;
+  for (const b of G.balls) b.vx *= k;
+  TUNE.drift = v;
+}
+
+for (const d of dials) {
+  d.input.addEventListener('input', () => {
+    const v = (+d.input.value) / 100;
+    if (d.key === 'drift') setDrift(v); else TUNE[d.key] = v;
+    d.out.textContent = v.toFixed(2) + '×';
+    saveTune();
+  });
+}
+
+el('tReset').addEventListener('click', () => {
+  setDrift(TUNE_DEFAULTS.drift);
+  TUNE.fall = TUNE_DEFAULTS.fall;
+  TUNE.bounce = TUNE_DEFAULTS.bounce;
+  paintTune();
+  saveTune();
+});
+
+tuneBtn.addEventListener('click', () => {
+  const open = tuner.hidden;
+  tuner.hidden = !open;
+  tuneBtn.setAttribute('aria-expanded', String(open));
+});
+paintTune();
+
 buttons.forEach(b => {
   b.el.addEventListener('click', () => {
     const c = b.cost();
@@ -1174,11 +1341,13 @@ stage.addEventListener('lostpointercapture', endDrag);
 
 addEventListener('keydown', e => {
   if (e.repeat) return;
+  if (e.target instanceof HTMLInputElement) return;   // let the sliders have their arrows
   const k = e.key.toLowerCase();
   if (k === 'arrowleft' || k === 'a') keys.left = true;
   else if (k === 'arrowright' || k === 'd') keys.right = true;
   else if (k === ' ' || k === 'spacebar') { firing = true; e.preventDefault(); }
   else if (k >= '1' && k <= '4') buttons[+k - 1].el.click();
+  else if (k === 't') tuneBtn.click();
   else if (k === 'enter' && G.mode !== 'playing') startGame();
 });
 addEventListener('keyup', e => {
