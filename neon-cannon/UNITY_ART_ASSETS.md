@@ -1,19 +1,23 @@
 # Neon Cannon — Art Asset Requirements for the Unity Port
 
-What you need to source or commission to rebuild `neon-cannon/index.html` in Unity as
-a 1:1 visual replica, and — just as importantly — what you do **not** need, because it
-can be generated inside Unity with a shader, a mesh or a built-in effect.
+What you need to source or commission to rebuild `neon-cannon/index.html` in Unity —
+and, just as importantly, what you do **not** need, because it can be generated inside
+Unity with a shader, a mesh or a built-in effect.
+
+**Scope:** the browser prototype is the reference for **gameplay and art style only**.
+The Unity build ships on Google Play as a complete product, so music, sound, haptics,
+pause, restart, quit and the store listing are all in scope (§3).
 
 **The short version:** the HTML build contains **zero image files**. Every pixel is
 drawn procedurally on a canvas at runtime, so almost none of it needs an artist.
 
-- **For a 1:1 duplicate of the browser build:** source **two free typefaces**
+- **Matching the prototype's gameplay and art** costs **two free typefaces**
   (§1.1–1.2) and nothing else. No paid plugin anywhere, the paint effect included
-  (§2.5). Every screen, panel and control it has is text, rounded rectangles and
-  circles — see the full inventory in §3.1.
-- **To ship it as a real game:** add a **free icon font** (§3.3), because the
-  prototype has no pause button, no audio toggles and no settings panel at all —
-  §3.2 lists everything of that sort it is missing.
+  (§2.5). Every screen it has is text, rounded rectangles and circles (§3.1).
+- **Shipping it on Google Play** adds four things the prototype has none of: a
+  **free icon font** (§3.3), **audio** — 13 SFX and 2 music loops, the largest single
+  procurement in the project (§3.4), **haptics** (§3.5), and the **store listing
+  graphics** Google requires before it will accept an upload (§3.6).
 - Everything else is a generated texture you can author in ten minutes, or a shader.
 
 ---
@@ -102,15 +106,16 @@ Unity has no equivalent failure — the TMP font asset is compiled into the buil
 present at frame zero. Nothing to guard against; noted only so the inlining in the
 HTML source does not look like an arbitrary choice.
 
-### 1.3 Application icon
+### 1.3 Application icon and store graphics
 
-| Asset | Spec |
-|---|---|
-| App icon | 1024 × 1024 PNG, plus the platform-derived sizes Unity generates |
+The HTML uses an emoji favicon, which does not port. The shipped build needs a real
+icon plus the Play Store listing graphics — **specced in §3.6**, since Google's
+requirements (adaptive layers, safe zones, the feature graphic) are more particular
+than "draw an icon".
 
-The HTML uses an emoji favicon, which does not port. This is genuinely new art — a
-small piece, but it needs someone to draw it. The obvious subject is the cannon
-silhouette in cyan on the `#07030f` ground.
+This is the project's only genuinely commissioned artwork. The obvious subject is the
+cannon silhouette in cyan on the `#07030f` ground, with paint splatter behind it for
+the feature graphic.
 
 ---
 
@@ -230,113 +235,202 @@ have.
 
 ---
 
-## 3. Screens, panels and controls — complete inventory
+## 3. Everything the shipped game needs
 
-Every surface the game puts on screen, what it is made of, and whether it needs a
-sourced asset. **Nothing in §3.1 requires art beyond the two fonts.** §3.2 is the part
-that was missing from this document: standard controls a shipped game needs that the
-prototype simply does not have yet.
+The browser prototype is the reference for **gameplay and art style only**. The Unity
+build ships on Google Play as a complete product, so music, sound, haptics, pause,
+restart and quit are all **in scope and required** — they are not optional extras and
+not "parity gaps".
 
-### 3.1 What the game has today
+This section is the complete list, split into what the prototype already covers, what
+has to be built on top, and what Google Play demands before it will accept an upload.
 
-| # | Surface | Contents | Assets required |
+### 3.1 Surfaces the prototype already has — no art required
+
+| # | Surface | Contents | Assets |
 |---|---|---|---|
-| S1 | **Start screen** | `NEON CANNON` logo (Monoton), tagline, three how-to lines, Start button, best-run line | **None** — text + one rounded-pill button |
-| S2 | **HUD bar** | Wave number, three shield pips, scrap counter, TUNE button | **None** — text + SDF circle for the pips |
-| S3 | **Wave banner** | `Wave n` + subtitle (`Incoming` / `Heavies` / `Solitary`), 1.7 s sweep | **None** — Monoton text |
-| S4 | **Wave-clear banner** | `Clear` + `+n scrap` | **None** — Monoton text |
-| S5 | **Upgrade console** | Four buttons: Damage / Rate / Barrels / Shield, each name + value + price, with a glowing 2 px accent rule | **None** — rounded-rect SDF |
-| S6 | **Tuner drawer** | Three labelled sliders, live × readouts, Reset | **None** — Unity `Slider` + rounded-rect SDF track, SDF circle thumb |
-| S7 | **Level failed panel** | `CRUSHED` (Monoton), three-cell tally (Wave / Score / Best HP), best-run line, **Rebuild** button | **None** — text + rounded-rect |
-| S8 | **Level complete panel** (Unity only, §15 of the port spec) | `WAVE n CLEARED`, five stats, embedded upgrade console, **Next Wave** button | **None** — same components as S5 and S7 |
+| S1 | **Start screen** | `NEON CANNON` logo (Monoton), tagline, three how-to lines, Start button, best-run line | **None** |
+| S2 | **HUD bar** | Wave number, three shield pips, scrap counter | **None** |
+| S3 | **Wave banner** | `Wave n` + subtitle, 1.7 s sweep | **None** |
+| S4 | **Wave-clear banner** | `Clear` + `+n scrap` | **None** |
+| S5 | **Upgrade console** | Four buttons: Damage / Rate / Barrels / Shield | **None** |
+| S6 | **Tuner drawer** | Three labelled sliders + Reset (ship it inside Settings, §3.2) | **None** |
+| S7 | **Level failed panel** | `CRUSHED`, three-cell tally, **Rebuild** | **None** |
+| S8 | **Level complete panel** | `WAVE n CLEARED`, five stats, upgrade console, **Next Wave** | **None** |
 
-Every one of these is text plus rounded rectangles plus circles. One rounded-rect SDF
-shader and one circle SDF shader cover all eight. **Zero PNGs, zero icons.**
+All eight are text, rounded rectangles and circles. One rounded-rect SDF shader and
+one circle SDF shader cover every one of them. **Zero PNGs.**
 
-### 3.2 Missing from the prototype — decide before you build the UI
+### 3.2 Surfaces the shipped build adds — required
 
-These do not exist in the HTML build in any form, and are not optional for a released
-game. Listing them here so they are a scoping decision rather than a late surprise.
+None of these exist in the prototype in any form. Verified by grep: `audio`, `sound`,
+`music` and `pause` appear **zero times** in the browser source.
 
-| # | Surface | Status in the prototype | Notes |
+| # | Surface | Contents | Assets |
 |---|---|---|---|
-| M1 | **Pause button + pause panel** | **Absent.** The browser build auto-pauses when the tab is hidden, but the player can never pause deliberately | A phone game without pause is a defect. Panel: Resume / Restart / Settings / Quit |
-| M2 | **Sound on-off, music on-off** | **Absent — and so is all audio** (see §3.4) | A sound toggle with nothing to toggle is worse than no toggle |
-| M3 | **Settings panel** | Absent | Cleanest as a section inside the pause panel. Natural home for the tuner drawer, audio, haptics, reduced motion |
-| M4 | **Boot / loading screen** | Not needed in HTML — one file, instant | Unity needs one: scene load, TMP atlas warm-up, pool prewarm |
-| M5 | **Quit confirmation** | Absent | Only if Quit discards an in-progress run, which it does |
-| M6 | **Haptics toggle** | Absent | Mobile only. Cheap to add alongside the audio toggles |
-| M7 | **Reduced-motion toggle** | Read from the OS in the browser; Unity has no cross-platform equivalent | Must become an explicit setting. Referenced by §17.8 of the port spec |
+| S9 | **Pause button** | Small icon, top-right of the HUD, in-play only | Pause icon (§3.3) |
+| S10 | **Pause panel** | Resume · Restart · Settings · Quit, current wave and score | 4 icons |
+| S11 | **Settings panel** | Music toggle, SFX toggle, Haptics toggle, Reduced motion toggle, the tuner drawer, Credits, Restore/Reset progress | 5–6 icons |
+| S12 | **Quit confirmation** | "Abandon this run?" · Cancel / Quit — the run is lost, so it needs a gate | None |
+| S13 | **Boot / loading screen** | Logo + progress while the scene loads, TMP atlases warm and pools prewarm | None |
+| S14 | **Restart confirmation** | Only if Restart is reachable mid-run from Pause | None |
 
-M1–M3 and M7 introduce the game's **first icons**. That is the only new art the
-project acquires, and §3.3 says how to get it without commissioning anything.
+Two rules that matter for a Play release:
 
-### 3.3 Icons — one free icon font, no PNGs
+- **The pause button must be reachable one-handed** and must not sit where a drag to
+  move the cannon begins. Top-right of the HUD bar, outside the playfield input area,
+  same as the TUNE button it replaces.
+- **Pausing must freeze the simulation, not the UI.** Use the `GameState` flag from
+  §4 of the port spec, never `Time.timeScale = 0`, or panel tweens and the banner
+  animation freeze with it.
 
-The icon set implied by §3.2:
+### 3.3 Icons — one free icon font, still no PNGs
 
-| Icon | Used by | Procedural? |
-|---|---|---|
-| Pause `▮▮` | In-game pause button | **Trivial** — two rounded rects |
-| Play / Resume `▶` | Pause panel | **Trivial** — one triangle |
-| Close `✕` | Panel dismiss | **Trivial** — two rotated rects |
-| Restart / Replay | Pause panel, failed panel | Fiddly — circular arc plus arrowhead |
-| Sound on / Sound off | Settings | Fiddly — speaker body plus waves, plus a slash |
-| Music on / Music off | Settings | Fiddly — note plus a slash |
-| Settings gear | Pause panel | Fiddly — teeth |
-| Home / Quit | Pause panel | Fiddly |
-| Vibrate | Settings (mobile) | Fiddly |
+The shipped controls give the project its first icons. Ten glyphs cover everything:
 
-Three are trivial geometry; six are not worth hand-building.
+| Icon | Used by |
+|---|---|
+| Pause | S9 |
+| Play / Resume | S10 |
+| Restart / Replay | S10, S7 |
+| Home / Quit | S10 |
+| Settings gear | S10 |
+| Close ✕ | S10, S11 |
+| Volume on / Volume off | S11 |
+| Music on / Music off | S11 |
+| Vibration | S11 |
 
-**Recommendation: [Material Symbols](https://fonts.google.com/icons), Outlined
-weight, Apache License 2.0** — free for commercial use, redistributable, and shipped
-as a font. Run it through the TextMeshPro Font Asset Creator exactly like the two text
-faces (SDF, 1024², padding 9), then place icons as TMP text.
+Pause, Play and Close are trivial geometry. The rest — the circular restart arrow, the
+speaker, the gear, the note — are not worth hand-building.
 
-This is worth the two minutes it takes because it inherits everything the type system
-already has: **HDR tint, bloom participation, resolution independence, and one
-consistent stroke weight.** A PNG icon set gets none of that and will look bolted on
-next to the neon.
+**Source: [Material Symbols](https://fonts.google.com/icons), Outlined weight, Apache
+License 2.0.** Free for commercial use and redistribution. Run it through the
+TextMeshPro Font Asset Creator exactly like the two text faces (SDF, 1024², padding 9)
+and place icons as TMP text.
 
-Take the **Outlined** weight specifically, not Filled or Rounded — the game's entire
-visual language is glowing outline, and a solid-filled icon reads as a foreign object
-in it.
+Doing it as a font rather than sprites means icons inherit **HDR tint, bloom
+participation, resolution independence and one consistent stroke weight** from the
+type system already in place. A PNG icon set gets none of that and will look bolted on
+beside the neon.
 
-| # | Asset | Format | Notes |
+Take the **Outlined** weight, not Filled or Rounded. The game's entire visual language
+is glowing outline; a solid-filled icon reads as a foreign object in it.
+
+| # | Asset | Format | Source |
 |---|---|---|---|
-| I1 | Material Symbols Outlined, subset to ~10 glyphs | TMP SDF font asset | The whole icon requirement, sourced free |
+| I1 | Material Symbols Outlined, subset to ~10 glyphs | TMP SDF font asset | Google Fonts, Apache 2.0, free |
 
-Alternative if you would rather not add a third font: export the same ten glyphs as
-SVG from the Material Symbols site and import as Unity vector sprites. Same look, more
-files to manage, loses the free HDR text tinting.
+### 3.4 Audio — required
 
-### 3.4 Audio — only relevant if you add M2
+The prototype has none, so all of this is new. It is the largest single procurement in
+the project.
 
-**The HTML build has no audio of any kind**, so this is new scope rather than a port
-gap, and none of it is required for a 1:1 duplicate. It is listed because a sound
-on-off button is meaningless without it.
+**Sound effects — 13 cues**
 
 | Cue | Notes |
 |---|---|
-| Shot | Fires up to 22/s × 5 barrels — needs pitch variation and voice limiting or it becomes a buzz |
-| Bullet hits orb | Very frequent; keep it quiet and short |
-| Orb splits | Pitched by tier |
-| Orb destroyed | Pitched by tier; the big ones want weight |
-| Orb bounces on ground | Pitched by tier |
-| Paint splat | Optional wet accent on landing |
-| Shield absorbs a hit | Must cut through everything else |
-| Upgrade purchased | |
-| Wave start / Wave clear | Two stingers |
+| Shot | See the voice-limiting warning below — this one will make or break the mix |
+| Bullet hits orb | Extremely frequent. Short, quiet, heavily pitch-varied |
+| Orb splits | Pitched down by tier |
+| Orb destroyed | Pitched by tier; tier 4 wants real weight |
+| Orb bounces on ground | Pitched by tier, low volume |
+| Paint splat | Wet accent as paint lands |
+| Shield absorbs a hit | Must cut through everything else — this is the "you nearly died" cue |
+| Upgrade purchased | Short, bright, satisfying; the player will hear it hundreds of times |
+| Scrap collected | Optional; risks clutter at high kill rates |
+| Wave start | Stinger under the banner |
+| Wave clear | Stinger under the Level Complete panel |
 | Game over | |
-| UI tap | |
-| Music | One or two loops |
+| UI tap | One sound for every button in the game |
 
-Roughly **12 SFX plus 1–2 music loops**. Sourceable from a royalty-free library rather
-than commissioned. Budget voice limiting on the shot channel as engineering work, not
-as an asset.
+**Music — 2 loops:** a menu loop and a gameplay loop. Synthwave / outrun suits the
+palette. A second, denser gameplay layer to fade in on later waves is a cheap way to
+sell escalation, and is worth speccing now rather than retrofitting.
 
----
+**Where to get it:** a royalty-free library, not a commission. This is stock-suitable
+material. Whatever the source, keep the licence documents in the repo — Google Play
+will not ask, but a rights holder might.
+
+**The one hard engineering problem: the shot sound.** At maxed fire rate the game
+fires **22 volleys per second across 5 barrels = 110 bullets a second**. Playing a
+one-shot per bullet is 110 voices a second and will sound like white noise and blow
+the audio budget.
+
+| Fire rate | Approach |
+|---|---|
+| Low (early game) | One `PlayOneShot` per **volley**, never per bullet, with ±10% pitch jitter |
+| Above ~12 volleys/s | Cross-fade to a **looping** firing layer whose pitch and volume track the fire rate, and stop emitting one-shots entirely |
+
+Cap the shot channel at ~6 concurrent voices regardless. This is the single most
+common way a game in this genre ends up sounding cheap.
+
+**Unity import settings**
+
+| Content | Source | Load Type | Compression |
+|---|---|---|---|
+| Music loops | `.ogg` | Streaming | Vorbis, ~70% |
+| Short SFX (< 0.3 s) | `.wav` | Decompress On Load | ADPCM |
+| Longer SFX | `.wav` | Compressed In Memory | Vorbis |
+
+**Mixer:** one `AudioMixer` with `Master → Music` and `Master → SFX`, exposing
+`MusicVolume` and `SfxVolume`. Set them in **decibels**, not linearly:
+
+```csharp
+mixer.SetFloat("MusicVolume", on ? Mathf.Log10(Mathf.Max(v, 0.0001f)) * 20f : -80f);
+```
+
+A linear 0–1 slider driven straight into volume sounds wrong to the ear and mutes far
+too late. `-80 dB` is silence.
+
+### 3.5 Haptics — required
+
+| Event | Strength |
+|---|---|
+| Bullet hits orb | None — 110/s would be unusable |
+| Orb destroyed | Light tick, tier 0–2; medium, tier 3–4 |
+| Shield absorbs a hit | Heavy |
+| Game over | Heavy, longer |
+| Upgrade purchased | Light tick |
+| Button press | Light tick |
+
+**Do not use `Handheld.Vibrate()`.** It is a fixed ~500 ms buzz with no control, and
+using it per orb kill will make players turn haptics off in the first minute.
+
+Call Android's `VibrationEffect` directly through `AndroidJavaObject` (API 26+,
+`createOneShot(ms, amplitude)` for ticks and `createWaveform` for patterns). It is
+maybe 40 lines, has no dependency, and gives real amplitude control. Asset Store
+haptics packages exist and are fine, but check the current licence yourself — I would
+not rely on my knowledge of their pricing.
+
+Always gate on the Settings toggle **and** on device support, and default haptics to
+**on** — it is expected on mobile.
+
+### 3.6 Google Play store assets — required before upload
+
+These are art, they are not optional, and they are easy to forget until the day of
+submission. Verify current requirements in the Play Console, since Google changes
+them.
+
+| # | Asset | Spec | Notes |
+|---|---|---|---|
+| G1 | **Adaptive app icon** | Foreground + background layers, 108 × 108 dp, with all meaning inside the central 72 × 72 dp safe zone | Android 8+. Launchers mask this to circles, squircles and squares — anything outside the safe zone gets cropped |
+| G2 | **Play Console icon** | 512 × 512 PNG, 32-bit with alpha | The store listing icon, separate from G1 |
+| G3 | **Feature graphic** | 1024 × 500 PNG or JPEG | Required. Shown at the top of the listing. No text near the edges — it gets cropped in some placements |
+| G4 | **Phone screenshots** | Minimum 2, up to 8. 16:9 or 9:16 | Capture from the real build. The paint splatter mid-burst is the strongest frame this game has |
+| G5 | **Tablet screenshots** | 7" and 10" sets | Only if you declare tablet support |
+| G6 | **Promo video** | YouTube URL | Optional but it lifts conversion in this genre |
+
+Non-art submission requirements, listed so they are not a surprise: a **privacy policy
+URL**, the **Data safety** declaration, a content rating questionnaire, and Google's
+current **target API level** minimum. None need an artist; all block release.
+
+### 3.7 Decisions this document cannot make for you
+
+| Question | Why it matters here |
+|---|---|
+| **Ads or IAP?** | Genre standard is a rewarded-ad revive after death and an ad between waves. A revive changes the Level Failed panel (S7) and adds an ad-provider SDK. Decide before building that panel, not after |
+| **Localisation?** | The game is almost entirely numbers. English-only is defensible; the only real strings are ~15 labels. Cheap now, expensive to retrofit |
+| **Cloud save?** | Only `best wave` and settings persist. Play Games Services save is nice but not needed |
 
 ## 4. Small generated textures — author once, no artist
 
@@ -368,9 +462,11 @@ as code.
 | **Pre-blurred glow sprites** | Bloom post-processing produces the glow. Baked halos would double up and look muddy. |
 | **Background illustration** | The backdrop is a gradient plus a procedural grid. |
 | **Explosion sprite sheets** | Particles are untextured streaks. |
-| **UI icon set (for a 1:1 port)** | Every control in the browser build is text-labelled — there is not one icon in the source. Icons only appear once you add the pause and settings controls the prototype lacks, and §3.3 sources those from a free icon font rather than artwork. |
-| **Audio (music, SFX)** | The HTML build has **no audio whatsoever**. Adding sound is new design work, not part of a 1:1 replica. Flagged here so it is a deliberate decision rather than an omission. |
-| **Localisation assets** | Single language, and the character set is ASCII plus two symbols. |
+| **Hand-drawn UI icons** | The ten icons the shipped build needs come from a free icon font (§3.3), not from artwork. |
+| **Localisation assets** | Single language for launch; the character set is ASCII plus two symbols. Revisit per §3.7. |
+
+Note that **audio and icons are no longer on this list** — they were, while the target
+was a port of the browser build. A shipped Play release requires both; see §3.3–3.5.
 
 ---
 
@@ -401,28 +497,38 @@ tier 3 = 325°, tier 4 = 272°. Ring lightness is 64%, rising to 94% on the hit 
 
 ## 7. Procurement summary
 
-| Priority | Item | Effort | Blocking? |
+Ordered by what blocks what. "Blocking" means the game cannot ship without it.
+
+| # | Item | Effort | Blocking? |
 |---|---|---|---|
-| 1 | Monoton + Chakra Petch, converted to TMP SDF assets | ~30 min | **Yes** — nothing renders type without them, and Monoton carries the arcade identity (§1.2) |
-| 2 | URP 2D renderer + bloom volume configured, Linear colour space | ~30 min | **Yes** — the look does not exist without bloom |
-| 3 | Six generated textures (§3), ideally via an editor script | ~1–2 h | Partially — placeholders work meanwhile |
-| 4 | Orb SDF ring shader (ring + fill + health arc in one) | ~2–4 h | Yes for orbs |
-| 5 | Rounded-rect SDF shader for UI | ~1–2 h | No — 9-slice sprites work as a stand-in |
-| 6 | Backdrop grid shader | ~2 h | No — `LineRenderer`s work as a stand-in |
-| 7 | Paint ellipse + highlight SDF shader (§2.5) | ~1 h | Yes for paint — replaces every paint texture |
-| 8 | Material Symbols Outlined → TMP SDF asset (§3.3) | ~15 min | Only once you add pause / settings / audio controls |
-| 9 | App icon | ~1 h | Only for store submission |
+| 1 | Monoton + Chakra Petch → TMP SDF assets (§1.1–1.2) | ~30 min | **Yes.** Nothing renders type without them, and Monoton is the arcade identity |
+| 2 | URP 2D renderer + bloom volume, Linear colour space | ~30 min | **Yes.** The look does not exist without bloom |
+| 3 | **Audio: 13 SFX + 2 music loops (§3.4)** | **days, or a library licence** | **Yes.** Largest single procurement in the project. Start it first — it has the longest lead time and everything else is same-day work |
+| 4 | Orb SDF ring shader — ring, fill and health arc in one (§2.1) | ~2–4 h | Yes for orbs |
+| 5 | Paint ellipse + highlight SDF shader (§2.5) | ~1 h | Yes for paint. Replaces every paint texture |
+| 6 | Rounded-rect + circle SDF shaders for UI (§2.7, §3.1) | ~1–2 h | Yes for all eight panels. 9-slice sprites work as a stand-in |
+| 7 | Material Symbols Outlined → TMP SDF asset (§3.3) | ~15 min | **Yes.** Pause, settings and audio toggles need icons |
+| 8 | Haptics via `VibrationEffect` (§3.5) | ~40 lines | **Yes** on mobile. No asset, no dependency |
+| 9 | Six generated textures (§4), ideally via an editor script | ~1–2 h | Partially — placeholders work meanwhile |
+| 10 | Backdrop grid shader (§2.3) | ~2 h | No — `LineRenderer`s work as a stand-in |
+| 11 | **Play Store graphics: adaptive icon, 512² icon, 1024×500 feature graphic, ≥2 screenshots (§3.6)** | ~1 day | **Yes at submission.** Google will not accept the upload without them |
 
 **No PNG lettering is required anywhere.** Both banners, the logo and the game-over
-headline are live TextMeshPro text in Monoton — see §1.2 for why a sprite would
+headline are live TextMeshPro text in Monoton — §1.2 explains why a sprite would
 actively be worse.
 
-**Total genuinely external procurement: two free fonts for a 1:1 duplicate, three
-free fonts if you add the missing pause and settings controls. No paid plugins, no
-commissioned art.** Everything else is shader and tooling work rather than art
-production — the direct consequence of the original being drawn in code rather than
-assembled from images.
+### What actually has to be bought or commissioned
 
-The one thing this document cannot decide for you is §3.2: the prototype has no pause,
-no audio and no settings. Those are scope, not assets, and they are the only reason
-the project would ever need an icon.
+| | |
+|---|---|
+| **Fonts** | Three, all free: Monoton, Chakra Petch, Material Symbols Outlined |
+| **Audio** | 13 SFX + 2 music loops. Royalty-free library, not a commission |
+| **Artwork** | Play Store graphics only (§3.6) — the icon and feature graphic |
+| **Paid plugins** | **None.** Not for paint, not for fluid, not for haptics |
+
+Everything else is shader and tooling work rather than art production — the direct
+consequence of the original being drawn in code rather than assembled from images.
+
+**The two things most likely to bite you late:** audio has the longest lead time of
+anything here and is easy to leave until the end, and the Play Store graphics (§3.6)
+get discovered on submission day. Both are worth starting before the code is finished.
