@@ -43,21 +43,89 @@ text with a glow on it. That is why the title looks like a sign rather than a sc
 logo, and no substitution keeps it (§1.2). Chakra Petch is the angular technical
 counterpart carrying the numerals.
 
-**Unity setup required for both:**
+**Chakra Petch is a Thai + Latin family** (Cadson Demak). Opening the `.ttf` shows
+Thai glyphs, which is expected and harmless — its Latin coverage is complete, and the
+character-set setting below excludes the Thai entirely. Measured from the shipping
+font files:
+
+| | Chakra Petch | Monoton |
+|---|---|---|
+| Glyphs mapped | 725 | 371 |
+| Thai glyphs | **87** — subset them away | 0 |
+| Latin basic / Latin-1 / ext-A | 95 / 95 / 127 | 95 / 94 / 119 |
+| `×` U+00D7 and `·` U+00B7 | both present | both present |
+| Units per em | 1000 | 2048 |
+| OpenType features | `aalt ccmp frac kern liga locl mark mkmk ordn subs sups` | `kern` |
+
+**Font Asset Creator settings**
+
+| Setting | Monoton | Chakra Petch (Regular **and** Bold) |
+|---|---|---|
+| Sampling Point Size | Auto Sizing | Auto Sizing |
+| Padding | 9 | 9 |
+| Packing Method | Optimum | Optimum |
+| Atlas Resolution | 1024 × 1024 (512² also fits) | 1024 × 1024 |
+| **Character Set** | **Custom Characters:** `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789` + space | **Extended ASCII** |
+| Render Mode | **SDFAA** | **SDFAA** |
+| Get Kerning Pairs | On | On |
+| Atlas Population Mode | Static (set after generating) | Static |
+
+**Extended ASCII is the setting that matters for Chakra Petch.** It covers ASCII plus
+Latin-1, which includes both `×` and `·`, and stops well short of U+0E00 — so none of
+the 87 Thai glyphs enter the atlas. Never generate this font with Unicode Range over
+the whole face.
+
+Monoton needs only letters, digits and space: it renders the logo, `Wave n`, `Clear`,
+`CRUSHED` and `WAVE n CLEARED`, and nothing else in the game uses it.
+
+Two weights of Chakra Petch are enough. The browser build uses 400, 600 and 700, but
+600 appears in exactly two places (upgrade prices, damage floaters) — map it to 700
+and nobody will see the difference.
+
+After generating, check the reported Sampling Point Size. Below ~40 the atlas is
+overcrowded: raise it to 2048² or drop Chakra Petch to plain ASCII.
+
+**Numerals are not tabular, and there is no font feature that makes them so.**
+Measured digit advances (units per 1000 em):
+
+| Font | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Chakra Petch Regular | 628 | **358** | 550 | 579 | 555 | 582 | 598 | 498 | 614 | 603 |
+| Chakra Petch Bold | 652 | **382** | 574 | 603 | 579 | 606 | 622 | 522 | 638 | 627 |
+
+A `1` is roughly 40% narrower than a `0`, so a counter visibly shifts as its digits
+change. The font exposes **no `tnum` feature**, so this cannot be fixed in the Font
+Features panel — an earlier draft of this document said it could, and that was wrong.
+
+Fix it in TextMeshPro instead, with the monospacing tag on counters that change while
+being read:
+
+```
+<mspace=0.66em>1234</mspace>
+```
+
+`0.66em` clears the widest digit in Bold (0.652em); use it for both weights. Apply it
+to the scrap counter and the wave number. It is **not** needed for orb HP numbers —
+those are centred on a moving orb, where the shift is invisible — nor for prices,
+which only change on purchase.
+
+Monoton's digits are non-tabular too, by a wider margin, but it only ever renders
+briefly-shown centred banners, so it needs no treatment.
+
+**Unity import steps**
 
 | Step | Detail |
 |---|---|
 | Import | Drop the `.ttf` into `Assets/NeonCannon/Fonts/` |
 | Convert | Window → TextMeshPro → Font Asset Creator |
-| Atlas | 1024 × 1024, **SDF (Signed Distance Field)** render mode |
-| Char set | ASCII + `×` (U+00D7, used by the tuner readouts) + `·` (U+00B7, used in labels) |
-| Padding | 9 (needed headroom for the glow/dilate on the material) |
+| Material | HDR face colour, intensity ~2.2. No Outline, no Underlay — bloom does the glow |
 | Fallback | Assign a system font fallback so a missing glyph never renders as a box |
 
-Chakra Petch also needs **tabular figures** for the HUD counters, or numbers will
-jitter as they change. If the SDF asset does not expose the `tnum` feature, the
-practical fix is a fixed-width TMP text container per digit group, or enabling the
-font feature in the TMP font asset's Font Features panel.
+**If you would rather not deal with `<mspace>` at all**, the only Google font I checked
+that is genuinely tabular out of the box is **Titillium Web** (all ten digits at 560,
+Latin-only, 396 glyphs). It is a plainer, more corporate face and loses the angular
+technical character Chakra Petch gives the HUD, which is why it is not the pick — but
+it is a valid swap and needs no per-field tags.
 
 ### 1.2 The arcade banner lettering — this is Monoton, and no PNGs are needed
 
