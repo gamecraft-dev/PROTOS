@@ -12,6 +12,11 @@ differ from the JavaScript, the divergence is called out explicitly under
 **Source of truth:** `neon-cannon/index.html` (this repository). If the two ever
 disagree, the HTML is correct for gameplay and this document is the bug.
 
+**Scope:** the prototype is the reference for **gameplay and art style only**. The
+Unity build ships on Google Play as a complete product, so audio, haptics, pause,
+restart, quit and settings are all required — see §27 (N8) and §3 of
+`UNITY_ART_ASSETS.md`.
+
 ---
 
 ## Table of contents
@@ -219,12 +224,19 @@ timing the player is tuning, and why the game feels identical on every device.
 ```
 
 ```csharp
-public enum GameState { Boot, Menu, WaveIntro, Playing, WaveCleared, GameOver }
+public enum GameState { Boot, Menu, WaveIntro, Playing, Paused, WaveCleared, GameOver }
 ```
 
 **Simulation ticks only in `Playing`.** In every other state the orb/bullet/cannon
 integrator is skipped; cosmetic systems (particles, camera shake, UI animation) keep
 running on unscaled time.
+
+**`Paused`** is entered from the pause button in the HUD and returns to `Playing` on
+Resume. It is a shipped-build requirement, absent from the browser prototype — the
+browser auto-pauses when the tab hides, but the player can never pause deliberately.
+The panel offers Resume, Restart, Settings and Quit; Restart and Quit both discard the
+run and so go through a confirmation. Audio ducks rather than stops. See §3.2 of
+`UNITY_ART_ASSETS.md` for the panel inventory.
 
 > **Do not use `Time.timeScale = 0` to pause.** Panel tweens, the banner animation and
 > particle fade-outs all read time. A state flag is unambiguous; `timeScale` forces
@@ -1514,10 +1526,18 @@ Assets/
         │   ├── WaveBanner.cs
         │   ├── StartPanel.cs
         │   ├── LevelClearedPanel.cs    ← NEW (§15)
-        │   └── GameOverPanel.cs
+        │   ├── GameOverPanel.cs
+        │   ├── PauseButton.cs          shipped build only
+        │   ├── PausePanel.cs           resume / restart / settings / quit
+        │   ├── SettingsPanel.cs        toggles + the tuner drawer
+        │   └── ConfirmDialog.cs        gates restart and quit mid-run
         │
         ├── Services/
         │   ├── SaveService.cs          PlayerPrefs wrapper
+        │   ├── SettingsService.cs      music / sfx / haptics / reduced motion
+        │   ├── AudioService.cs         cue routing, mixer buses, voice limiting
+        │   ├── ShotVoice.cs            one-shot below ~12/s, looping layer above
+        │   ├── HapticsService.cs       Android VibrationEffect, not Handheld.Vibrate
         │   ├── TuningService.cs        live dials + change events
         │   ├── ObjectPool.cs           generic pool
         │   └── IRandom.cs              seedable RNG interface
@@ -1882,7 +1902,8 @@ should differ.
 | N5 | Per-wave counters (orbs, scrap, shots, hits, duration) added | Required to populate the new panel. |
 | N6 | `double` everywhere for HP/damage/scrap/score | JS numbers are doubles; C# `int`/`float` would overflow or lose precision (§21.1). |
 | N7 | Seedable `IRandom` instead of ambient RNG | Test reproducibility (§21.4). |
-| N8 | Audio | The HTML has **no audio at all**. Nothing to port. Any sound design is new work and out of scope for a 1:1 replica. |
+| N8 | Audio, haptics, pause, settings, quit | The HTML has **none of these**. They are not port gaps: the prototype is the reference for gameplay and art style only, and the Unity build ships on Google Play as a complete product, so all of them are required scope. Specced in §3.2–3.5 of `UNITY_ART_ASSETS.md`. |
+| N9 | `Paused` game state | Follows from N8. The browser only auto-pauses on tab hide. |
 
 ---
 
