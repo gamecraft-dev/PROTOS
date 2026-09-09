@@ -5,9 +5,10 @@ a 1:1 visual replica, and — just as importantly — what you do **not** need, 
 can be generated inside Unity with a shader, a mesh or a built-in effect.
 
 **The short version:** the HTML build contains **zero image files**. Every pixel is
-drawn procedurally on a canvas at runtime. So almost none of it needs an artist. The
-genuine external dependency is **two typefaces**. Everything else is either a
-generated texture you can author in ten minutes, or a shader.
+drawn procedurally on a canvas at runtime, so almost none of it needs an artist. There
+are exactly two things to commission or source: **two typefaces** (§1.1–1.2) and a
+small set of **paint splat masks** (§2.5). Everything else is either a generated
+texture you can author in ten minutes, or a shader.
 
 ---
 
@@ -107,10 +108,11 @@ silhouette in cyan on the `#07030f` ground.
 
 ---
 
-## 2. Generate in Unity — no artist needed
+## 2. Generate in Unity — almost none of this needs an artist
 
 Every item below exists in the HTML build only as canvas drawing code. Each maps onto
-a Unity technique. **None of these require a sourced asset.**
+a Unity technique, and all of them are shader or tooling work rather than art
+production — **with one exception: the paint splat masks in §2.5.**
 
 ### 2.1 Orbs
 
@@ -159,7 +161,39 @@ match to the source than sprites would be, and they stay crisp at any resolution
 The particle system needs a particle texture — see §3.1, or use Unity's built-in
 `Default-Particle`.
 
-### 2.5 Post-processing and screen effects
+### 2.5 Paint splatter — the one place PNGs genuinely earn their keep
+
+Everything else in this game is better procedural. Paint is the exception: an
+**irregular hand-authored splat silhouette** is the difference between "paint" and
+"someone stamped ellipses on the floor", and irregularity is exactly what a shader is
+bad at faking cheaply.
+
+| # | Asset | Size | Format | Notes |
+|---|---|---|---|---|
+| P1 | **Splat alpha masks ×6–8** | 512² | Alpha8, no mip bias | The core ask. Each a different blob: main pool + thrown satellites + a couple of thin tendrils. White on transparent, tinted at runtime — do **not** bake colour in |
+| P2 | Droplet sprite | 64² | Alpha8 | A soft teardrop. One is enough; the particle system stretches it along velocity |
+| P3 | Drip / run mask | 64 × 256 | Alpha8 | A vertical run with a fat head, for paint sliding off the cannon |
+| P4 | Splat normal map | 512² | Normal map | Optional, Tier 2+ only. Gives the pool a wet raised edge that catches the neon |
+
+Six to eight masks is the right count — fewer and repetition is visible within one
+wave, more and you are paying memory for variety nobody registers. Randomise
+rotation, scale and mirroring per stamp and eight will read as endless.
+
+**These are the only PNGs in the project that need an artist's judgement**, and they
+are quick: someone can flick real ink at paper, photograph it, threshold to alpha, and
+be done in an hour. Procedural alternatives exist (worley noise thresholded into a
+blob) but they tend to read as organic *cells* rather than as thrown liquid.
+
+**Colour comes from code, never from the texture.** Every splat is tinted at runtime
+from the orb's hue at 96% saturation / 60% lightness, so the same eight masks serve
+all five orb colours.
+
+**No fluid-simulation assets are needed** for the recommended implementation
+(§17.9.4 of the port spec: Tier 1 plus screen-space metaballs). If you later adopt
+Obi Fluid or Zibra Liquids those are paid Asset Store packages, not art — budget them
+as licences, not as commissions.
+
+### 2.6 Post-processing and screen effects
 
 | Element | Technique |
 |---|---|
@@ -169,7 +203,7 @@ The particle system needs a particle texture — see §3.1, or use Unity's built
 | Camera shake | Transform offset on the camera; no asset |
 | Chromatic aberration | URP override, optional, ~0.05 — the HTML has none, so leave it off for strict parity |
 
-### 2.6 UI chrome
+### 2.7 UI chrome
 
 | Element | Technique |
 |---|---|
@@ -252,12 +286,14 @@ tier 3 = 325°, tier 4 = 272°. Ring lightness is 64%, rising to 94% on the hit 
 | 4 | Orb SDF ring shader (ring + fill + health arc in one) | ~2–4 h | Yes for orbs |
 | 5 | Rounded-rect SDF shader for UI | ~1–2 h | No — 9-slice sprites work as a stand-in |
 | 6 | Backdrop grid shader | ~2 h | No — `LineRenderer`s work as a stand-in |
-| 7 | App icon | ~1 h | Only for store submission |
+| 7 | Paint splat alpha masks ×6–8 (§2.5) | ~1 h | No — ellipse stamps work as a stand-in, they just look stamped |
+| 8 | App icon | ~1 h | Only for store submission |
 
 **No PNG lettering is required anywhere.** Both banners, the logo and the game-over
 headline are live TextMeshPro text in Monoton — see §1.2 for why a sprite would
 actively be worse.
 
-**Total genuinely external procurement: two fonts, both free.** Everything else is
-shader and tooling work rather than art production — which is the direct consequence
-of the original being drawn in code rather than assembled from images.
+**Total genuinely external procurement: two free fonts, and six to eight splat
+masks.** Everything else is shader and tooling work rather than art production — the
+direct consequence of the original being drawn in code rather than assembled from
+images.

@@ -273,11 +273,16 @@ Tier 0 is the smallest. Tier 4 is the largest.
 
 | Tier | Radius (world) | Apex (fraction of 7.80) | Apex (world) | Drift (u/s) | Wave-1 HP | Hue |
 |---|---|---|---|---|---|---|
-| 0 | 0.13 | 0.30 | 2.340 | 1.30 | 3 | 190° cyan |
-| 1 | 0.21 | 0.38 | 2.964 | 1.18 | 7 | 100° lime |
-| 2 | 0.31 | 0.45 | 3.510 | 1.06 | 16 | 45° amber |
-| 3 | 0.43 | 0.52 | 4.056 | 0.95 | 38 | 325° magenta |
+| 0 | 0.17 | 0.30 | 2.340 | 1.30 | 3 | 190° cyan |
+| 1 | 0.24 | 0.38 | 2.964 | 1.18 | 7 | 100° lime |
+| 2 | 0.33 | 0.45 | 3.510 | 1.06 | 16 | 45° amber |
+| 3 | 0.44 | 0.52 | 4.056 | 0.95 | 38 | 325° magenta |
 | 4 | 0.57 | 0.58 | 4.524 | 0.85 | 90 | 272° violet |
+
+The smallest two sizes were raised (0.13 → 0.17, 0.21 → 0.24) so a tier-0 orb is a
+target rather than a speck, and so its HP number stays readable — orb text is sized at
+`radius × 0.8`. Radii affect hit area and dodging feel only; no economy value reads
+them, so the §7.5 curve is unchanged.
 
 Hue is HSL hue in degrees at 100% saturation. Orb stroke lightness is 64%, rising to
 94% on the hit flash.
@@ -817,6 +822,7 @@ void Kill(Orb orb) {
     SpawnScrapStreak(orb.Position, scrap);
 
     Vfx.Burst(orb.Position, orb.Hue, 8 + orb.Tier * 6, 2.40f + orb.Tier * 0.90f);
+    Paint.Splash(orb);                     // §17.9 — cosmetic only
     Shake.Add(0.16f + orb.Tier * 0.10f);
 
     if (orb.Tier > 0 && liveOrbs.Count < MAX_ORBS) {
@@ -1179,6 +1185,110 @@ unaffected.
 
 ---
 
+### 17.9 Paint splatter
+
+Orb death throws vibrant liquid paint that arcs out, lands on the ground and on the
+cannon, pools where it lands, and dries off over several seconds. It is **purely
+cosmetic — paint never damages the player, blocks a bullet, or touches any gameplay
+value.** It is also the most visually expensive system in the game, so it is specced
+with three implementation tiers.
+
+#### 17.9.1 Behaviour and constants
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `PAINT_SAT` / `PAINT_LIGHT` | 96% / 60% | HSL of every droplet — deliberately louder than the neon palette |
+| `PAINT_MAX_DROPS` | 300 | Airborne droplets at once |
+| `PAINT_MAX_ON_CANNON` | 20 | Splats stuck to the chassis; oldest evicted |
+| `PAINT_MAX_RUNS` | 10 | Drips sliding down off the cannon |
+| `PAINT_GRAVITY` | 16.0 u/s² | Slightly heavier than orb gravity — paint falls, it does not float |
+| `PAINT_GROUND_HALF_LIFE` | 5.0 s | Ground pools halve in opacity every 5 s |
+| `PAINT_CANNON_LIFE` | 7.0 s | A splat's full life on the chassis |
+| `PAINT_TINT_DECAY` | 0.28 /s | How fast the cannon's glow returns to cyan |
+
+**On orb death** (every death, splits included), emit `18 + tier × 12` droplets —
+so 18 for a tier‑0 and 66 for a tier‑4:
+
+```
+angle    = uniform(0, 2π)
+speed    = uniform(0.25, 1) × (3.30 + tier × 1.70) u/s
+position = orb.position + dir(angle) × orb.radius × 0.4
+velocity = dir(angle) × speed + (0, uniform(0.40, 2.00))   // biased UP so it arcs
+radius   = orb.radius × uniform(0.055, 0.22), ×1.7 for a random 25%
+hue      = orb.hue + uniform(-16, +16)
+```
+
+The upward bias is what makes it read as a burst rather than a spray, and the bimodal
+radius (a quarter of droplets 1.7× larger) is what stops it looking like confetti.
+
+**In flight:** integrate under `PAINT_GRAVITY` with `velocity.x *= 0.995` per step.
+Render each droplet stretched along its velocity by
+`clamp(1 + speed / 9.0, 1, 2.6)` — that single cue does most of the work of selling
+liquid. Add a small offset highlight blob at 78% lightness for wetness.
+
+**Landing on the cannon:** same closest-point-on-box test as §14 against the chassis
+box, with a generous `radius² × 2.2` threshold. Converts to a splat stored in
+**cannon-local x** so it moves with the machine, plus a 40% chance to spawn a drip.
+
+**Landing on the ground:** when `y - radius × 0.5 <= 0`, stamp a pool and despawn.
+
+**Drips** slide down at `vy += 0.34 u/s²` from where they stuck, and stamp a small
+ground pool when they pass the ground line.
+
+**Cannon tint:** each cannon hit sets `tint.hue` to the droplet's hue and does
+`tint.a = min(1, tint.a + 0.45)`. While `tint.a > 0.05` the cannon's *glow colour*
+becomes `hsl(tint.hue, 95%, 62%)` instead of cyan — the coat reads at a glance before
+you pick out individual splats.
+
+> **Legibility rule, do not skip.** After drawing paint on the cannon, **re-stroke the
+> cannon's silhouette on top at ~90% alpha.** Without it a heavy splash completely
+> buries the machine and the player loses track of the thing they are steering. This
+> was a real defect in the first pass, not a hypothetical.
+
+#### 17.9.2 Tier 1 — parity port (ship this first)
+
+Maps 1:1 onto the HTML and runs anywhere.
+
+| Element | Unity |
+|---|---|
+| Airborne droplets | One `ParticleSystem`, **Stretched Billboard** render mode (gives the velocity stretch for free), custom `startColor` per burst via `EmitParams` |
+| Ground pools | A **`CustomRenderTexture`** or a plain `RenderTexture` the size of the playfield, drawn as a quad over the ground. Splats are blitted in once on landing; the whole target is faded by one full-screen `Blit` per frame with a subtractive alpha |
+| Cannon splats | A list in local space rendered as quads, **stencil-masked** to the cannon silhouette (write the silhouette to stencil when drawing the cannon, test against it when drawing paint) |
+| Cannon tint | Set the emission colour on the cannon's material via `MaterialPropertyBlock` |
+
+The `RenderTexture`-plus-fade is the direct analogue of the HTML's offscreen paint
+canvas, and it is the reason both stay cheap: **stamp once, fade the whole buffer with
+one operation, never track individual pools.**
+
+#### 17.9.3 Tier 2 — decals and a wet shader
+
+| Element | Unity |
+|---|---|
+| Ground pools | **URP Decal Projector** per splat, with a splat alpha mask (see the art doc). Pool the projectors; cap at ~60 and recycle oldest-first |
+| Wet look | Decal material with a normal map and high smoothness so the pool catches the ground's neon; fade smoothness as it "dries" |
+| Cannon paint | Second UV set on the cannon mesh + a paint mask `RenderTexture` the cannon shader samples, so paint is genuinely *on the surface* rather than projected |
+| Droplets | **VFX Graph** instead of the built-in system — GPU-simulated, handles thousands, and supports collision against a depth buffer for free landing detection |
+
+#### 17.9.4 Tier 3 — actual fluid
+
+You asked about real fluid physics, so: it is achievable, and here is the honest
+trade.
+
+| Approach | What it gives | Cost |
+|---|---|---|
+| **Screen-space metaballs** | Droplets rendered to an offscreen buffer as radial falloff, then thresholded (`smoothstep` on accumulated alpha). Nearby droplets **merge and separate** like real liquid. One extra render target and a blit | Cheap — this is the best value on the list and is what most 2D "goo" games actually use |
+| **2D SPH** (smoothed-particle hydrodynamics) | True particle fluid — pressure, viscosity, surface tension. Assets: **Obi Fluid** (2D/3D, CPU-jobs, mature), **Zibra Liquids** (GPU, heavier) | Real cost. Budget 500–2,000 particles on mobile, and paint would need to be a *separate, smaller* system from the cosmetic splatter |
+| **Compute-shader grid fluid** | Full Eulerian sim, best-looking | Rules out low-end mobile and a chunk of WebGL |
+
+**Recommendation:** ship Tier 1, then add **screen-space metaballs** from Tier 3. That
+combination gets ~90% of the perceived "liquid" quality for a fraction of an SPH
+budget, because what sells paint is *merging blobs and pooling*, not physically
+correct pressure. Reach for Obi only if paint becomes a gameplay mechanic rather than
+juice.
+
+Whatever tier you pick, keep the constraint: **paint must never cost gameplay clarity.**
+Orbs, their numbers, bullets and the cannon silhouette all draw over it.
+
 ## 18. UI layout
 
 ### 18.1 Canvas setup
@@ -1391,6 +1501,8 @@ Assets/
         │   ├── ScrapStreakView.cs      flight to the HUD counter
         │   ├── DamageFloaterView.cs
         │   ├── CameraShake.cs
+        │   ├── PaintSystem.cs          droplets, pools, cannon coat (§17.9)
+        │   ├── PaintSurface.cs         the stamp-and-fade render target
         │   ├── DangerVignette.cs
         │   └── NumberFormat.cs         Fmt()
         │
@@ -1782,7 +1894,7 @@ GRAVITY 14.50       BULLET_SPEED 15.50   BULLET_R 0.05
 MAX_ORBS 80         MAX_PARTICLES 420
 SPAWN_GAP 1.15      FIRST_SPAWN_DELAY 1.00   DT_CLAMP 0.034
 
-TIER_R      0.13  0.21  0.31  0.43  0.57
+TIER_R      0.17  0.24  0.33  0.44  0.57
 TIER_APEX   0.30  0.38  0.45  0.52  0.58     (× FIELD_HEIGHT)
 TIER_DRIFT  1.30  1.18  1.06  0.95  0.85
 TIER_HP        3     7    16    38    90
