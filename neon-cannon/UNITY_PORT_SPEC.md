@@ -300,7 +300,11 @@ Computed as `v = √(2 · 14.50 · 0.65 · apexFrac · 7.80)` and `T = 2v / (14.
 |---|---|---|
 | `HP_GROWTH` | 1.26 | Orb HP multiplier per wave |
 | `REWARD_RATE` | 0.40 | Scrap per point of orb max HP |
-| `COST_K` | 33 | Upgrade price coefficient |
+| `PRICE_DAMAGE` | 560 | × current damage per bullet |
+| `PRICE_RATE` | 5 | × current shots per second |
+| `PRICE_BARREL` | 120 | × `PRICE_BARREL_STEP^(barrels-1)` |
+| `PRICE_BARREL_STEP` | 3 | |
+| `PRICE_SHIELD` | 70 | × `HP_GROWTH^(wave-1)` |
 | `MIN_PRICE` | 15 | Price floor |
 | `START_SCRAP` | 70 | |
 | `START_SHIELDS` | 1 | One free hit to learn on |
@@ -557,22 +561,28 @@ spends greedily on the best DPS-per-scrap upgrade. Use this to validate the port
 `bigHP` and `waveDamage` are deterministic given the same RNG sequence; clear time
 depends on purchase order.
 
-| Wave | Top tier | Orbs | Largest orb HP | Total wave damage | Clear time (s) |
-|---|---|---|---|---|---|
-| 1 | 1 | 1 | 7 | 14 | 4 |
-| 3 | 2 | 1 | 25 | 75 | 9 |
-| 6 | 3 | 1 | 121 | 484 | 27 |
-| 10 | 3 | 8 | 304 | 3,384 | 39 |
-| 11 | 4 | 1 | 908 | 4,540 | 35 |
-| 15 | 4 | 7 | 2,288 | 31,981 | 49 |
-| 20 | 4 | 10 | 7,266 | 163,326 | 35 |
-| **22** | 4 | 10 | **11,535** | 259,282 | 31 |
-| 26 | 4 | 10 | 29,074 | 653,524 | 24 |
-| 30 | 4 | 10 | 73,280 | 1,647,183 | 24 |
-| 34 | 4 | 10 | 184,702 | 4,151,691 | 22 |
+| Wave | Top tier | Orbs | Largest orb HP | Total wave damage | Clear time (s) | Damage / rate / barrels |
+|---|---|---|---|---|---|---|
+| 1 | 1 | 1 | 7 | 14 | 4 | 1 / 3.4 / 1 |
+| 3 | 2 | 1 | 25 | 75 | 13 | 1 / 6.0 / 1 |
+| 6 | 3 | 1 | 121 | 484 | 25 | 1 / 9.8 / 2 |
+| 10 | 3 | 8 | 304 | 3,384 | 26 | 2 / 22.0 / 3 |
+| 11 | 4 | 1 | 908 | 4,540 | 17 | 3 / 22.0 / 4 |
+| 15 | 4 | 7 | 2,288 | 31,981 | 36 | 8 / 22.0 / 5 |
+| 20 | 4 | 10 | 7,266 | 163,326 | 31 | 48 / 22.0 / 5 |
+| **22** | 4 | 10 | **11,535** | 259,282 | 27 | 87 / 22.0 / 5 |
+| 26 | 4 | 10 | 29,074 | 653,524 | 24 | 246 / 22.0 / 5 |
+| 30 | 4 | 10 | 73,280 | 1,647,183 | 22 | 695 / 22.0 / 5 |
+| 34 | 4 | 10 | 184,702 | 4,151,691 | 22 | 1,694 / 22.0 / 5 |
 
-Orb HP passes 10,000 at wave 22. Clear time settles at 22–30 s because upgrade prices
-scale with DPS (§13.2) — the loop is self-correcting.
+Orb HP passes 10,000 at wave 22. Across all 34 waves clear time spans 4–39 s and
+averages 25 s, settling at 22–27 s once damage is the only live track. The ridge at
+waves 13–18 (up to 39 s) is where rate and barrels have both capped and damage has not
+yet compounded — an intended difficulty crest, not a stall.
+
+Clear time is only reproducible if the simulated player buys the way the reference
+player does (best relative-DPS-gain per scrap); `bigHP` and `waveDamage` are
+deterministic given the same RNG sequence and are the columns to assert against.
 
 ---
 
@@ -854,33 +864,73 @@ public sealed class UpgradeState {
 }
 ```
 
-### 13.2 The pricing rule
+### 13.2 The pricing rule — tracks are independent
 
-**Price scales with the player's current DPS, not with upgrade level.** This is the
-mechanism that makes wave clear time self-correcting: income is proportional to damage
-dealt, so if the player falls behind, upgrades become relatively cheaper and they
-catch up; if they run ahead, the next upgrade costs proportionally more.
+**Each track is priced off its own level and nothing else. Buying one upgrade never
+changes the price of another.** This is a hard requirement, and the reason the obvious
+alternative is wrong is worth stating, because it is easy to "simplify" back into the
+bug:
+
+> Pricing off total DPS (`price = K × DPS × relativeGain`) looks elegant and makes
+> wave clear time self-correcting. But DPS is `damage × rate × barrels`, a **product**
+> — so buying a barrel doubles DPS and therefore doubles the displayed price of damage
+> and fire rate at the same time. The player is punished for progressing along one
+> track by having every other track get more expensive. Do not do this.
 
 ```csharp
-double Dps() => DMG[DamageLevel] * RateOf(RateLevel) * Barrels;
-
-double Price(double relativeGain) =>
-    Math.Max(MIN_PRICE, RoundHalfUp(COST_K * Dps() * relativeGain));
+double PriceDamage()  => Math.Max(MIN_PRICE, RoundHalfUp(PRICE_DAMAGE * DMG[DamageLevel]));
+double PriceRate()    => Math.Max(MIN_PRICE, RoundHalfUp(PRICE_RATE   * RateOf(RateLevel)));
+double PriceBarrels() => RoundHalfUp(PRICE_BARREL * Math.Pow(PRICE_BARREL_STEP, Barrels - 1));
+double PriceShield()  => RoundHalfUp(PRICE_SHIELD * Math.Pow(HP_GROWTH, Math.Max(0, Wave - 1)));
 ```
 
-`relativeGain` is the fractional DPS increase the purchase grants. Cost to double DPS
-is therefore always ≈ `COST_K × DPS`, whatever the route.
+| Upgrade | Price | Reads | Maxed when |
+|---|---|---|---|
+| Damage | `560 × DMG[L]` | damage level | never |
+| Fire rate | `5 × RateOf(L)` | rate level | `RateOf(L) >= 22` (level 24) |
+| Barrels | `120 × 3^(barrels-1)` | barrel count | `Barrels >= 5` |
+| Shield | `70 × 1.26^(wave-1)` | **wave number** | `Shields >= 3` |
 
-| Upgrade | Price | Maxed when |
+Within damage and rate, price is proportional to that track's *current value*, which
+holds price-per-unit-of-relative-gain flat as the track climbs — a damage level always
+costs the same multiple of the damage it adds.
+
+**Shield is the one exception**, and deliberately so: it buys survival, not damage, so
+there is no track value to price against. It scales with the wave's threat level
+instead. A wave advancing is not a purchase, so this still satisfies the rule — no
+player action ever raises another upgrade's price. Note this also means shields do not
+get more expensive as you stack them; buying all three at once is a legitimate early
+defensive play that trades damage tempo for safety.
+
+A maxed upgrade shows `MAX` and its button is disabled.
+
+### 13.2.1 What this costs, and why it is still balanced
+
+Independent pricing gives up the old model's self-correction, so the curve has to hold
+up on its own. Two structural facts constrain it, both confirmed by simulation:
+
+1. **The damage ladder's shape is forced.** Rate and barrels cap (at 22/s and 5), so
+   past roughly wave 15 they contribute a constant ×110 and damage is the only live
+   track. There, cumulative income scales as `1.26^n` and so must DPS, which means
+   cumulative damage spend must be **proportional to damage value** — i.e. price ∝
+   `DMG[L]`, exactly as above. Making it steeper (∝ `DMG[L]^γ`, γ > 1) plateaus the
+   player's damage and clear time diverges; making it shallower collapses clear time
+   to seconds. There is no freedom here, only in the constant.
+2. **The constant is set by the tail.** `PRICE_DAMAGE = 560` places the settled clear
+   time at 22–27 s. It scales linearly: doubling it roughly doubles late-game clear
+   time.
+
+The consequence is an intended shift in how a run reads:
+
+| Waves | What the player is buying | Why |
 |---|---|---|
-| Damage | `Price(DMG[L+1] / DMG[L] - 1)` | never |
-| Fire rate | `Price(RateOf(L+1) / RateOf(L) - 1)` | `RateOf(L) >= 22` (level 24) |
-| Barrels | `round(Price(1 / Barrels) × 1.2)` | `Barrels >= 5` |
-| Shield | `round(50 + Dps() × 6)` | `Shields >= 3` |
+| 1–10 | Fire rate, then barrels | Cheap (rate starts at 17 scrap) and immediately felt |
+| 11–14 | Last barrels, damage begins | Rate has capped |
+| 15+ | Damage only | Everything else is maxed; damage carries the rest of the run |
 
-Barrels carry a 1.2× premium because an extra barrel is a flat DPS multiplier *and*
-widens coverage. Shields are priced off DPS rather than relative gain because they buy
-survival, not damage. A maxed upgrade shows `MAX` and its button is disabled.
+Damage sitting at 1 for the first several waves is expected, not a bug — the first
+damage level costs 560 against a wave-1 income of ~44, so it is a saving goal while
+rate upgrades supply the early progression.
 
 ### 13.3 Fire rate
 
@@ -1310,7 +1360,7 @@ Assets/
         ├── Config/
         │   ├── OrbTierTable.cs         SO: radius/apex/drift/hp/hue per tier
         │   ├── WaveBandTable.cs        SO: band table + load curve
-        │   ├── EconomyConfig.cs        SO: costK, reward, growth, caps
+        │   ├── EconomyConfig.cs        SO: per-track price constants, reward, caps
         │   ├── PhysicsConfig.cs        SO: gravity, speeds, limits
         │   ├── TuningDefaults.cs       SO: fall/bounce/drift defaults + ranges
         │   └── Palette.cs              SO: HDR colours by role
@@ -1500,12 +1550,13 @@ public struct OrbSpawn { public int Tier; public double Hp; public int Side; }
 ```csharp
 public sealed class UpgradeService {
     public UpgradeState State { get; }
-    public double Dps();                       // §13.2
+    public double Dps();                       // readout only — MUST NOT feed any price
 
+    // Each reads one track's level (PriceShield reads the wave). See §13.2.
     public double? PriceDamage();              // null == maxed
     public double? PriceRate();
     public double? PriceBarrels();
-    public double? PriceShield();
+    public double? PriceShield(int wave);
 
     public bool TryBuy(UpgradeKind kind);      // checks price + wallet, raises Purchased
     public event Action<UpgradeKind> Purchased;
@@ -1668,10 +1719,16 @@ Edit-mode tests, no scene required, because Simulation has no Presentation depen
 |---|---|
 | `DamageLadder` | `DMG[1..30]` matches the §5.4 table exactly |
 | `RateCapsAtLevel24` | `RateOf(24) == 22`, `RateOf(23) < 22` |
-| `PriceAtStart` | Damage price at the start state == 112 (`33 × 3.4 × 1.0`) |
-| `DoublingCost` | Cost to double DPS ≈ `COST_K × DPS` ±15% along three routes |
+| `PricesAtStart` | Damage 560, rate 17, barrels 120, shield 70 |
+| **`TrackPricesAreIndependent`** | **From any upgrade state, buying one track leaves all three other prices bit-identical. Assert over the cross product of damage 1..40 × rate 1..24 × barrels 1..5.** |
+| `ShieldTracksWaveOnly` | Shield price changes with wave and is unchanged by any purchase |
+| `DamagePriceProportional` | `PriceDamage(L) / DMG[L]` is constant (== 560) for L = 1..60 |
 | `MaxedReturnsNull` | Rate at L24, barrels at 5, shields at 3 all return null |
 | `RoundHalfUp` | `RoundHalfUp(2.5) == 3` — guards the §21.2 trap |
+
+`TrackPricesAreIndependent` is the regression test for the bug this pricing model
+exists to fix. It should fail loudly if anyone reintroduces a `Dps()` term into a
+price.
 
 ### 26.3 `WaveBuilderTests`
 
@@ -1731,9 +1788,14 @@ TIER_DRIFT  1.30  1.18  1.06  0.95  0.85
 TIER_HP        3     7    16    38    90
 TIER_HUE     190   100    45   325   272
 
-HP_GROWTH 1.26   REWARD 0.40   COST_K 33   MIN_PRICE 15
+HP_GROWTH 1.26   REWARD 0.40   MIN_PRICE 15
 START_SCRAP 70   START_SHIELDS 1   WAVE_BONUS 30 + 8n
 RATE 3.4 × 1.085^(L-1) cap 22   DMG_GROWTH 1.16   MULTI_MAX 5   SHIELD_MAX 3
+
+PRICES — each reads ONE track's own level; never total DPS
+  damage  560 × DMG[L]            rate    5 × RateOf(L)
+  barrels 120 × 3^(barrels-1)     shield  70 × 1.26^(wave-1)
+  at start: 560 / 17 / 120 / 70
 
 BANDS  (wave 1 → tier 1) (3 → 2) (6 → 3) (11 → 4)
 LOAD   min(4.5, 1 + 0.45 × (n - bandFirstWave))

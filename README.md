@@ -50,10 +50,14 @@ timing you are tuning.
 The numbers are not eyeballed; they come out of a simulation of ~34 waves
 (`sim.js` in the design notes below) built around two rules:
 
-- **Upgrade price scales with current DPS**, not with upgrade level:
-  `price = 33 × DPS × relative gain`. This makes clear time self-correcting — it
-  converges on `K / (reward × h/(h−1))` ≈ 20–30s a wave no matter how far the run
-  goes, instead of the player either stalling out or trivialising late waves.
+- **Every upgrade track is priced off its own level alone**, so buying one never
+  moves another's price: damage `560 × current damage`, rate `5 × current
+  shots/sec`, barrels `120 × 3^(n−1)`, shields `70 × 1.26^(wave−1)`. Pricing off
+  total DPS instead is tempting — it makes clear time self-correcting — but DPS is
+  `damage × rate × barrels`, so a barrel purchase doubles it and every other price
+  with it. The damage ladder's shape is then forced: since rate and barrels cap,
+  late waves are damage-only, and cumulative spend has to stay proportional to
+  damage value or clear time either diverges or collapses to seconds.
 - **Wave size is a budget measured in total damage**, and that budget is a
   multiple of one top-tier orb's full cost (the orb plus everything it splits
   into). Sizing the budget this way guarantees the biggest orbs are always

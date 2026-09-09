@@ -463,7 +463,6 @@ const CFG = {
   tierHue:  [190, 100, 45, 325, 272],   // cyan / lime / amber / magenta / violet
   hpGrowth: 1.26,         // per wave
   reward: 0.40,           // scrap per point of ball HP
-  costK: 33,              // upgrade price = costK x current DPS x relative gain
   bulletSpeed: 1550,
   bulletR: 5,
   maxBalls: 80,
@@ -518,12 +517,28 @@ const G = {
 let best = 0;
 try { best = parseInt(localStorage.getItem('neon-cannon-best') || '0', 10) || 0; } catch (e) {}
 
-const dps = () => DMG[G.up.dmg] * rateOf(G.up.rate) * G.up.multi;
-const priceOf = rel => Math.max(15, Math.round(CFG.costK * dps() * rel));
-const costDmg = () => priceOf(DMG[G.up.dmg + 1] / DMG[G.up.dmg] - 1);
-const costRate = () => (rateOf(G.up.rate) >= RATE_CAP ? null : priceOf(rateOf(G.up.rate + 1) / rateOf(G.up.rate) - 1));
-const costMulti = () => (G.up.multi >= MULTI_MAX ? null : Math.round(priceOf(1 / G.up.multi) * 1.2));
-const costShield = () => (G.up.shield >= SHIELD_MAX ? null : Math.round(50 + dps() * 6));
+/* Upgrade prices. Each track is priced off ITS OWN level and nothing else, so
+ * buying one upgrade never moves the price of another. (Pricing off total DPS
+ * would: DPS is damage x rate x barrels, so a barrel purchase doubles it and
+ * every other price with it.) Within a track, price is proportional to that
+ * track's current value, which keeps price-per-unit-of-gain flat as it climbs.
+ * Shield is the exception — it buys survival, not damage, so it scales with the
+ * wave's threat level instead. That still never moves on a purchase. */
+const PRICE = {
+  dmg:        560,   // x current damage per bullet
+  rate:         5,   // x current shots per second
+  barrel:     120,   // x barrelStep^(barrels - 1)
+  barrelStep:   3,
+  shield:      70,   // x hpGrowth^(wave - 1)
+  floor:       15,
+};
+const costDmg = () => Math.max(PRICE.floor, Math.round(PRICE.dmg * DMG[G.up.dmg]));
+const costRate = () => (rateOf(G.up.rate) >= RATE_CAP ? null
+  : Math.max(PRICE.floor, Math.round(PRICE.rate * rateOf(G.up.rate))));
+const costMulti = () => (G.up.multi >= MULTI_MAX ? null
+  : Math.round(PRICE.barrel * Math.pow(PRICE.barrelStep, G.up.multi - 1)));
+const costShield = () => (G.up.shield >= SHIELD_MAX ? null
+  : Math.round(PRICE.shield * Math.pow(CFG.hpGrowth, Math.max(0, G.wave - 1))));
 
 /* cannon geometry, all derived from the field scale */
 const geo = () => {
