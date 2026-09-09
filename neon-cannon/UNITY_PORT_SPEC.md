@@ -90,7 +90,7 @@ The port is complete when all of the following hold:
 
 | Item | Value | Note |
 |---|---|---|
-| Unity | 2022.3 LTS or 6000.0 LTS | Both verified idioms; 6 LTS preferred for new work |
+| Unity | **Unity 6 LTS** preferred, 2022.3 LTS fine | Both idioms are covered here. Unity 6 has the longer support window and a better 2D renderer, so prefer it for a new project |
 | Render pipeline | **URP** with the **2D Renderer** | Bloom is mandatory for the neon look |
 | Colour space | **Linear** | Gamma space makes additive bloom muddy |
 | Packages | `com.unity.render-pipelines.universal`, `com.unity.inputsystem`, `com.unity.textmeshpro`, `com.unity.test-framework` | |
@@ -99,6 +99,36 @@ The port is complete when all of the following hold:
 | Orientation | Portrait only | Landscape is out of scope, as in the HTML |
 | Target frame rate | 60 (`Application.targetFrameRate = 60`) | Also set `QualitySettings.vSyncCount = 0` on mobile |
 | Physics2D | **Disabled/unused** | See §6.1 |
+
+### 2.1 Creating the project
+
+**Template: the 2D template that says URP.** The exact label moves between Hub
+versions — "2D (URP)", "Universal 2D", "2D — URP" — but it is the one that pairs 2D
+with the Universal Render Pipeline. Not "2D (Built-In Render Pipeline)".
+
+The reason is bloom. Every neon element in this game is an HDR colour pushed past a
+bloom threshold; without bloom there is no glow and no look. URP ships it in the
+Volume system. Built-In needs the legacy Post Processing Stack v2 package bolted on,
+which is a worse version of the same thing and is not worth the detour.
+
+Set these immediately after the project opens — all of them are painful to change once
+there are assets in the project:
+
+| Setting | Where | Value |
+|---|---|---|
+| **Platform** | Build Settings | **Switch to Android now.** Doing it later forces a full reimport |
+| **Colour space** | Player Settings → Other Settings | **Linear.** Gamma makes additive bloom muddy |
+| **HDR** | The URP Asset → Quality | **On.** Mobile quality tiers often ship with it off, and this is the single most common reason "my bloom does nothing" |
+| **Post Processing** | Main Camera component | **Ticked.** The second most common reason |
+| **Orientation** | Player Settings → Resolution and Presentation | Portrait, auto-rotation off |
+| **Scripting backend** | Player Settings → Other Settings | **IL2CPP**, target architecture **ARM64**. Google Play has required 64-bit since 2019 and Mono cannot produce it on Android |
+| **Minimum API level** | Player Settings → Other Settings | **26 (Android 8.0)**. `VibrationEffect` for haptics (§3.5 of the art doc) and adaptive launcher icons both start at 26 |
+| **Graphics APIs** | Player Settings → Other Settings | Uncheck Auto, list **Vulkan** then **OpenGLES3**. If a specific device shows driver artefacts, dropping Vulkan is the first thing to test |
+| **Active input handling** | Player Settings → Other Settings | **Input System Package (New)**. Unity prompts for a restart when the package installs |
+
+Packages to add on top of the template: **Input System**, **Test Framework**.
+TextMeshPro arrives with UGUI in 2022.3 and Unity 6 — do not install the standalone
+legacy package.
 
 **HDR and bloom.** The 2D Renderer asset must have HDR enabled. All neon colours are
 authored as HDR colours with intensity above 1.0 so the bloom threshold catches them.
