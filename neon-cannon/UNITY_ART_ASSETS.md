@@ -19,18 +19,18 @@ These cannot be generated from nothing and are hard requirements.
 
 | Font | Role | Source | Licence |
 |---|---|---|---|
-| **Monoton** | Logo, `CRUSHED`, `WAVE n CLEARED`, wave banner numerals | Google Fonts | SIL Open Font License 1.1 |
+| **Monoton** | Wave banner, wave-clear banner, `WAVE n CLEARED` panel, logo, `CRUSHED` — see §1.2 | Google Fonts | SIL Open Font License 1.1 |
 | **Chakra Petch** | All HUD, orb numbers, console, panels, body text. Weights 400 / 600 / 700 | Google Fonts | SIL Open Font License 1.1 |
 
 Both are free for commercial use and redistributable under the OFL, including
 embedding in a game build. Keep a copy of `OFL.txt` alongside them in
 `Assets/NeonCannon/Fonts/`.
 
-Monoton is not a generic display face — it is a single-weight face drawn as neon
-tubing, with the double-stroke letterform that reads as a glass tube. That specific
-quality is why the title looks like a sign rather than a sci-fi logo, and no
-substitution keeps it. Chakra Petch is the angular technical counterpart carrying the
-numerals.
+Monoton is not a generic display face — it is a single-weight face whose glyphs are
+drawn as concentric parallel strokes, so they read as bent glass tubing rather than as
+text with a glow on it. That is why the title looks like a sign rather than a sci-fi
+logo, and no substitution keeps it (§1.2). Chakra Petch is the angular technical
+counterpart carrying the numerals.
 
 **Unity setup required for both:**
 
@@ -48,7 +48,54 @@ jitter as they change. If the SDF asset does not expose the `tnum` feature, the
 practical fix is a fixed-width TMP text container per digit group, or enabling the
 font feature in the TMP font asset's Font Features panel.
 
-### 1.2 Application icon
+### 1.2 The arcade banner lettering — this is Monoton, and no PNGs are needed
+
+The wave announcement (`Wave 2` / `Incoming`), the wave-clear announcement
+(`Clear` / `+46 scrap`), the `NEON CANNON` logo and the `CRUSHED` game-over
+headline all share one typeface, and it is the single strongest identity element in
+the game.
+
+| | |
+|---|---|
+| **Font** | **Monoton**, regular 400 — the only weight it has |
+| **Where** | Wave banner title, wave-clear banner title, start logo, game-over headline |
+| **Source** | Google Fonts · SIL Open Font License 1.1 · free to embed in a build |
+| **PNGs required?** | **No.** See below |
+
+**Why it looks like that.** Monoton is not a generic sci-fi display face — each glyph
+is drawn as a set of *concentric parallel strokes*, which is what makes it read as a
+bent glass neon tube rather than as text with a glow filter. That multi-stroke
+construction is the arcade quality; it comes from the typeface itself, not from the
+CSS. Substituting any other display face loses it, and the effect cannot be recovered
+by adding more bloom.
+
+**No PNGs are required, and using them would be worse.** The banner text is dynamic —
+it interpolates the wave number, and the wave count is unbounded — so a pre-rendered
+sprite per banner is not even possible without an atlas of digits. Render it as live
+text:
+
+| Step | Setting |
+|---|---|
+| TMP Font Asset | Monoton `.ttf` → Font Asset Creator, **SDF**, 1024², padding 9 |
+| Characters | `0-9 A-Z a-z + space` is enough for every string that uses this face |
+| Material | TMP SDF shader, **HDR** face colour at intensity ~2.2, URP Bloom does the halo |
+| Do **not** add | Outline, underlay, or a bevel — the tube strokes are the letterform. Extra outline fills the gaps between them and turns the glyph into a solid blob |
+
+A PNG would only become necessary if you **replaced Monoton with hand-lettered
+artwork** — a custom drawn wordmark for the logo, say. Even then, keep the two
+*banners* as live text, because of the interpolated wave number. Budget for that only
+if someone specifically wants a bespoke logo; the shipped design does not need it.
+
+**One porting note that does not apply to Unity.** In the browser build this face is
+inlined into the page as a base64 woff2 rather than linked from the CDN. The reason:
+the wave banner is on screen for 1.7 s, which is shorter than a cold font fetch, so
+with a normal `font-display: swap` link the banner rendered in the *fallback* serif
+for exactly the moments that matter, and only looked right once the font was cached.
+Unity has no equivalent failure — the TMP font asset is compiled into the build and is
+present at frame zero. Nothing to guard against; noted only so the inlining in the
+HTML source does not look like an arbitrary choice.
+
+### 1.3 Application icon
 
 | Asset | Spec |
 |---|---|
@@ -199,13 +246,17 @@ tier 3 = 325°, tier 4 = 272°. Ring lightness is 64%, rising to 94% on the hit 
 
 | Priority | Item | Effort | Blocking? |
 |---|---|---|---|
-| 1 | Monoton + Chakra Petch, converted to TMP SDF assets | ~30 min | **Yes** — nothing renders type without them |
+| 1 | Monoton + Chakra Petch, converted to TMP SDF assets | ~30 min | **Yes** — nothing renders type without them, and Monoton carries the arcade identity (§1.2) |
 | 2 | URP 2D renderer + bloom volume configured, Linear colour space | ~30 min | **Yes** — the look does not exist without bloom |
 | 3 | Six generated textures (§3), ideally via an editor script | ~1–2 h | Partially — placeholders work meanwhile |
 | 4 | Orb SDF ring shader (ring + fill + health arc in one) | ~2–4 h | Yes for orbs |
 | 5 | Rounded-rect SDF shader for UI | ~1–2 h | No — 9-slice sprites work as a stand-in |
 | 6 | Backdrop grid shader | ~2 h | No — `LineRenderer`s work as a stand-in |
 | 7 | App icon | ~1 h | Only for store submission |
+
+**No PNG lettering is required anywhere.** Both banners, the logo and the game-over
+headline are live TextMeshPro text in Monoton — see §1.2 for why a sprite would
+actively be worse.
 
 **Total genuinely external procurement: two fonts, both free.** Everything else is
 shader and tooling work rather than art production — which is the direct consequence
