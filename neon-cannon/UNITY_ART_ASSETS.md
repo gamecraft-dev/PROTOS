@@ -62,7 +62,7 @@ font files:
 | Setting | Monoton | Chakra Petch (Regular **and** Bold) |
 |---|---|---|
 | Sampling Point Size | Auto Sizing | Auto Sizing |
-| Padding | 9 | 9 |
+| Padding | 9 | **6** (see below) |
 | Packing Method | Optimum | Optimum |
 | Atlas Resolution | 1024 × 1024 (512² also fits) | 1024 × 1024 |
 | **Character Set** | **Custom Characters:** `ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789` + space | **Extended ASCII** |
@@ -82,8 +82,32 @@ Two weights of Chakra Petch are enough. The browser build uses 400, 600 and 700,
 600 appears in exactly two places (upgrade prices, damage floaters) — map it to 700
 and nobody will see the difference.
 
-After generating, check the reported Sampling Point Size. Below ~40 the atlas is
-overcrowded: raise it to 2048² or drop Chakra Petch to plain ASCII.
+**Padding is in atlas pixels, not a percentage.** It sets the maximum spread of the
+signed distance field — the furthest distance from the glyph edge the shader can
+represent — and outline width, underlay offset and dilate all draw from that budget.
+The usual rule of thumb is ~10% of the sampling point size.
+
+Padding is not free: it is added around every glyph, so larger padding means larger
+cells, which means Auto Sizing picks a *smaller* point size, which means blurrier
+text. That trade is why the two fonts get different values here:
+
+| | Glyphs in atlas | Rough cell at 1024² | Padding | Resulting point size |
+|---|---|---|---|---|
+| Monoton | ~63 | ~129 px | 9 | ~110 — plenty of room, no reason to economise |
+| Chakra Petch | ~224 (Extended ASCII) | ~60 px | 9 → **6** | ~42 → ~48 |
+
+**This project needs very little padding headroom.** The materials use no Outline and
+no Underlay — bloom produces every glow in the game — so the padding budget only has
+to cover the distance field itself and a little dilate. Six pixels is enough for
+Chakra Petch and buys noticeably sharper HUD text at the same atlas size.
+
+Keep 9 on Monoton: it has a tenth of the glyphs and acres of room, and the extra
+spread is useful if you ever want to dilate the tube strokes.
+
+After generating, read the Sampling Point Size TMP reports back — with Auto Sizing that
+field is only filled in *after* the atlas is built, and it is the real check. Below
+~40 the atlas is overcrowded: lower the padding, go to 2048², or drop Chakra Petch to
+plain ASCII.
 
 **Numerals are not tabular, and there is no font feature that makes them so.**
 Measured digit advances (units per 1000 em):
