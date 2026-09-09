@@ -108,11 +108,11 @@ silhouette in cyan on the `#07030f` ground.
 
 ---
 
-## 2. Generate in Unity — almost none of this needs an artist
+## 2. Generate in Unity — no artist needed
 
 Every item below exists in the HTML build only as canvas drawing code. Each maps onto
-a Unity technique, and all of them are shader or tooling work rather than art
-production — **with one exception: the paint splat masks in §2.5.**
+a Unity technique. **None of these require a sourced asset** — they are shader and
+tooling work, not art production.
 
 ### 2.1 Orbs
 
