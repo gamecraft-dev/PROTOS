@@ -73,3 +73,64 @@ Orb HP grows 1.26× per wave, so the top size passes 10,000 HP around wave 22 an
 |---|---|
 | [`UNITY_PORT_SPEC.md`](neon-cannon/UNITY_PORT_SPEC.md) | Full implementation spec for rebuilding this game in Unity — coordinate model, every constant, all algorithms, code hierarchy, class reference, test plan. Includes one addition to the design: a Level Cleared panel between waves. |
 | [`UNITY_ART_ASSETS.md`](neon-cannon/UNITY_ART_ASSETS.md) | What art the Unity port needs sourced versus what can be generated in-engine. The HTML build ships zero image files, so the list is short. |
+
+---
+
+### `topdown-racer/` — Apex Basin
+
+A 2.5D top-down racing prototype. Landscape, touch-first: the car accelerates
+itself, two arrows on the left steer, one button on the right brakes.
+
+**Weekend structure** — pick one of 5 circuits and one of 5 cars, set difficulty,
+grid size, race distance, tyre rules and weather, then run a qualifying session
+that sets the grid, then the race.
+
+| Setting | Options |
+|---|---|
+| Circuit | Apex Basin · Harbour Loop · Highland Pass · Neon Mile · Storm Basin |
+| Car | 5, with real trade-offs — top speed against grip against tyre life |
+| Difficulty | Rookie · Pro · Ace · Legend — AI pace, error rate and consistency |
+| Grid | 4 to 12 cars |
+| Race | 2 to 12 laps |
+| Qualifying | 1 / 3 / 5 minutes |
+| Tyres | Degradation on (stops required) or off |
+| Weather | Dry · Wet · Dynamic |
+
+#### Notes on the interesting parts
+
+**The camera is a real perspective projection, pitched down.** Ground points go
+through a yaw rotation, a pitch rotation and a perspective divide, so the tarmac
+under the nose is huge and a corner 200 m away is a sliver — one continuous
+surface rather than a flat top-down map. Tracks carry elevation, so crests and
+dips read properly.
+
+**Grip-limited cornering, not on-rails steering.** Each car has a lateral
+acceleration budget of `grip × 11.5 m/s²`. Ask for more yaw than that and it
+understeers — the car runs wide *and* scrubs speed — which is what makes braking
+in a straight line the correct technique rather than a suggestion.
+
+**The wet line is the mechanic, not a texture.** In the dry, the racing line is
+rubbered in and grippier than the marbles off it. In the wet, that same rubber is
+polished and drains badly, so the fast line becomes the *slow* line and the way
+round a corner is to run wide of it — the real technique. The standing water
+visibly pools on the line, so you can see where not to be.
+
+**Tyres are five compounds on one curve.** Each has an optimum track wetness and
+a tolerance band. Slicks aquaplane as water builds; rain tyres are merely slow in
+the dry but destroy themselves on a drying track. Wear is gentle to 70% and then
+falls off a cliff.
+
+**Dynamic weather is a schedule, not a dice roll.** Rain is a list of fronts on a
+timeline with arrival, ramp, hold and fade. The radar HUD reads straight off that
+same schedule, so the next three minutes shown to the player is exactly what will
+happen — which is what makes a pit strategy a decision rather than a guess. Track
+wetness lags the rain, and drains at a rate each circuit defines.
+
+**The AI runs the same physics as the player.** It scans 45 segments ahead for the
+slowest corner coming and brakes on `v² = u² + 2as` with a margin, moves off the
+rubbered line when it rains, and reads the forecast before stopping so it does not
+box for rain that is about to end.
+
+Validated by simulating full races headless: 71.4 s laps on a 3.3 km circuit
+(167 km/h average), all five compounds used across a dynamic-weather race, 2–3
+stops per car, no car stuck off track.
