@@ -79,7 +79,9 @@ Orb HP grows 1.26× per wave, so the top size passes 10,000 HP around wave 22 an
 ### `topdown-racer/` — Apex Basin
 
 A 2.5D top-down racing prototype. Landscape, touch-first: the car accelerates
-itself, two arrows on the left steer, one button on the right brakes.
+itself, the left half of the screen is an analog steering pad — put a thumb down
+anywhere and slide, how far you drag is how much lock — and one button on the
+right brakes.
 
 **Weekend structure** — pick one of 5 circuits and one of 5 cars, set difficulty,
 grid size, race distance, tyre rules and weather, then run a qualifying session
@@ -105,9 +107,11 @@ surface rather than a flat top-down map. Tracks carry elevation, so crests and
 dips read properly.
 
 **Grip-limited cornering, not on-rails steering.** Each car has a lateral
-acceleration budget of `grip × 11.5 m/s²`. Ask for more yaw than that and it
-understeers — the car runs wide *and* scrubs speed — which is what makes braking
-in a straight line the correct technique rather than a suggestion.
+acceleration budget of `grip × 11.5 m/s²`, and full lock asks for that budget
+overdriven by 35% — so what the steering can do falls away as speed rises. Arrive
+at a 100 m corner doing 250 km/h and the car physically cannot turn tightly
+enough; it runs wide. That geometry is the punishment for not braking, rather
+than a speed penalty.
 
 **The wet line is the mechanic, not a texture.** In the dry, the racing line is
 rubbered in and grippier than the marbles off it. In the wet, that same rubber is

@@ -146,8 +146,10 @@ button:focus-visible,.card:focus-visible{outline:2px solid var(--cool);outline-o
   width:min(17vw,92px);height:min(17vw,92px);
 }
 .btn.down{background:rgba(255,107,53,.55);border-color:var(--hot)}
-#bLeft{left:16px}
-#bRight{left:calc(16px + min(17vw,92px) + 12px)}
+#steerZone{
+  position:absolute;left:0;top:54px;bottom:0;width:47%;
+  pointer-events:auto;touch-action:none;
+}
 #bBrake{right:16px;font-size:13px;letter-spacing:.14em}
 #bBrake.down{background:rgba(255,64,64,.6);border-color:#ff5555}
 #bPit{
@@ -197,8 +199,7 @@ td.pos{width:26px;color:var(--dim)}
     <canvas id="cv"></canvas>
 
     <div id="pad" hidden>
-      <button class="btn" id="bLeft"  aria-label="Steer left">&#9664;</button>
-      <button class="btn" id="bRight" aria-label="Steer right">&#9654;</button>
+      <div id="steerZone" aria-label="Steering — drag left or right"></div>
       <button class="btn" id="bBrake" aria-label="Brake">BRAKE</button>
       <button id="bPit">PIT</button>
     </div>
@@ -584,7 +585,9 @@ function waterAt(u, lineU, wetness){
 /* ==========================================================
    6. cars
    ========================================================== */
-const G_LAT = 11.5;                       // lateral acceleration at grip 1.0
+const G_LAT = 11.5;      // lateral acceleration at grip 1.0
+const OVERDRIVE = 1.35;  // how far past the grip limit full lock may ask
+const SCRUB = 3.2;       // m/s2 of speed loss at full understeer (braking is ~18)
 
 function makeCar(spec, opts){
   return {
@@ -650,15 +653,25 @@ function stepCar(S, car, dt){
   car.speed = Math.max(0, car.speed + a*dt);
 
   // ---- cornering, limited by grip ----
-  const speedFactor = clamp(car.speed/16, 0.25, 1);
-  let want = steer * steerRate(car.spec) * (1.25 - speedFactor*0.55);
-  const maxLat = grip * G_LAT;
+  // Full lock asks for a yaw rate scaled to what the tyres can actually hold at
+  // this speed, overdriven by a fixed margin. The old model let full lock demand
+  // 78 m/s2 of grip at 70 m/s against 11.7 available, and charged the difference
+  // as speed loss — 51 m/s2, nearly three times full braking. A single corrective
+  // flick felt like standing on the brake pedal.
+  //
+  // Arriving too fast is still punished, but geometrically: the achievable yaw
+  // rate falls as speed rises, so the car simply cannot turn tightly enough and
+  // runs wide. That is the real penalty. The scrub is now a hint, not a wall.
+  const maxLat  = grip * G_LAT;
+  const gripYaw = maxLat / Math.max(car.speed, 6);     // yaw the tyres can hold
+  const maxYaw  = Math.min(steerRate(car.spec) * 1.7, gripYaw * OVERDRIVE);
+  const want    = steer * maxYaw;
   const needLat = Math.abs(want) * car.speed;
   let yaw = want;
   if (needLat > maxLat && car.speed > 2){
     yaw = Math.sign(want) * maxLat / car.speed;        // understeer: it runs wide
-    const over = (needLat - maxLat) / Math.max(maxLat,0.5);
-    car.speed -= Math.min(car.speed, over * 9 * dt);   // and scrubs speed off
+    const over = clamp((needLat - maxLat) / maxLat, 0, 1.2);
+    car.speed -= Math.min(car.speed, over * SCRUB * dt);
     car.slip = Math.min(1, car.slip + over*dt*2.2);
   } else {
     car.slip = Math.max(0, car.slip - dt*1.6);
@@ -792,7 +805,16 @@ function aiDrive(S, car, loc, grip){
 
   let want = Math.atan2(tx-car.x, tz-car.z) - car.head;
   while (want> Math.PI) want-=TAU; while (want<-Math.PI) want+=TAU;
-  const steer = clamp(want*2.4, -1, 1);
+
+  // Convert the heading error into a yaw RATE, then into lock as a fraction of
+  // what this car can actually turn at this speed. A fixed steering gain cannot
+  // work: available yaw falls as speed rises, so one gain is twitchy in a hairpin
+  // and far too lazy on a fast sweeper.
+  const lookM  = clamp(6 + car.speed*0.45, 8, 40);
+  const wantYaw = want * car.speed / Math.max(lookM, 6);
+  const aiMaxYaw = Math.min(steerRate(car.spec)*1.7,
+                            (grip*G_LAT)/Math.max(car.speed,6) * OVERDRIVE);
+  const steer = clamp(wantYaw / Math.max(aiMaxYaw, 1e-3), -1, 1);
 
   // Corner speed: scan far enough ahead to actually stop for the slowest thing
   // coming. Braking from top speed to a hairpin needs ~140 m, so a short scan
@@ -857,7 +879,8 @@ function aiPitCheck(S, car){
 const S = {
   mode:'setup', phase:'none', track:null, cars:[], player:null,
   weather:null, rules:null, clock:0, timeLeft:0, laps:5,
-  input:{ steer:0, brake:false }, cam:{ x:0, z:0, y:0, yaw:0, spd:0 },
+  input:{ steer:0, target:0, brake:false, active:false, originX:0, originY:0 },
+  cam:{ x:0, z:0, y:0, yaw:0, spd:0 }, stageLeft:0, stageTop:0,
   toast:null, playerDone:false, paused:false, W:0, H:0, dpr:1,
   results:null, spray:[], drops:[],
 };
@@ -1019,6 +1042,7 @@ function resize(){
   const st = el('stage').getBoundingClientRect();
   S.dpr = Math.min(devicePixelRatio||1, 2);
   S.W = st.width; S.H = st.height;
+  S.stageLeft = st.left; S.stageTop = st.top;
   cv.width = Math.max(1, Math.round(S.W*S.dpr));
   cv.height = Math.max(1, Math.round(S.H*S.dpr));
   ctx.setTransform(S.dpr,0,0,S.dpr,0,0);
@@ -1286,6 +1310,8 @@ function drawHud(){
   }
   ctx.textAlign='left';
 
+  drawSteerBar();
+
   // --- lights / toast ---
   if (S.phase==='grid'){
     const lit = 5 - Math.ceil(S.lights/0.72);
@@ -1313,6 +1339,33 @@ function drawHud(){
   }
   ctx.restore();
 }
+/** The steering pad drawn where the thumb actually is, so the player can see
+ *  how much lock they are holding rather than guessing. */
+function drawSteerBar(){
+  if (S.phase!=='race' && S.phase!=='quali' && S.phase!=='grid') return;
+  const R = steerRange();
+  const on = S.input.active;
+  const x = on ? clamp(S.input.originX, R+22, S.W*0.47-22) : R+30;
+  const y = on ? clamp(S.input.originY, 96, S.H-34) : S.H-46;
+  ctx.save();
+  ctx.globalAlpha = on ? 1 : 0.45;
+  ctx.fillStyle='rgba(11,16,20,.55)';
+  ctx.strokeStyle='rgba(139,163,176,.5)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.roundRect(x-R-15, y-15, (R+15)*2, 30, 15); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle='rgba(139,163,176,.4)';
+  ctx.beginPath(); ctx.moveTo(x, y-7); ctx.lineTo(x, y+7); ctx.stroke();
+  const tx = x + S.input.steer*R;
+  ctx.fillStyle = Math.abs(S.input.steer)>0.03 ? '#ff6b35' : 'rgba(232,242,245,.8)';
+  ctx.beginPath(); ctx.arc(tx, y, 13, 0, TAU); ctx.fill();
+  ctx.fillStyle='rgba(11,16,20,.85)';
+  ctx.beginPath(); ctx.arc(tx, y, 4.5, 0, TAU); ctx.fill();
+  if (!on){
+    ctx.fillStyle='rgba(139,163,176,.9)'; ctx.font='700 8px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('DRAG TO STEER', x, y+22); ctx.textAlign='left';
+  }
+  ctx.restore();
+}
+
 function panel(x,y,w,h){
   ctx.fillStyle='rgba(11,16,20,.62)';
   ctx.strokeStyle='rgba(61,88,102,.55)'; ctx.lineWidth=1;
@@ -1407,6 +1460,8 @@ function update(dt){
 
   S.clock += dt;
   stepWeather(S.weather, tr, dt);
+  // follow the thumb quickly but not instantly, so a flick is not a jolt
+  S.input.steer = lerp(S.input.steer, S.input.target, Math.min(1, dt*18));
 
   for (const c of S.cars){
     if (c.finished && c.isPlayer) continue;
@@ -1468,25 +1523,54 @@ function hold(btn, on, off){
   btn.addEventListener('pointercancel',u);
 }
 let kl=false, kr=false;
-hold(el('bLeft'),  ()=>{S.input.steer=-1;}, ()=>{S.input.steer = kr?1:0;});
-hold(el('bRight'), ()=>{S.input.steer= 1;}, ()=>{S.input.steer = kl?-1:0;});
 hold(el('bBrake'), ()=>{S.input.brake=true;}, ()=>{S.input.brake=false;});
+
+/* Steering is a relative drag pad, not two buttons. Put a thumb down anywhere in
+ * the left zone and that point becomes centre; how far you drag from it sets how
+ * much lock. A long constant-radius corner is then a thumb held still, instead of
+ * a stream of full-lock taps. */
+const STEER_EXPO = 1.25;                       // fine control near centre
+const steerRange = () => Math.min(120, S.W*0.17);
+const zone = el('steerZone');
+let steerPtr = null;
+zone.addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  steerPtr = e.pointerId;
+  try { zone.setPointerCapture(e.pointerId); } catch(_){}
+  S.input.active = true;
+  S.input.originX = e.clientX - S.stageLeft;
+  S.input.originY = e.clientY - S.stageTop;
+  S.input.target = 0;
+});
+zone.addEventListener('pointermove', e=>{
+  if (e.pointerId !== steerPtr) return;
+  const t = clamp(((e.clientX - S.stageLeft) - S.input.originX)/steerRange(), -1, 1);
+  S.input.target = Math.sign(t) * Math.pow(Math.abs(t), STEER_EXPO);
+});
+function endSteer(e){
+  if (steerPtr !== null && e.pointerId !== steerPtr) return;
+  steerPtr = null; S.input.active = false;
+  S.input.target = kl ? -1 : kr ? 1 : 0;
+}
+zone.addEventListener('pointerup', endSteer);
+zone.addEventListener('pointercancel', endSteer);
+zone.addEventListener('lostpointercapture', endSteer);
 addEventListener('keydown',e=>{
   if(e.repeat)return;
   const k=e.key.toLowerCase();
-  if(k==='arrowleft'||k==='a'){kl=true;S.input.steer=-1;}
-  else if(k==='arrowright'||k==='d'){kr=true;S.input.steer=1;}
+  if(k==='arrowleft'||k==='a'){kl=true;S.input.target=-1;}
+  else if(k==='arrowright'||k==='d'){kr=true;S.input.target=1;}
   else if(k===' '||k==='arrowdown'||k==='s'){S.input.brake=true;e.preventDefault();}
   else if(k==='p'){togglePit();}
   else if(k==='escape'){ if(S.mode==='race') setPaused(!S.paused); }
 });
 addEventListener('keyup',e=>{
   const k=e.key.toLowerCase();
-  if(k==='arrowleft'||k==='a'){kl=false;S.input.steer=kr?1:0;}
-  else if(k==='arrowright'||k==='d'){kr=false;S.input.steer=kl?-1:0;}
+  if(k==='arrowleft'||k==='a'){kl=false;S.input.target=kr?1:0;}
+  else if(k==='arrowright'||k==='d'){kr=false;S.input.target=kl?-1:0;}
   else if(k===' '||k==='arrowdown'||k==='s'){S.input.brake=false;}
 });
-addEventListener('blur',()=>{S.input.steer=0;S.input.brake=false;kl=kr=false;});
+addEventListener('blur',()=>{S.input.target=0;S.input.brake=false;kl=kr=false;steerPtr=null;S.input.active=false;});
 
 function togglePit(){
   const c=S.player;
@@ -1510,7 +1594,7 @@ function updatePitButton(){
 
 function setPaused(p){
   S.paused=p; el('pause').hidden=!p;
-  if(p){S.input.steer=0;S.input.brake=false;}
+  if(p){S.input.target=0;S.input.brake=false;}
 }
 el('bMenu').addEventListener('click',()=>setPaused(true));
 el('btnResume').addEventListener('click',()=>setPaused(false));
@@ -1602,7 +1686,7 @@ function buildSetup(){
     ? 'Radar sits top-right in the race. A front takes about half a lap to soak the circuit — box before it arrives, not after.'
     : setup.weather==='wet'
     ? 'In the wet the rubbered racing line is the slippery one. Run wide of it.'
-    : 'Brake in a straight line. Carrying too much speed washes you wide and scrubs the tyres.';
+    : 'Steering is a drag pad — put a thumb anywhere on the left and slide. How far you drag is how much lock.';
 }
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));
