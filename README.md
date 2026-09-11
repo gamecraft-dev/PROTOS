@@ -135,6 +135,6 @@ slowest corner coming and brakes on `v² = u² + 2as` with a margin, moves off t
 rubbered line when it rains, and reads the forecast before stopping so it does not
 box for rain that is about to end.
 
-Validated by simulating full races headless: 71.4 s laps on a 3.3 km circuit
-(167 km/h average), all five compounds used across a dynamic-weather race, 2–3
+Validated by simulating full races headless: 70.2 s laps on a 3.3 km circuit
+(169 km/h average), all five compounds used across a dynamic-weather race, 2–3
 stops per car, no car stuck off track.
