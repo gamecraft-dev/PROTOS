@@ -73,3 +73,48 @@ Orb HP grows 1.26× per wave, so the top size passes 10,000 HP around wave 22 an
 |---|---|
 | [`UNITY_PORT_SPEC.md`](neon-cannon/UNITY_PORT_SPEC.md) | Full implementation spec for rebuilding this game in Unity — coordinate model, every constant, all algorithms, code hierarchy, class reference, test plan. Includes one addition to the design: a Level Cleared panel between waves. |
 | [`UNITY_ART_ASSETS.md`](neon-cannon/UNITY_ART_ASSETS.md) | What art the Unity port needs sourced versus what can be generated in-engine. The HTML build ships zero image files, so the list is short. |
+
+---
+
+### `slime-pop/` — Slime Pop
+
+A column-stacking match-3 shooter, built to a written spec derived from a 47-second
+screen recording of Level 7. Portrait, 648×1404 logical canvas scaled to fit, DPR-aware.
+Every pixel — slimes, faces, stone, ice, bomb, cannon, hearts, stars — is drawn with
+Canvas 2D paths. No image assets.
+
+Drag to pick a column, release to fire. Only **vertical** runs of 3+ pop. A rising row
+pushes up every 6 shots; Swap, Undo (3 charges) and a bomb every 7th piece are the
+help. Stone, mystery `?` and ice-encased slimes are the blockers. Running out of shots
+costs a life, and lives regenerate on a 30-minute timer persisted to `localStorage`.
+
+#### The acceptance test is the point
+
+The spec ships an observed shot-by-shot playthrough: 23 turns of exact swaps and column
+choices that must reproduce every intermediate board state and a final score of **5,550**.
+That is the real deliverable, and it is wired in as a runnable test — press `D` for the
+debug panel, then **run replay test**.
+
+It passes at both levels: the pure rules reproduce all 23 per-turn point values, and
+driving the same 23 turns through the *real UI* (swaps, flight, pops, rises, bombs,
+popup) also lands on 5,550 with `C5 = red,blue,red,blue,blue` and the other four
+columns empty.
+
+That double check mattered. The rules passed on the first run; the UI did not. The
+spec's architecture note — *"logic runs first, then animation plays"* — is easy to
+implement as "mutate the board, then animate it", and that is wrong: by the time an
+animation runs, the rows it was written for have already moved or gone. The fix is for
+the rules to run on a **copy**, with each event applying itself to the live board as
+its own animation plays. Same event list, opposite direction of data flow.
+
+#### Notes
+
+- **Mystery ordering matters.** A `?` reveals when a piece lands on it, *before* the
+  match check for that landing — so the revealed colour can complete the run that the
+  landing piece just made. Turn 1 of the reference playthrough depends on it.
+- **Ice doesn't pop.** It counts toward its colour's run, then its shell breaks and the
+  slime stays put, which changes what falls and what lands next.
+- **Chains span the rise.** `chainStep` does not reset when a row pushes up, so a
+  rise-created triple scores at ×2 — that is where turn 6's +600 comes from.
+- **RNG is seeded and stepped by a call counter**, so an Undo snapshot restores the
+  generator stream exactly rather than approximately.
