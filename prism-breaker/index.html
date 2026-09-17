@@ -1,0 +1,1313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#05070f">
+<title>Prismbreak</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap">
+<style>
+  html,body{height:100%;margin:0;background:#05070f;overflow:hidden}
+  body{
+    display:flex;align-items:center;justify-content:center;position:fixed;inset:0;
+    touch-action:none;user-select:none;-webkit-user-select:none;
+    -webkit-tap-highlight-color:transparent;overscroll-behavior:none;
+    font-family:"Chakra Petch",ui-sans-serif,system-ui,sans-serif;
+  }
+  canvas{display:block;touch-action:none}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<script>
+(() => {
+'use strict';
+
+/* ==========================================================================
+   PRISMBREAK
+   A brick breaker where every brick is a prism: its hit points map onto a real
+   spectral sweep, and the ball is a photon that lights the field it travels.
+   Endless mode is a roguelite — rows descend forever, breaking bricks charges
+   an energy bar, and each charge offers a draft of three upgrades.
+   ========================================================================== */
+
+const W = 720, H = 1280;
+const TAU = Math.PI*2;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const ri=(a,b)=>Math.floor(rnd(a,b+1));
+
+/* ==========================================================================
+   BALANCE
+   Endless is a race between two rates: the damage a row costs to clear, and the
+   damage the player can land per second. A row costs `cols*fill*avgHp` and
+   arrives every `gap` seconds. Difficulty is pushed almost entirely through
+   density and cadence rather than hit points, because hit points ARE the colour
+   language here — past about 12 hp every brick clamps to red and the board
+   stops reading as a spectrum. So rows get wider, fuller and faster, and hp
+   climbs only gently. It still climbs forever while ball damage caps out, which
+   is what makes an endless run finite no matter how well it is played.
+   ========================================================================== */
+const BAL = {
+  cols:      10,
+  hpGrow:    0.32,                 // hpTop = 1 + floor(wave * hpGrow)
+  fillBase:  0.60, fillGrow: 0.020, fillMax: 0.92,
+  gapBase:   9.0,  gapGrow: 0.24,  gapMin: 2.8,   // seconds between rows
+  speedBase: 760,  speedGrow: 11,  speedMax: 1250,
+  energyBase:150,  energyGrow: 1.30,
+  startRows: 10,
+};
+/* A row costs `cols * fill * avgHp` damage and arrives every `gap` seconds, so
+   the wall demands `10*0.92*0.32*wave/gap` damage per second — about 1.05·wave
+   once the gap bottoms out at wave 26. That line rises forever while ball
+   damage and ball count both cap, so it eventually crosses the player's ceiling
+   and the wall starts winning, which is what makes an endless run finite. Waves
+   are paced so the spectrum is still doing its job when that happens: hp passes
+   12, where the hue runs out of room and holds at red, around wave 35. */
+
+/* ---------- field geometry ---------- */
+const F = {
+  x0:18, x1:W-18, top:158, bottom:1214,
+  cols:BAL.cols, margin:24, gap:7, brickH:26, rowPitch:34,
+  paddleY:1152, paddleH:17, ballR:9,
+};
+F.brickW = (W - F.margin*2 - F.gap*(F.cols-1)) / F.cols;   // 60.3 at 10 cols
+F.dangerY = F.paddleY - 40;
+/* The deepest row index that still fits above the danger line. Rows past this
+   have breached, so this is the real length of the runway: 27 rows. */
+F.maxRow = Math.floor((F.dangerY - F.top - F.brickH) / F.rowPitch);   // 27
+const colX = c => F.margin + c*(F.brickW+F.gap);
+
+/* ---------- palette ---------- */
+const P = {
+  void:'#05070f', edge:'#1d2750',
+  ink:'#e9f0ff', dim:'#8194c4', faint:'#4d5f94',
+  gold:'#ffc85c', core:'#bff4ff', danger:'#ff4d6d',
+  energy:'#a56bff',
+};
+/* Brick colour IS the spectrum: hp 1 is violet and each point of hp walks the
+   hue down toward red, so a board reads as a literal prism from the top down.
+   The walk stops dead at red rather than running on into magenta — carry on and
+   the hue wheel loops back toward violet, which would make a 14 hp wall look
+   like a 1 hp one. Past HP_SPAN the colour holds at red and darkens instead,
+   so "armoured" reads as deep crimson and stays distinct from everything. */
+const HP_SPAN = 12;
+const HP_STEP = 272/(HP_SPAN-1);
+function hpHue(hp){ return clamp(272 - (hp-1)*HP_STEP, 0, 272); }
+function hpDark(hp){ return Math.min(30, Math.max(0, hp-HP_SPAN)*2.4); }
+function hpCol(hp, l=58, s=88){
+  return `hsl(${hpHue(hp)},${s}%,${Math.max(16,l-hpDark(hp))}%)`;
+}
+
+/* ==========================================================================
+   META — persists across runs and modes
+   ========================================================================== */
+const PERM = {
+  paddle:{ name:'Paddle Size', max:8, cost:l=>Math.round(40*Math.pow(1.55,l)),
+           val:l=>118+l*13, unit:l=>`${118+l*13} px` },
+  power: { name:'Ball Power',  max:8, cost:l=>Math.round(55*Math.pow(1.55,l)),
+           val:l=>2+l, unit:l=>`${2+l} dmg` },
+  fire:  { name:'Fire Rate',   max:10, cost:l=>Math.round(45*Math.pow(1.5,l)),
+           val:l=>Math.max(3, 10-l*0.7), unit:l=>`${(Math.max(3,10-l*0.7)).toFixed(1)} s` },
+};
+const Meta = {
+  cores:0, best:0, lv:{paddle:0, power:0, fire:0},
+  load(){
+    try{
+      const raw = localStorage.getItem('prismbreak.save');
+      if (raw){ const d=JSON.parse(raw);
+        this.cores=d.cores|0; this.best=d.best|0;
+        for (const k in this.lv) this.lv[k]=clamp(d.lv&&d.lv[k]|0,0,PERM[k].max);
+      }
+    }catch(e){}
+  },
+  save(){ try{ localStorage.setItem('prismbreak.save',
+    JSON.stringify({cores:this.cores,best:this.best,lv:this.lv})); }catch(e){} },
+};
+
+/* ==========================================================================
+   POWERUPS — run-scoped, upgradeable, reset on death
+   ========================================================================== */
+const POWERS = [
+  {id:'fracture', name:'Fracture',   max:3, icon:'split',
+   d:l=>`${l} extra ball${l>1?'s':''}, restored each wave`},
+  {id:'lens',     name:'Wide Lens',  max:4, icon:'lens',
+   d:l=>`Paddle ${Math.round(l*14)}% wider`},
+  {id:'charge',   name:'Overcharge', max:5, icon:'bolt',
+   d:l=>`Ball damage +${l*2}`},
+  {id:'pierce',   name:'Pierce',     max:3, icon:'arrow',
+   d:l=>`Punch through ${l} brick${l>1?'s':''} per volley`},
+  {id:'cannon',   name:'Autocannon', max:4, icon:'gun',
+   d:l=>`Paddle guns ${(1+l*0.4).toFixed(1)}x faster`},
+  {id:'split',    name:'Splitter',   max:3, icon:'fork',
+   d:l=>`${l*16}% chance a kill spawns a ball`},
+  {id:'magnet',   name:'Magnet',     max:3, icon:'magnet',
+   d:l=>`Paddle steers the ball as it nears`},
+  {id:'blast',    name:'Shatter',    max:3, icon:'burst',
+   d:l=>`Kills splash ${l*50}% damage to neighbours`},
+  {id:'barrier',  name:'Barrier',    max:3, icon:'shield',
+   d:l=>`${l} free save${l>1?'s':''}, refills each wave`},
+  {id:'velocity', name:'Velocity',   max:3, icon:'speed',
+   d:l=>`Ball ${l*9}% faster, +${l} damage`},
+  {id:'arc',      name:'Arc',        max:3, icon:'arc',
+   d:l=>`Hits arc to ${l} nearby brick${l>1?'s':''} for 60%`},
+  {id:'well',     name:'Gravity Well',max:3, icon:'well',
+   d:l=>`Rows descend ${l*16}% slower`},
+  {id:'resonate', name:'Resonance',  max:4, icon:'wave',
+   d:l=>`+${l*22}% energy gained`},
+  {id:'wind',     name:'Second Wind',max:2, icon:'heart',
+   d:l=>`+${l} life`},
+  {id:'momentum', name:'Momentum',   max:3, icon:'stack',
+   d:l=>`+${l} damage per paddle hit, spent on a kill`},
+  {id:'refract',  name:'Refraction', max:3, icon:'gem',
+   d:l=>`+${l*28}% score`},
+];
+const POW = Object.fromEntries(POWERS.map(p=>[p.id,p]));
+
+/* ==========================================================================
+   STATE
+   ========================================================================== */
+let S = null;
+let scene = 'menu';           // menu | forge | play | draft | over
+let ui = { press:null, t:0, buy:null, buyT:0, deny:null, denyT:0 };
+
+function newRun(){
+  const lv = Meta.lv;
+  return {
+    mode:'endless',
+    wave:0, score:0, bricksBroken:0,
+    lives:3, maxLives:3,
+    energy:0, energyCap:BAL.energyBase, drafts:0,
+    powers:{},                                  // id -> level
+    balls:[], bricks:[], bullets:[], parts:[], pops:[], shards:[],
+    paddle:{x:W/2, tx:W/2, w:PERM.paddle.val(lv.paddle), squash:0, flash:0},
+    stuck:true,                                 // ball rests on the paddle
+    gunT:0, spawnT:0, spawnInterval:14,
+    descend:0, descendFrom:0, spawnRush:1,
+    barrierLeft:0, momentum:0, pierceLeft:0,
+    shake:0, shakeR:0, hitstop:0,
+    over:false, t:0, banner:null, coresEarned:0,
+  };
+}
+const lvOf = id => S.powers[id]||0;
+
+/* derived stats */
+const paddleW   = () => PERM.paddle.val(Meta.lv.paddle) * (1 + lvOf('lens')*0.14);
+const ballDmg   = () => PERM.power.val(Meta.lv.power) + lvOf('charge')*2 + lvOf('velocity') + S.momentum;
+/* A brick breaker lives or dies on how often the ball is *touching* something.
+   The round trip from the brick face to the paddle is ~800 px, so speed sets
+   the whole game's tempo: at 500 px/s the ball hits a brick every 3 s and the
+   run is dead air. 760 and climbing keeps a single ball at ~1 contact/1.5 s,
+   and the field is dense enough that it usually rattles for several. */
+const ballSpeed = () => Math.min(BAL.speedMax,
+  (BAL.speedBase + S.wave*BAL.speedGrow) * (1 + lvOf('velocity')*0.09));
+/* The permanent track bottoms out at one volley every 3 s by design; Autocannon
+   is a run-scoped build payoff on top of that, floored at 1 s so it can never
+   turn the paddle into the primary weapon. */
+const gunPeriod = () => Math.max(1, PERM.fire.val(Meta.lv.fire) / (1 + lvOf('cannon')*0.4));
+const descendPeriod = () => Math.max(BAL.gapMin, S.spawnInterval) * (1 + lvOf('well')*0.16);
+const energyGain  = hp => (9 + hp*2.4) * (1 + lvOf('resonate')*0.22);
+const chipGain    = hp => (3 + hp*0.6) * (1 + lvOf('resonate')*0.22);
+const scoreMult   = () => 1 + lvOf('refract')*0.28;
+
+/* ==========================================================================
+   SPAWNING
+   ========================================================================== */
+function brickAt(c, row, hp){
+  return { c, row, hp, maxHp:hp, x:colX(c), y:0, w:F.brickW, h:F.brickH,
+           flash:0, shakeT:0, seed:Math.random()*1000 };
+}
+/** A row's difficulty is its wave: more cells filled and higher hp as you go. */
+function makeRow(wave){
+  const fill = clamp(BAL.fillBase + wave*BAL.fillGrow, BAL.fillBase, BAL.fillMax);
+  const hpTop = 1 + Math.floor(wave*BAL.hpGrow);
+  const out=[];
+  for (let c=0;c<F.cols;c++){
+    if (Math.random()>fill) continue;
+    let hp = ri(Math.max(1,hpTop-2), hpTop);
+    if (Math.random()<0.06) hp = hpTop+ri(1,3);          // the occasional anchor
+    out.push(brickAt(c, 0, hp));
+  }
+  if (!out.length) out.push(brickAt(ri(0,F.cols-1),0,hpTop));
+  return out;
+}
+function pushRow(waveFor){
+  S.wave++;
+  for (const b of S.bricks) b.row++;
+  S.bricks.push(...makeRow(waveFor===undefined?S.wave:waveFor));
+  S.descendFrom = F.rowPitch;
+  S.descend = 0.42;
+  S.barrierLeft = lvOf('barrier');
+  S.spawnInterval = Math.max(BAL.gapMin, BAL.gapBase - S.wave*BAL.gapGrow);
+  S.spawnT = descendPeriod();
+  // Fracture tops the ball count back up every wave. Without this it is a
+  // one-off that quietly evaporates the first time a spare ball drops out.
+  if (!S.stuck && S.balls.length && S.balls.length < 1+lvOf('fracture')) fracture();
+  if (S.wave>1) banner(`WAVE ${S.wave}`, hpCol(1+Math.floor(S.wave*0.3),70));
+}
+function brickY(b){
+  const base = F.top + b.row*F.rowPitch;
+  return base - (S.descend>0 ? S.descendFrom*(S.descend/0.42) : 0);
+}
+
+/* ==========================================================================
+   BALLS / BULLETS
+   ========================================================================== */
+/* Splitter feeds a swarm. Capped hard, for feel as much as balance: past about
+   half a dozen balls the field stops being readable, the paddle stops mattering
+   because something is always coming back anyway, and the run turns into a
+   screensaver you cannot lose. */
+const BALL_CAP=7, SPLIT_CAP=5;
+function addBall(x,y,vx,vy){
+  if (S.balls.length>=BALL_CAP) return;
+  S.balls.push({x,y,vx,vy,r:F.ballR,trail:[],hot:0,hue:198});
+}
+function launch(){
+  if (!S.stuck) return;
+  S.stuck=false;
+  const sp=ballSpeed();
+  const n=1+lvOf('fracture');
+  const base=-Math.PI/2+rnd(-0.40,0.40);   // never the same opening twice
+  for (let i=0;i<n;i++){
+    const a = base + (i-(n-1)/2)*0.22;
+    addBall(S.paddle.x, F.paddleY-18, Math.cos(a)*sp, Math.sin(a)*sp);
+  }
+  S.pierceLeft = lvOf('pierce');
+}
+function resetBall(){
+  S.balls.length=0; S.stuck=true; S.momentum=0;
+}
+/** Shed one more ball off the paddle, mid-rally. */
+function fracture(){
+  const v=ballSpeed(), a=-Math.PI/2+rnd(-0.55,0.55);
+  addBall(S.paddle.x, F.paddleY-24, Math.cos(a)*v, Math.sin(a)*v);
+  ring(S.paddle.x,F.paddleY-24,P.core,6,90,.4,4);
+}
+
+/* ==========================================================================
+   FEEDBACK
+   ========================================================================== */
+function banner(text,color){ S.banner={text,color,t:0}; }
+function shake(m,r){ S.shake=Math.max(S.shake,m); S.shakeR=Math.max(S.shakeR,r||0); }
+function pop(x,y,txt,col){ S.pops.push({x,y,txt,col,t:0}); }
+function spark(x,y,col,n,sp){
+  for(let i=0;i<n;i++){
+    const a=rnd(0,TAU), v=rnd(sp*0.3,sp);
+    S.parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:rnd(1.4,3.4),col,life:rnd(.3,.62),t:0,g:380});
+  }
+}
+function shatter(b,y){
+  const col=hpCol(b.maxHp,62);
+  for(let i=0;i<12;i++){
+    const a=rnd(0,TAU), v=rnd(90,420);
+    S.shards.push({x:b.x+b.w/2+rnd(-b.w/2,b.w/2), y:y+F.brickH/2+rnd(-10,10),
+      vx:Math.cos(a)*v, vy:Math.sin(a)*v-rnd(20,140), rot:rnd(0,TAU), vr:rnd(-12,12),
+      s:rnd(5,13), col, life:rnd(.45,.8), t:0});
+  }
+  spark(b.x+b.w/2, y+F.brickH/2, col, 8, 300);
+}
+
+/* ==========================================================================
+   DAMAGE
+   ========================================================================== */
+function hurt(b, dmg, srcX, srcY, chainDepth){
+  if (b.dead) return;
+  b.hp -= dmg; b.flash=1; b.shakeT=0.18;
+  if (b.hp>0){
+    // Chipping pays too, or a wall of heavy bricks would starve the energy bar
+    // exactly when the player most needs a draft to get through it.
+    S.energy += chipGain(b.maxHp);
+    spark(srcX!==undefined?srcX:b.x+b.w/2, srcY!==undefined?srcY:brickY(b)+F.brickH/2,
+          hpCol(b.hp,70), 5, 210);
+    return;
+  }
+  // killed
+  b.dead=true;
+  const y=brickY(b);
+  shatter(b,y);
+  S.bricksBroken++;
+  const gain=Math.round(energyGain(b.maxHp));
+  S.energy+=gain;
+  const sc=Math.round((22+b.maxHp*11)*scoreMult());
+  S.score+=sc;
+  pop(b.x+b.w/2, y+8, `+${sc}`, hpCol(b.maxHp,72));
+  shake(5+Math.min(b.maxHp,6), 0.5);
+  S.hitstop=Math.max(S.hitstop,0.035);
+
+  // Shatter: splash damage into the four neighbours
+  const bl=lvOf('blast');
+  if (bl && (chainDepth||0)<1){
+    const sd=Math.max(1, Math.round(ballDmg()*0.5*bl));
+    for (const o of S.bricks){
+      if (o.dead||o===b) continue;
+      if (Math.abs(o.row-b.row)+Math.abs(o.c-b.c)===1) hurt(o, sd, undefined, undefined, 1);
+    }
+    ring(b.x+b.w/2, y+F.brickH/2, hpCol(b.maxHp,66), 10, 70, .38, 5);
+  }
+  // Splitter: a kill can shed a new ball
+  const sp=lvOf('split');
+  if (sp && Math.random()<sp*0.16 && S.balls.length<SPLIT_CAP){
+    const a=rnd(-2.6,-0.5), s=ballSpeed();
+    addBall(b.x+b.w/2, y+F.brickH/2, Math.cos(a)*s, Math.sin(a)*s);
+  }
+}
+function arcFrom(b){
+  const n=lvOf('arc'); if(!n) return;
+  const bx=b.x+b.w/2, by=brickY(b)+F.brickH/2;
+  const near=S.bricks.filter(o=>!o.dead&&o!==b)
+    .map(o=>({o, d:Math.hypot(o.x+o.w/2-bx, brickY(o)+F.brickH/2-by)}))
+    .filter(e=>e.d<190).sort((a,b2)=>a.d-b2.d).slice(0,n);
+  const ad=Math.max(1, Math.round(ballDmg()*0.6));
+  for (const e of near){
+    S.arcs=S.arcs||[];
+    S.arcs.push({x1:bx,y1:by,x2:e.o.x+e.o.w/2,y2:brickY(e.o)+F.brickH/2,t:0});
+    hurt(e.o, ad, undefined, undefined, 1);
+  }
+}
+function ring(x,y,col,r0,r1,dur,w){ S.rings=S.rings||[]; S.rings.push({x,y,col,r0,r1,dur,w,t:0}); }
+
+/* ==========================================================================
+   SIMULATION
+   ========================================================================== */
+function step(dt){
+  S.t+=dt;
+  if (S.hitstop>0){ S.hitstop-=dt; return; }
+
+  // paddle follows the pointer with a little weight
+  const pw=paddleW();
+  S.paddle.tx=clamp(S.paddle.tx, F.x0+pw/2, F.x1-pw/2);
+  S.paddle.x=lerp(S.paddle.x, S.paddle.tx, Math.min(1,dt*20));
+  S.paddle.w=lerp(S.paddle.w, pw, Math.min(1,dt*8));
+  S.paddle.squash=Math.max(0,S.paddle.squash-dt*5);
+  S.paddle.flash=Math.max(0,S.paddle.flash-dt*3);
+
+  // row descent tween
+  if (S.descend>0) S.descend=Math.max(0,S.descend-dt);
+
+  /* Next row. The clock runs faster once the field is nearly stripped, so
+     out-clearing the spawn rate is answered with more wall instead of an empty
+     screen and nothing to do but wait. Deliberately a narrow rescue and not the
+     main pacing lever: at a wide threshold it becomes the equilibrium, pinning
+     the board at a couple of thin rows while the wave counter runs away, and
+     since wave drives hit points the run inflates instead of ending. Pressure
+     belongs in the cadence above; this only covers the dead air. */
+  const starve = clamp(1 - S.bricks.length/(F.cols*1.6), 0, 1);
+  S.spawnRush = lerp(S.spawnRush||1, 1 + starve*starve*1.6, Math.min(1,dt*1.5));
+  S.spawnT -= dt*S.spawnRush;
+  if (S.spawnT<=0) pushRow();
+
+  // paddle guns
+  S.gunT-=dt;
+  if (S.gunT<=0){
+    S.gunT=gunPeriod();
+    const y=F.paddleY-10;
+    S.bullets.push({x:S.paddle.x-S.paddle.w*0.32,y,vy:-780});
+    S.bullets.push({x:S.paddle.x+S.paddle.w*0.32,y,vy:-780});
+    S.paddle.flash=1;
+  }
+  for (let i=S.bullets.length-1;i>=0;i--){
+    const u=S.bullets[i];
+    const y0=u.y;
+    u.y+=u.vy*dt;
+    if (u.y<F.top-60){ S.bullets.splice(i,1); continue; }
+    // swept against the span it crossed: at 780 px/s a frame step is almost
+    // exactly one brick tall, so a point test would skip rows on a slow frame
+    let hit=null;
+    for (const b of S.bricks){
+      if (b.dead) continue;
+      const by=brickY(b);
+      if (u.x>=b.x&&u.x<=b.x+b.w&&u.y<=by+b.h&&y0>=by){ hit=b; break; }
+    }
+    if (hit){ hurt(hit, Math.max(1,Math.round(ballDmg()*0.45)), u.x, u.y); S.bullets.splice(i,1); }
+  }
+
+  // stuck ball rides the paddle
+  if (!S.stuck) stepBalls(dt);
+
+  // bullets can kill while the ball is still on the paddle, so the sweep has to
+  // live here rather than at the end of the ball step
+  if (S.bricks.some(b=>b.dead)) S.bricks=S.bricks.filter(b=>!b.dead);
+
+  // lose check: a brick reaching the danger line ends the run outright
+  for (const b of S.bricks){
+    if (brickY(b)+F.brickH >= F.dangerY){ endRun('breach'); return; }
+  }
+
+  // energy -> draft. Once every power is maxed the bar just sits full rather
+  // than eating the charge for an empty card rack.
+  if (S.energy>=S.energyCap && !S.over && POWERS.some(p=>(S.powers[p.id]||0)<p.max)){
+    S.energy-=S.energyCap;
+    S.drafts++;
+    S.energyCap=Math.round(BAL.energyBase*Math.pow(BAL.energyGrow,S.drafts));
+    openDraft();
+  }
+
+  stepFx(dt);
+}
+function stepBalls(dt){
+  const sp=ballSpeed();
+  for (let i=S.balls.length-1;i>=0;i--){
+    const ball=S.balls[i];
+    /* Re-derive the velocity from its angle every frame. This fixes the speed
+       exactly and — the part that matters — keeps the direction inside a
+       diagonal band. A brick breaker's worst failure is a ball that ends up
+       travelling straight up: the bounce angle is measured from the middle of
+       the paddle, so a player tracking the ball perfectly sends it into a
+       vertical groove where it oscillates in one column, hits nothing, and the
+       run stalls. The band spans 17°-70° off horizontal, which guarantees the
+       ball sweeps ~5 columns per length of the field, so it is always working. */
+    const sx=Math.sign(ball.vx)|| (Math.random()<0.5?-1:1);
+    const sy=Math.sign(ball.vy)||-1;
+    const th=clamp(Math.atan2(Math.abs(ball.vy),Math.abs(ball.vx)),0.30,1.22);
+    ball.vx=sx*Math.cos(th)*sp; ball.vy=sy*Math.sin(th)*sp;
+    // magnet steers the ball toward the paddle as it comes down
+    const mg=lvOf('magnet');
+    if (mg && ball.vy>0 && ball.y>F.paddleY-320){
+      ball.vx += Math.sign(S.paddle.x-ball.x)*mg*34*dt;
+    }
+
+    // substep so a fast ball cannot tunnel a 30 px brick
+    const steps=Math.max(1, Math.ceil(sp*dt/(F.ballR*0.8)));
+    const sdt=dt/steps;
+    let lost=false;
+    for (let s=0;s<steps && !lost;s++){
+      ball.x+=ball.vx*sdt; ball.y+=ball.vy*sdt;
+      // walls
+      if (ball.x-ball.r<F.x0){ ball.x=F.x0+ball.r; ball.vx=Math.abs(ball.vx); wallFx(ball); }
+      else if (ball.x+ball.r>F.x1){ ball.x=F.x1-ball.r; ball.vx=-Math.abs(ball.vx); wallFx(ball); }
+      if (ball.y-ball.r<F.top){ ball.y=F.top+ball.r; ball.vy=Math.abs(ball.vy); wallFx(ball); }
+      // paddle
+      if (ball.vy>0 && ball.y+ball.r>=F.paddleY && ball.y-ball.r<F.paddleY+F.paddleH+10){
+        const half=S.paddle.w/2;
+        if (ball.x>S.paddle.x-half-6 && ball.x<S.paddle.x+half+6){
+          const u=clamp((ball.x-S.paddle.x)/half,-1,1);
+          const a=-Math.PI/2 + u*1.02;                 // hit position sets the angle
+          ball.vx=Math.cos(a)*sp; ball.vy=Math.sin(a)*sp;
+          ball.y=F.paddleY-ball.r-1;
+          S.paddle.squash=1; S.pierceLeft=lvOf('pierce');
+          if (lvOf('momentum')) S.momentum=Math.min(S.momentum+lvOf('momentum'), lvOf('momentum')*6);
+          spark(ball.x,F.paddleY,P.core,6,240);
+        }
+      }
+      // barrier / floor
+      if (ball.y-ball.r>F.bottom){
+        if (S.barrierLeft>0){
+          S.barrierLeft--; ball.y=F.bottom-ball.r; ball.vy=-Math.abs(ball.vy);
+          spark(ball.x,F.bottom,'#7de0ff',14,340);
+          ring(ball.x,F.bottom,'#7de0ff',8,110,.4,4); shake(5,0);
+        } else {
+          S.balls.splice(i,1); lost=true; break;
+        }
+      }
+      // bricks
+      for (const b of S.bricks){
+        if (b.dead) continue;
+        const by=brickY(b);
+        const nx=clamp(ball.x,b.x,b.x+b.w), ny=clamp(ball.y,by,by+b.h);
+        const dx=ball.x-nx, dy=ball.y-ny;
+        if (dx*dx+dy*dy > ball.r*ball.r) continue;
+
+        const wasHp=b.hp;
+        hurt(b,ballDmg(),ball.x,ball.y);
+        arcFrom(b);
+        ball.hot=1;
+        ball.hue=hpHue(b.hp>0?b.hp:wasHp);   // the light takes on what it broke
+
+        // pierce lets the ball carry straight on through a kill
+        if (b.dead && S.pierceLeft>0){ S.pierceLeft--; continue; }
+        // reflect on the shallower penetration axis
+        const cx=b.x+b.w/2, cy=by+b.h/2;
+        const ox=(b.w/2+ball.r)-Math.abs(ball.x-cx);
+        const oy=(b.h/2+ball.r)-Math.abs(ball.y-cy);
+        if (ox<oy){ ball.vx=Math.sign(ball.x-cx||1)*Math.abs(ball.vx); ball.x+=Math.sign(ball.x-cx||1)*ox; }
+        else { ball.vy=Math.sign(ball.y-cy||1)*Math.abs(ball.vy); ball.y+=Math.sign(ball.y-cy||1)*oy; }
+        if (b.hp<=0) S.momentum=0;
+        break;
+      }
+    }
+    if (lost) continue;
+    ball.hot=Math.max(0,ball.hot-dt*4);
+    ball.trail.push({x:ball.x,y:ball.y});
+    if (ball.trail.length>14) ball.trail.shift();
+  }
+  S.bricks=S.bricks.filter(b=>!b.dead);
+
+  if (!S.balls.length && !S.over){
+    S.lives--;
+    if (S.lives<=0) endRun('out');
+    else { resetBall(); banner('BALL LOST', P.danger); shake(8,1); }
+  }
+}
+function wallFx(ball){ spark(ball.x,ball.y,'#9fd8ff',3,160); }
+
+function stepFx(dt){
+  for (let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i]; p.t+=dt;
+    if (p.t>=p.life){ S.parts.splice(i,1); continue; }
+    p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=(p.g||0)*dt;
+  }
+  for (let i=S.shards.length-1;i>=0;i--){
+    const s=S.shards[i]; s.t+=dt;
+    if (s.t>=s.life){ S.shards.splice(i,1); continue; }
+    s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=900*dt; s.rot+=s.vr*dt;
+  }
+  for (let i=S.pops.length-1;i>=0;i--){ const q=S.pops[i]; q.t+=dt; if(q.t>.8) S.pops.splice(i,1); }
+  S.rings=(S.rings||[]).filter(r=>(r.t+=dt)<r.dur);
+  S.arcs=(S.arcs||[]).filter(a=>(a.t+=dt)<0.2);
+  for (const b of S.bricks){ b.flash=Math.max(0,b.flash-dt*4); b.shakeT=Math.max(0,b.shakeT-dt); }
+  S.shake=Math.max(0,S.shake-dt*42); S.shakeR=Math.max(0,S.shakeR-dt*4);
+  if (S.banner){ S.banner.t+=dt; if (S.banner.t>1.5) S.banner=null; }
+}
+
+/* ==========================================================================
+   DRAFT
+   ========================================================================== */
+let draft=null;
+function openDraft(){
+  const owned=Object.keys(S.powers);
+  const pool=POWERS.filter(p=>(S.powers[p.id]||0)<p.max);
+  const chosen=[];
+  // bias slightly toward things already owned so builds actually compound
+  const bag=pool.slice();
+  while (chosen.length<3 && bag.length){
+    let idx=Math.floor(Math.random()*bag.length);
+    if (owned.length && Math.random()<0.38){
+      // a *random* one you already hold — taking the first match would always
+      // re-offer whichever power sits earliest in the table
+      const held=[];
+      for (let j=0;j<bag.length;j++) if (S.powers[bag[j].id]) held.push(j);
+      if (held.length) idx=held[Math.floor(Math.random()*held.length)];
+    }
+    chosen.push(bag.splice(idx,1)[0]);
+  }
+  if (!chosen.length) return;
+  draft={cards:chosen, t:0};
+  scene='draft';
+}
+function takeDraft(i){
+  const p=draft.cards[i]; if(!p) return;
+  S.powers[p.id]=(S.powers[p.id]||0)+1;
+  if (p.id==='wind'){ S.maxLives++; S.lives++; }
+  if (p.id==='barrier') S.barrierLeft=lvOf('barrier');
+  // Fracture only applies at launch, so without this it would do nothing at all
+  // until the next life — the one draft that reads as a dud while being the
+  // strongest card in the deck.
+  if (p.id==='fracture' && !S.stuck) fracture();
+  draft=null; scene='play';
+  banner(`${p.name.toUpperCase()} LV${S.powers[p.id]}`, P.energy);
+}
+
+/* ==========================================================================
+   RUN END
+   ========================================================================== */
+function endRun(reason){
+  if (S.over) return;
+  S.over=true; S.reason=reason;
+  S.lives=0;                             // a breach costs every life at once
+  S.coresEarned = Math.floor(S.score/160) + S.wave*4;
+  Meta.cores += S.coresEarned;
+  S.newBest = S.wave>Meta.best;          // captured before Meta.best moves
+  if (S.newBest) Meta.best=S.wave;
+  Meta.save();
+  shake(16,2);
+  for (const b of S.bricks) shatter(b, brickY(b));
+  setTimeout(()=>{ scene='over'; }, 750);
+}
+
+/* ==========================================================================
+   RENDER
+   ========================================================================== */
+let cv, ctx, dpr=1, sc=1, offX=0, offY=0, dust=[];
+function resize(){
+  dpr=Math.min(devicePixelRatio||1,2);
+  sc=Math.min(innerWidth/W, innerHeight/H);
+  offX=(innerWidth-W*sc)/2; offY=(innerHeight-H*sc)/2;
+  cv.style.position='absolute'; cv.style.left=offX+'px'; cv.style.top=offY+'px';
+  cv.style.width=(W*sc)+'px'; cv.style.height=(H*sc)+'px';
+  cv.width=Math.round(W*sc*dpr); cv.height=Math.round(H*sc*dpr);
+  ctx=cv.getContext('2d');
+  vig=null;                       // rebuilt against the new context
+}
+function rr(x,y,w,h,r){
+  const m=Math.min(r,w/2,h/2);
+  ctx.beginPath(); ctx.moveTo(x+m,y);
+  ctx.arcTo(x+w,y,x+w,y+h,m); ctx.arcTo(x+w,y+h,x,y+h,m);
+  ctx.arcTo(x,y+h,x,y,m); ctx.arcTo(x,y,x+w,y,m); ctx.closePath();
+}
+function txt(s,x,y,size,col,weight=700,align='center',base='middle'){
+  ctx.font=`${weight} ${size}px "Chakra Petch", system-ui, sans-serif`;
+  ctx.fillStyle=col; ctx.textAlign=align; ctx.textBaseline=base;
+  ctx.fillText(s,x,y);
+}
+function initDust(){
+  dust=[]; for(let i=0;i<70;i++) dust.push({x:rnd(0,W),y:rnd(0,H),r:rnd(.6,2.2),
+    v:rnd(4,18),a:rnd(.08,.34),h:rnd(190,280)});
+}
+function drawVoid(dt){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#080c1c'); g.addColorStop(0.45,P.void); g.addColorStop(1,'#080b18');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  ctx.save(); ctx.globalCompositeOperation='lighter';
+  for (const d of dust){
+    d.y-=d.v*dt; if(d.y<-4){ d.y=H+4; d.x=rnd(0,W); }
+    ctx.fillStyle=`hsla(${d.h},80%,70%,${d.a})`;
+    ctx.beginPath(); ctx.arc(d.x,d.y,d.r,0,TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawFieldFrame(){
+  ctx.save();
+  // a light sweep across the top edge as a row pushes in
+  if (S.descend>0){
+    const k=S.descend/0.42;
+    ctx.save(); ctx.globalCompositeOperation='lighter';
+    const g=ctx.createLinearGradient(0,F.top-10,0,F.top+90);
+    g.addColorStop(0,`rgba(180,220,255,${0.30*k})`);
+    g.addColorStop(1,'rgba(180,220,255,0)');
+    ctx.fillStyle=g; ctx.fillRect(F.x0,F.top-10,F.x1-F.x0,100); ctx.restore();
+  }
+  ctx.strokeStyle='rgba(47,61,120,.55)'; ctx.lineWidth=2;
+  rr(F.x0-4, F.top-4, F.x1-F.x0+8, F.bottom-F.top+8, 16); ctx.stroke();
+  // faint lattice
+  ctx.globalAlpha=.16; ctx.strokeStyle=P.edge; ctx.lineWidth=1;
+  ctx.beginPath();
+  for (let x=F.x0; x<=F.x1; x+=F.brickW+F.gap){ ctx.moveTo(x,F.top); ctx.lineTo(x,F.bottom); }
+  for (let y=F.top; y<=F.bottom; y+=F.rowPitch){ ctx.moveTo(F.x0,y); ctx.lineTo(F.x1,y); }
+  ctx.stroke(); ctx.restore();
+}
+/** The ball is a light source: an additive pool that lifts whatever it passes. */
+function drawBallLight(){
+  ctx.save(); ctx.globalCompositeOperation='lighter';
+  for (const b of S.balls){
+    const r=150+b.hot*70, h=b.hue;
+    const g=ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,r);
+    g.addColorStop(0,`hsla(${h},95%,76%,${0.18+b.hot*0.22})`);
+    g.addColorStop(0.45,`hsla(${h},90%,58%,0.07)`);
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.fillRect(b.x-r,b.y-r,r*2,r*2);
+  }
+  ctx.restore();
+}
+function drawBrick(b){
+  const y=brickY(b);
+  if (y+b.h<F.top-40 || y>F.bottom+20) return;
+  const jitter = b.shakeT>0 ? Math.sin(b.shakeT*90)*b.shakeT*9 : 0;
+  const x=b.x+jitter;
+  const hue=hpHue(b.hp), dk=hpDark(b.hp);
+  const g=ctx.createLinearGradient(0,y,0,y+b.h);
+  g.addColorStop(0,`hsl(${hue},92%,${68-dk}%)`);
+  g.addColorStop(0.5,`hsl(${hue},86%,${54-dk*0.8}%)`);
+  g.addColorStop(1,`hsl(${hue},80%,${Math.max(14,38-dk*0.6)}%)`);
+  rr(x,y,b.w,b.h,7); ctx.fillStyle=g; ctx.fill();
+
+  ctx.save(); rr(x,y,b.w,b.h,7); ctx.clip();
+  // prism facets
+  ctx.globalAlpha=.30; ctx.strokeStyle='#fff'; ctx.lineWidth=1.4;
+  ctx.beginPath();
+  ctx.moveTo(x-6,y+b.h); ctx.lineTo(x+b.w*0.42,y-4);
+  ctx.moveTo(x+b.w*0.5,y+b.h+4); ctx.lineTo(x+b.w+6,y-4);
+  ctx.stroke();
+  // top bevel
+  ctx.globalAlpha=.55; ctx.fillStyle='#fff';
+  ctx.fillRect(x,y,b.w,2.2);
+  ctx.globalAlpha=.20; ctx.fillStyle='#000';
+  ctx.fillRect(x,y+b.h-2.6,b.w,2.6);
+  // cracks accumulate as it takes damage
+  const dmgFrac=1-b.hp/b.maxHp;
+  if (dmgFrac>0.01){
+    ctx.globalAlpha=clamp(dmgFrac*0.85,0,.8); ctx.strokeStyle='#05070f'; ctx.lineWidth=1.6;
+    const n=Math.ceil(dmgFrac*4);
+    for(let i=0;i<n;i++){
+      const s=b.seed+i*57.3;
+      const sx=x+((s*13)%b.w), sy=y+((s*7)%b.h);
+      ctx.beginPath(); ctx.moveTo(sx,sy);
+      ctx.lineTo(sx+((s*11)%18)-9, sy+((s*5)%16)-8);
+      ctx.lineTo(sx+((s*17)%26)-13, sy+((s*3)%20)-10);
+      ctx.stroke();
+    }
+  }
+  if (b.flash>0){ ctx.globalAlpha=b.flash*.9; ctx.fillStyle='#fff'; ctx.fillRect(x,y,b.w,b.h); }
+  ctx.restore();
+
+  ctx.globalAlpha=1;
+  ctx.lineWidth=1.2; ctx.strokeStyle=`hsla(${hue},70%,22%,.9)`;
+  rr(x,y,b.w,b.h,7); ctx.stroke();
+  if (b.maxHp>1)
+    txt(String(b.hp), x+b.w/2, y+b.h/2+1, 15,
+        b.hp>HP_SPAN ? 'rgba(255,222,232,.92)' : 'rgba(6,10,22,.82)', 700);
+}
+function drawPaddle(){
+  const p=S.paddle, w=p.w*(1+p.squash*0.08), h=F.paddleH*(1-p.squash*0.25);
+  const x=p.x-w/2, y=F.paddleY-h/2;
+  ctx.save(); ctx.globalCompositeOperation='lighter';
+  const cone=ctx.createLinearGradient(0,F.paddleY,0,F.paddleY-260);
+  cone.addColorStop(0,`rgba(140,210,255,${0.13+p.flash*0.12})`);
+  cone.addColorStop(1,'rgba(140,210,255,0)');
+  ctx.fillStyle=cone;
+  ctx.beginPath(); ctx.moveTo(p.x-w*0.5,F.paddleY);
+  ctx.lineTo(p.x-w*1.25,F.paddleY-260); ctx.lineTo(p.x+w*1.25,F.paddleY-260);
+  ctx.lineTo(p.x+w*0.5,F.paddleY); ctx.closePath(); ctx.fill();
+  ctx.restore();
+
+  const g=ctx.createLinearGradient(0,y,0,y+h);
+  g.addColorStop(0,'#eafcff'); g.addColorStop(0.45,'#7fd8ff'); g.addColorStop(1,'#2f7fd6');
+  rr(x,y,w,h,h/2); ctx.fillStyle=g; ctx.fill();
+  ctx.globalAlpha=.85; ctx.fillStyle='#fff';
+  rr(x+6,y+2.5,w-12,3,1.5); ctx.fill(); ctx.globalAlpha=1;
+  ctx.lineWidth=1.4; ctx.strokeStyle='rgba(200,245,255,.8)';
+  rr(x,y,w,h,h/2); ctx.stroke();
+  // barrier charges
+  if (S.barrierLeft>0){
+    ctx.save(); ctx.globalCompositeOperation='lighter';
+    ctx.strokeStyle=`rgba(125,224,255,${0.25+0.12*Math.sin(S.t*6)})`;
+    ctx.lineWidth=3; ctx.setLineDash([16,12]);
+    ctx.beginPath(); ctx.moveTo(F.x0,F.bottom-3); ctx.lineTo(F.x1,F.bottom-3); ctx.stroke();
+    ctx.setLineDash([]); ctx.restore();
+  }
+}
+/* Dispersion. The trail is drawn three times in red, green and blue, fanned
+   across the normal of travel — the ball is a photon and the wake is it coming
+   apart into its primaries. Recombined by `lighter` at the head, so the ball
+   itself stays white and only the tail shows colour. Falls back to a single
+   band once the field is crowded, to keep the arc count sane. */
+const DISPERSE = [['255,72,124',-1], ['110,255,168',0], ['104,168,255',1]];
+function drawBalls(){
+  ctx.save(); ctx.globalCompositeOperation='lighter';
+  const bands = S.balls.length>6 ? DISPERSE.slice(1,2) : DISPERSE;
+  for (const b of S.balls){
+    const n=b.trail.length;
+    if (n>1){
+      const m=Math.hypot(b.vx,b.vy)||1, nx=-b.vy/m, ny=b.vx/m;
+      for (const [rgb,side] of bands){
+        ctx.fillStyle=`rgb(${rgb})`;
+        for (let i=1;i<n;i++){
+          const t=i/n, p=b.trail[i], off=side*(1-t)*8;
+          ctx.globalAlpha=t*t*0.46;
+          ctx.beginPath(); ctx.arc(p.x+nx*off, p.y+ny*off, b.r*t*0.82, 0, TAU); ctx.fill();
+        }
+      }
+    }
+    ctx.globalAlpha=1;
+    const g=ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r*2.6);
+    g.addColorStop(0,'#ffffff'); g.addColorStop(0.35,'#bff4ff');
+    g.addColorStop(1,'rgba(90,180,255,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(b.x,b.y,b.r*2.6,0,TAU); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(b.x,b.y,b.r*0.62,0,TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawFx(){
+  ctx.save(); ctx.globalCompositeOperation='lighter';
+  for (const u of S.bullets){
+    ctx.fillStyle='#ffd98a';
+    rr(u.x-2,u.y-11,4,16,2); ctx.fill();
+    ctx.globalAlpha=.4; ctx.fillStyle='#ffb43a';
+    rr(u.x-4,u.y-14,8,22,4); ctx.fill(); ctx.globalAlpha=1;
+  }
+  for (const p of S.parts){
+    ctx.globalAlpha=1-p.t/p.life; ctx.fillStyle=p.col;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,TAU); ctx.fill();
+  }
+  for (const r of (S.rings||[])){
+    const k=r.t/r.dur;
+    ctx.globalAlpha=(1-k)*.85; ctx.strokeStyle=r.col; ctx.lineWidth=r.w;
+    ctx.beginPath(); ctx.arc(r.x,r.y,lerp(r.r0,r.r1,k),0,TAU); ctx.stroke();
+  }
+  for (const a of (S.arcs||[])){
+    ctx.globalAlpha=(1-a.t/0.2)*.9; ctx.strokeStyle='#c9ecff'; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(a.x1,a.y1);
+    ctx.lineTo((a.x1+a.x2)/2+rnd(-14,14),(a.y1+a.y2)/2+rnd(-14,14));
+    ctx.lineTo(a.x2,a.y2); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.globalAlpha=1;
+  for (const s of S.shards){
+    ctx.save(); ctx.globalAlpha=1-s.t/s.life;
+    ctx.translate(s.x,s.y); ctx.rotate(s.rot); ctx.fillStyle=s.col;
+    ctx.beginPath(); ctx.moveTo(0,-s.s); ctx.lineTo(s.s*.8,s.s*.7); ctx.lineTo(-s.s*.8,s.s*.6);
+    ctx.closePath(); ctx.fill(); ctx.restore();
+  }
+  ctx.globalAlpha=1;
+  for (const q of S.pops){
+    const k=q.t/.8;
+    ctx.globalAlpha=1-k*k;
+    txt(q.txt, q.x, q.y-38*k, 21, q.col, 700);
+  }
+  ctx.globalAlpha=1;
+}
+function drawDanger(){
+  let low=-1e9;
+  for (const b of S.bricks) { const y=brickY(b)+F.brickH; if (y>low) low=y; }
+  const near = low > F.dangerY-130;
+  ctx.save();
+  if (near){
+    // the whole lower field bleeds red as the wall closes, so the threat is
+    // legible from the corner of the eye rather than from a thin dashed line
+    const k=clamp((low-(F.dangerY-130))/130,0,1)*(.55+.45*Math.sin(S.t*7));
+    const g=ctx.createLinearGradient(0,F.dangerY-430,0,F.bottom);
+    g.addColorStop(0,'rgba(255,77,109,0)');
+    g.addColorStop(1,`rgba(255,45,85,${0.34*k})`);
+    ctx.fillStyle=g; ctx.fillRect(F.x0,F.dangerY-430,F.x1-F.x0,F.bottom-F.dangerY+430);
+  }
+  ctx.globalAlpha = near ? .55+.25*Math.sin(S.t*8) : .22;
+  ctx.strokeStyle=P.danger; ctx.lineWidth=2.5; ctx.setLineDash([18,14]);
+  ctx.beginPath(); ctx.moveTo(F.x0,F.dangerY); ctx.lineTo(F.x1,F.dangerY); ctx.stroke();
+  ctx.setLineDash([]); ctx.restore();
+}
+function drawHUD(){
+  // wave + score
+  txt(`WAVE ${S.wave}`, 26, 42, 26, P.ink, 700, 'left');
+  txt(S.score.toLocaleString(), 26, 74, 19, P.dim, 600, 'left');
+  // lives
+  for (let i=0;i<S.maxLives;i++){
+    const x=W-30-i*26, on=i<S.lives;
+    ctx.globalAlpha=on?1:.22;
+    ctx.fillStyle=on?P.core:'#33406e';
+    ctx.beginPath(); ctx.arc(x,40,7,0,TAU); ctx.fill();
+    ctx.globalAlpha=1;
+  }
+  txt(`◈ ${Meta.cores}`, W-26, 74, 18, P.gold, 700, 'right');
+
+  // energy bar
+  const bx=26, by=96, bw=W-52, bh=12;
+  rr(bx,by,bw,bh,6); ctx.fillStyle='rgba(20,28,58,.9)'; ctx.fill();
+  const k=clamp(S.energy/S.energyCap,0,1);
+  if (k>0){
+    ctx.save(); rr(bx,by,bw*k,bh,6); ctx.clip();
+    const g=ctx.createLinearGradient(bx,0,bx+bw,0);
+    for(let i=0;i<=6;i++) g.addColorStop(i/6, `hsl(${272-i*45},90%,62%)`);
+    ctx.fillStyle=g; ctx.fillRect(bx,by,bw,bh);
+    ctx.restore();
+    ctx.save(); ctx.globalCompositeOperation='lighter';
+    ctx.fillStyle=`rgba(190,140,255,${0.25+0.2*Math.sin(S.t*5)})`;
+    ctx.fillRect(bx,by,bw*k,bh); ctx.restore();
+  }
+  ctx.lineWidth=1; ctx.strokeStyle='rgba(120,140,210,.45)'; rr(bx,by,bw,bh,6); ctx.stroke();
+
+  // next-row timer
+  const tk=clamp(1-S.spawnT/descendPeriod(),0,1);
+  const rush=(S.spawnRush||1)>1.2;
+  rr(bx,by+18,bw,4,2); ctx.fillStyle='rgba(20,28,58,.8)'; ctx.fill();
+  rr(bx,by+18,bw*tk,4,2);
+  ctx.fillStyle = tk>0.82 ? P.danger : rush ? P.gold : 'rgba(130,160,230,.75)';
+  ctx.fill();
+  if (rush) txt(`FEEDING ×${(S.spawnRush).toFixed(1)}`, W-26, by+34, 12, P.gold, 600, 'right');
+
+  // owned powers, compact
+  const ids=Object.keys(S.powers);
+  if (ids.length){
+    let x=26;
+    for (const id of ids){
+      const lv=S.powers[id];
+      rr(x,F.bottom+14,46,26,6); ctx.fillStyle='rgba(22,32,66,.92)'; ctx.fill();
+      ctx.lineWidth=1; ctx.strokeStyle='rgba(120,140,210,.4)'; ctx.stroke();
+      drawIcon(POW[id].icon, x+15, F.bottom+27, 11, hpCol(2,70));
+      txt(String(lv), x+37, F.bottom+28, 13, P.ink, 700);
+      x+=52; if (x>W-60) break;
+    }
+  }
+  if (S.banner){
+    const b=S.banner, k2=b.t;
+    const a = clamp(k2<0.15 ? k2/0.15 : k2>1.1 ? 1-(k2-1.1)/0.4 : 1, 0, 1);
+    // on a backing plate: by mid-run the wall covers most of the field and
+    // bare text on top of bricks is unreadable
+    ctx.font='700 40px "Chakra Petch", system-ui, sans-serif';
+    const tw=ctx.measureText(b.text).width, by2=968, h=72;
+    ctx.save(); ctx.globalAlpha=a;
+    rr(W/2-tw/2-32, by2-h/2, tw+64, h, 16);
+    ctx.fillStyle='rgba(5,8,18,.82)'; ctx.fill();
+    ctx.lineWidth=1.5; ctx.strokeStyle=b.color; ctx.globalAlpha=a*.55; ctx.stroke();
+    ctx.globalAlpha=a; txt(b.text, W/2, by2, 40, b.color, 700);
+    ctx.restore(); ctx.globalAlpha=1;
+  }
+}
+function drawIcon(kind,x,y,r,col){
+  ctx.save(); ctx.translate(x,y); ctx.strokeStyle=col; ctx.fillStyle=col;
+  ctx.lineWidth=2; ctx.lineCap='round';
+  const B=()=>ctx.beginPath();
+  switch(kind){
+    case 'split': B(); ctx.arc(-r*.5,0,r*.42,0,TAU); ctx.arc(r*.6,-r*.3,r*.32,0,TAU); ctx.fill(); break;
+    case 'lens':  B(); ctx.ellipse(0,0,r,r*.45,0,0,TAU); ctx.fill(); break;
+    case 'bolt':  B(); ctx.moveTo(r*.2,-r); ctx.lineTo(-r*.5,r*.1); ctx.lineTo(0,r*.1);
+                  ctx.lineTo(-r*.2,r); ctx.lineTo(r*.55,-r*.1); ctx.lineTo(0,-r*.1); ctx.closePath(); ctx.fill(); break;
+    case 'arrow': B(); ctx.moveTo(0,-r); ctx.lineTo(r*.6,r*.3); ctx.lineTo(-r*.6,r*.3); ctx.closePath(); ctx.fill(); break;
+    case 'gun':   B(); ctx.rect(-r*.7,-r*.2,r*1.4,r*.8); ctx.fill(); B(); ctx.rect(-r*.2,-r,r*.4,r*.8); ctx.fill(); break;
+    case 'fork':  B(); ctx.moveTo(0,r); ctx.lineTo(0,0); ctx.lineTo(-r*.7,-r); ctx.moveTo(0,0); ctx.lineTo(r*.7,-r); ctx.stroke(); break;
+    case 'magnet':B(); ctx.arc(0,r*.2,r*.8,Math.PI,0); ctx.stroke(); B(); ctx.rect(-r*.95,r*.2,r*.4,r*.6); ctx.rect(r*.55,r*.2,r*.4,r*.6); ctx.fill(); break;
+    case 'burst': for(let i=0;i<8;i++){ B(); const a=i/8*TAU; ctx.moveTo(Math.cos(a)*r*.3,Math.sin(a)*r*.3);
+                  ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r); ctx.stroke(); } break;
+    case 'shield':B(); ctx.moveTo(0,-r); ctx.lineTo(r*.8,-r*.4); ctx.lineTo(r*.55,r*.8);
+                  ctx.lineTo(0,r); ctx.lineTo(-r*.55,r*.8); ctx.lineTo(-r*.8,-r*.4); ctx.closePath(); ctx.fill(); break;
+    case 'speed': for(let i=-1;i<2;i++){ B(); ctx.moveTo(-r,i*r*.5); ctx.lineTo(r*.7,i*r*.5); ctx.stroke(); } break;
+    case 'arc':   B(); ctx.moveTo(-r,-r*.5); ctx.lineTo(0,0); ctx.lineTo(-r*.3,0); ctx.lineTo(r,r*.6); ctx.stroke(); break;
+    case 'well':  B(); ctx.arc(0,0,r*.9,0,TAU); ctx.stroke(); B(); ctx.arc(0,0,r*.4,0,TAU); ctx.fill(); break;
+    case 'wave':  B(); ctx.moveTo(-r,0); ctx.quadraticCurveTo(-r*.5,-r,0,0);
+                  ctx.quadraticCurveTo(r*.5,r,r,0); ctx.stroke(); break;
+    case 'heart': B(); ctx.moveTo(0,r*.75); ctx.bezierCurveTo(-r*1.3,-r*.2,-r*.5,-r*1.1,0,-r*.35);
+                  ctx.bezierCurveTo(r*.5,-r*1.1,r*1.3,-r*.2,0,r*.75); ctx.fill(); break;
+    case 'stack': for(let i=0;i<3;i++){ B(); ctx.rect(-r*.8, -r+ i*r*.72, r*1.6, r*.5); ctx.fill(); } break;
+    case 'gem':   B(); ctx.moveTo(0,-r); ctx.lineTo(r*.85,-r*.2); ctx.lineTo(0,r);
+                  ctx.lineTo(-r*.85,-r*.2); ctx.closePath(); ctx.fill(); break;
+  }
+  ctx.restore();
+}
+
+/* ---------- screens ---------- */
+function drawMenu(){
+  drawVoid(0.016);
+  // spectral title bar
+  ctx.save(); ctx.globalCompositeOperation='lighter';
+  for(let i=0;i<7;i++){
+    ctx.fillStyle=`hsla(${272-i*45},90%,60%,.13)`;
+    ctx.fillRect(0, 300+i*9, W, 9);
+  }
+  ctx.restore();
+  txt('PRISM', W/2, 268, 82, P.ink, 700);
+  ctx.save();
+  const g=ctx.createLinearGradient(W/2-180,0,W/2+180,0);
+  for(let i=0;i<=6;i++) g.addColorStop(i/6,`hsl(${272-i*45},92%,64%)`);
+  ctx.fillStyle=g; ctx.font='700 82px "Chakra Petch", system-ui, sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('BREAK', W/2, 352);
+  ctx.restore();
+  txt(`light, refracted through ${F.cols} columns`, W/2, 416, 17, P.dim, 500);
+
+  menuBtn('ENDLESS', 560, true, 'endless');
+  menuBtn('CLASSIC', 682, false, 'classic');
+  menuBtn('THE FORGE', 804, true, 'forge');
+  txt(`◈ ${Meta.cores} cores`, W/2, 912, 22, P.gold, 700);
+  if (Meta.best) txt(`best · wave ${Meta.best}`, W/2, 948, 16, P.dim, 500);
+  txt('drag to move · tap to launch', W/2, 1180, 15, P.faint, 500);
+}
+function menuBtn(label, y, enabled, key){
+  const w=380, x=W/2-w/2, h=88;
+  const pressed = ui.press===key;
+  ctx.save();
+  ctx.translate(W/2,y+h/2); ctx.scale(pressed?0.97:1,pressed?0.97:1); ctx.translate(-W/2,-(y+h/2));
+  rr(x,y,w,h,18);
+  if (enabled){
+    const g=ctx.createLinearGradient(x,y,x+w,y+h);
+    g.addColorStop(0,'rgba(60,90,200,.30)'); g.addColorStop(1,'rgba(150,90,230,.30)');
+    ctx.fillStyle=g; ctx.fill();
+    ctx.lineWidth=2; ctx.strokeStyle='rgba(150,180,255,.65)'; ctx.stroke();
+    txt(label, W/2, y+h/2, 30, P.ink, 700);
+  } else {
+    ctx.fillStyle='rgba(22,30,58,.6)'; ctx.fill();
+    ctx.lineWidth=2; ctx.strokeStyle='rgba(80,95,150,.4)'; ctx.stroke();
+    txt(label, W/2, y+h/2-11, 28, '#5d6c9e', 700);
+    txt('levels coming soon', W/2, y+h/2+18, 14, '#4a5680', 500);
+  }
+  ctx.restore();
+}
+function drawForge(){
+  drawVoid(0.016);
+  txt('THE FORGE', W/2, 150, 46, P.ink, 700);
+  txt('permanent · carries into every run', W/2, 196, 16, P.dim, 500);
+  txt(`◈ ${Meta.cores}`, W/2, 244, 30, P.gold, 700);
+  const keys=['paddle','power','fire'];
+  keys.forEach((k,i)=>{
+    const def=PERM[k], lv=Meta.lv[k], y=330+i*186;
+    const maxed=lv>=def.max, cost=def.cost(lv), afford=Meta.cores>=cost;
+    const lit = ui.buy===k ? clamp(1-ui.buyT/0.55,0,1) : 0;
+    const nope= ui.deny===k ? clamp(1-ui.denyT/0.4,0,1) : 0;
+    ctx.save();
+    if (nope>0){ ctx.translate(Math.sin(ui.denyT*70)*nope*7,0); }
+    rr(48,y,W-96,158,18);
+    ctx.fillStyle='rgba(18,26,54,.85)'; ctx.fill();
+    if (lit>0){ ctx.save(); ctx.globalCompositeOperation='lighter';
+      ctx.fillStyle=`rgba(120,230,170,${lit*0.20})`; ctx.fill(); ctx.restore(); }
+    ctx.lineWidth=2;
+    ctx.strokeStyle= nope>0 ? `rgba(255,77,109,${0.4+nope*0.6})`
+                   : lit>0  ? `rgba(120,230,170,${0.45+lit*0.55})`
+                   : maxed  ? 'rgba(255,200,92,.5)' : 'rgba(110,135,210,.45)';
+    ctx.stroke();
+    txt(def.name, 76, y+36, 26, P.ink, 700, 'left');
+    txt(def.unit(lv), 76, y+70, 19, hpCol(3,66), 600, 'left');
+    if (!maxed) txt(`→ ${def.unit(lv+1)}`, 76, y+98, 15, P.dim, 500, 'left');
+    // pips
+    for (let j=0;j<def.max;j++){
+      const px=78+j*Math.min(28,(W-260)/def.max), py=y+126;
+      ctx.fillStyle= j<lv ? hpCol(2,62) : 'rgba(80,95,150,.35)';
+      rr(px,py,Math.min(20,(W-300)/def.max),8,4); ctx.fill();
+    }
+    const bw=150,bx=W-48-24-bw,by=y+52;
+    rr(bx,by,bw,58,14);
+    ctx.fillStyle= maxed ? 'rgba(255,200,92,.16)' : afford ? 'rgba(90,200,140,.22)' : 'rgba(40,50,86,.7)';
+    ctx.fill();
+    ctx.lineWidth=2;
+    ctx.strokeStyle= maxed ? 'rgba(255,200,92,.6)' : afford ? 'rgba(120,230,170,.7)' : 'rgba(80,95,150,.4)';
+    ctx.stroke();
+    txt(maxed?'MAX':`◈ ${cost}`, bx+bw/2, by+29, maxed?20:22, maxed?P.gold:(afford?'#9df0c4':'#6d7aa8'), 700);
+    ctx.restore();
+  });
+  ui.buyT+=0.016; ui.denyT+=0.016;
+  rr(W/2-110, 1090, 220, 68, 16);
+  ctx.fillStyle='rgba(30,40,78,.8)'; ctx.fill();
+  ctx.lineWidth=2; ctx.strokeStyle='rgba(120,145,215,.5)'; ctx.stroke();
+  txt('BACK', W/2, 1124, 24, P.ink, 700);
+  txt('the paddle guns fire on their own \u00b7 one volley every 3 s at full rank',
+      W/2, 930, 15, P.faint, 500);
+}
+function drawDraft(){
+  ctx.fillStyle='rgba(4,7,16,.86)'; ctx.fillRect(0,0,W,H);
+  txt('CHARGE COMPLETE', W/2, 196, 20, P.energy, 700);
+  txt('choose one', W/2, 236, 34, P.ink, 700);
+  const cw=200, gap=16, total=cw*3+gap*2, x0=W/2-total/2;
+  draft.cards.forEach((p,i)=>{
+    const lv=lvOf(p.id), nxt=lv+1;
+    const x=x0+i*(cw+gap), y=352, h=452;
+    const kk=clamp((draft.t-i*0.07)/0.3,0,1);
+    ctx.save();
+    ctx.globalAlpha=kk;
+    ctx.translate(x+cw/2, y+h/2);
+    ctx.scale(lerp(0.88,1,kk)*(ui.press==='card'+i?0.96:1), lerp(0.88,1,kk)*(ui.press==='card'+i?0.96:1));
+    ctx.translate(-(x+cw/2), -(y+h/2));
+    rr(x,y,cw,h,20);
+    const g=ctx.createLinearGradient(x,y,x,y+h);
+    g.addColorStop(0, lv? 'rgba(255,200,92,.16)' : 'rgba(70,100,215,.20)');
+    g.addColorStop(1,'rgba(12,18,40,.95)');
+    ctx.fillStyle=g; ctx.fill();
+    ctx.lineWidth=2.5;
+    ctx.strokeStyle= lv ? 'rgba(255,200,92,.8)' : 'rgba(140,175,255,.65)';
+    ctx.stroke();
+
+    ctx.save(); ctx.globalCompositeOperation='lighter';
+    const gg=ctx.createRadialGradient(x+cw/2,y+120,4,x+cw/2,y+120,90);
+    gg.addColorStop(0, lv?'rgba(255,200,92,.35)':'rgba(120,180,255,.35)');
+    gg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=gg; ctx.fillRect(x,y+30,cw,180); ctx.restore();
+    drawIcon(p.icon, x+cw/2, y+120, 34, lv?'#ffd98a':'#bfe0ff');
+
+    txt(p.name, x+cw/2, y+232, 23, P.ink, 700);
+    if (lv) txt(`LV ${lv} → ${nxt}`, x+cw/2, y+266, 16, P.gold, 700);
+    else    txt('NEW', x+cw/2, y+266, 16, '#9fc2ff', 700);
+    // wrapped description
+    const words=p.d(nxt).split(' ');
+    let line='', ly=y+320;
+    ctx.font='500 16px "Chakra Petch", system-ui, sans-serif';
+    for (const wd of words){
+      const test=line?line+' '+wd:wd;
+      if (ctx.measureText(test).width>cw-36){ txt(line,x+cw/2,ly,16,P.dim,500); line=wd; ly+=23; }
+      else line=test;
+    }
+    if (line) txt(line,x+cw/2,ly,16,P.dim,500);
+    for (let j=0;j<p.max;j++){
+      ctx.fillStyle= j<nxt ? (lv?'#ffd98a':'#8fb8ff') : 'rgba(80,95,150,.35)';
+      const pw=Math.min(16,(cw-60)/p.max);
+      rr(x+cw/2-(p.max*(pw+4))/2+j*(pw+4), y+h-52, pw, 7, 3); ctx.fill();
+    }
+    ctx.restore();
+  });
+}
+function drawOver(){
+  drawPlay(0);
+  ctx.fillStyle='rgba(4,7,16,.88)'; ctx.fillRect(0,0,W,H);
+  txt(S.reason==='breach'?'BREACHED':'OUT OF BALLS', W/2, 330, 44, P.danger, 700);
+  txt(S.reason==='breach'?'the wall reached your line':'no balls left in play',
+      W/2, 378, 16, P.dim, 500);
+  const rows=[['WAVE',S.wave],['SCORE',S.score.toLocaleString()],
+              ['BRICKS',S.bricksBroken],['UPGRADES',S.drafts]];
+  rows.forEach((r,i)=>{
+    const y=470+i*66;
+    txt(r[0], W/2-40, y, 18, P.dim, 600, 'right');
+    txt(String(r[1]), W/2+40, y, 26, P.ink, 700, 'left');
+  });
+  rr(W/2-150, 760, 300, 76, 16);
+  ctx.fillStyle='rgba(255,200,92,.14)'; ctx.fill();
+  ctx.lineWidth=2; ctx.strokeStyle='rgba(255,200,92,.6)'; ctx.stroke();
+  txt(`◈ +${S.coresEarned} cores`, W/2, 798, 26, P.gold, 700);
+  if (S.newBest) txt('NEW BEST', W/2, 870, 20, hpCol(3,66), 700);
+  overBtn('RETRY', 920, 'retry');
+  overBtn('THE FORGE', 1020, 'forge');
+  overBtn('MENU', 1120, 'menu');
+}
+function overBtn(label,y,key){
+  const w=300,x=W/2-w/2,h=76;
+  const pressed=ui.press===key;
+  ctx.save();
+  ctx.translate(W/2,y+h/2); ctx.scale(pressed?.97:1,pressed?.97:1); ctx.translate(-W/2,-(y+h/2));
+  rr(x,y,w,h,16);
+  ctx.fillStyle='rgba(40,56,110,.7)'; ctx.fill();
+  ctx.lineWidth=2; ctx.strokeStyle='rgba(130,160,235,.55)'; ctx.stroke();
+  txt(label, W/2, y+h/2, 24, P.ink, 700);
+  ctx.restore();
+}
+function drawPlay(dt){
+  drawVoid(dt);
+  ctx.save();
+  if (S.shakeR>0.02){
+    ctx.translate(W/2,H/2); ctx.rotate(rnd(-S.shakeR,S.shakeR)*0.012); ctx.translate(-W/2,-H/2);
+  }
+  if (S.shake>0.1) ctx.translate(rnd(-S.shake,S.shake), rnd(-S.shake,S.shake));
+  drawFieldFrame();
+  drawBallLight();
+  for (const b of S.bricks) drawBrick(b);
+  drawDanger();
+  drawFx();
+  drawPaddle();
+  if (S.stuck){
+    const y=F.paddleY-20;
+    ctx.save(); ctx.globalCompositeOperation='lighter';
+    const g=ctx.createRadialGradient(S.paddle.x,y,0,S.paddle.x,y,26);
+    g.addColorStop(0,'#fff'); g.addColorStop(1,'rgba(120,200,255,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(S.paddle.x,y,26,0,TAU); ctx.fill(); ctx.restore();
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(S.paddle.x,y,F.ballR*0.62,0,TAU); ctx.fill();
+    ctx.globalAlpha=.55+.25*Math.sin(S.t*6);
+    txt('TAP TO LAUNCH', W/2, F.paddleY-110, 20, P.core, 700);
+    ctx.globalAlpha=1;
+  }
+  drawBalls();
+  ctx.restore();
+  drawVignette();
+  drawHUD();
+}
+/** Pulls the eye to the middle of the field and darkens under the HUD. */
+let vig=null;
+function drawVignette(){
+  if (!vig){
+    vig=ctx.createRadialGradient(W/2,H*0.52,H*0.30,W/2,H*0.52,H*0.78);
+    vig.addColorStop(0,'rgba(0,0,0,0)');
+    vig.addColorStop(1,'rgba(0,0,0,0.55)');
+  }
+  ctx.fillStyle=vig; ctx.fillRect(0,0,W,H);
+}
+
+/* ==========================================================================
+   LOOP
+   ========================================================================== */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(0.033,(now-last)/1000); last=now;
+  ui.t+=dt;
+  ctx.setTransform(sc*dpr,0,0,sc*dpr,0,0);
+  if (scene==='play'){ step(dt); drawPlay(dt); }
+  else if (scene==='draft'){ drawPlay(0); draft.t+=dt; drawDraft(); }
+  else if (scene==='over'){ drawOver(); }
+  else if (scene==='forge'){ drawForge(); }
+  else drawMenu();
+  requestAnimationFrame(frame);
+}
+
+/* ==========================================================================
+   INPUT
+   ========================================================================== */
+function pt(e){ return {x:(e.clientX-offX)/sc, y:(e.clientY-offY)/sc}; }
+function inRect(p,x,y,w,h){ return p.x>=x&&p.x<=x+w&&p.y>=y&&p.y<=y+h; }
+
+/** Seed the field with a real wall. Starting on a few sparse rows leaves the
+ *  ball crossing 800 px of empty space for every contact; fourteen dense rows
+ *  means it rattles from the first second.
+ *
+ *  Every seeded row is generated at wave-1 difficulty, and the wave counter is
+ *  then wound back to 1. Seeding them as waves 1..14 instead — the obvious
+ *  thing — runs the difficulty ramp twice: the wall grades violet to green on
+ *  the way up, then the counter restarts and the next rows come in violet
+ *  again, so the board reads as two spectra stacked. Since hue *is* hit points
+ *  here, that misreads as "the top of the wall is soft" when it is the hardest
+ *  part. A flat opening keeps the gradient monotone for the whole run. */
+function startRun(){
+  S=newRun(); scene='play';
+  for (let i=0;i<BAL.startRows;i++) pushRow(1);
+  S.descend=0; S.banner=null;
+  S.wave=1; S.spawnInterval=BAL.gapBase; S.spawnT=descendPeriod();
+}
+function down(e){
+  e.preventDefault();
+  const p=pt(e);
+  if (scene==='menu'){
+    if (inRect(p,W/2-190,560,380,88)) ui.press='endless';
+    else if (inRect(p,W/2-190,804,380,88)) ui.press='forge';
+    else if (inRect(p,W/2-190,682,380,88)) ui.press='classic';
+    return;
+  }
+  if (scene==='forge'){
+    ['paddle','power','fire'].forEach((k,i)=>{
+      const y=330+i*186, bw=150, bx=W-48-24-bw, by=y+52;
+      if (inRect(p,bx,by,bw,58)) ui.press='buy'+k;
+    });
+    if (inRect(p,W/2-110,1090,220,68)) ui.press='back';
+    return;
+  }
+  if (scene==='draft'){
+    const cw=200,gap=16,total=cw*3+gap*2,x0=W/2-total/2;
+    for (let i=0;i<draft.cards.length;i++)
+      if (inRect(p,x0+i*(cw+gap),352,cw,452)) ui.press='card'+i;
+    return;
+  }
+  if (scene==='over'){
+    if (inRect(p,W/2-150,920,300,76)) ui.press='retry';
+    else if (inRect(p,W/2-150,1020,300,76)) ui.press='forge';
+    else if (inRect(p,W/2-150,1120,300,76)) ui.press='menu';
+    return;
+  }
+  if (scene==='play'){
+    S.paddle.tx=p.x;
+    if (S.stuck) launch();
+  }
+}
+function move(e){
+  const p=pt(e);
+  if (scene==='play' && S) S.paddle.tx=p.x;
+}
+function up(e){
+  const p=pt(e), k=ui.press; ui.press=null;
+  if (!k) return;
+  if (scene==='menu'){
+    if (k==='endless' && inRect(p,W/2-190,560,380,88)) startRun();
+    if (k==='forge'   && inRect(p,W/2-190,804,380,88)) scene='forge';
+    return;
+  }
+  if (scene==='forge'){
+    if (k==='back' && inRect(p,W/2-110,1090,220,68)){ scene='menu'; return; }
+    ['paddle','power','fire'].forEach((key,i)=>{
+      const y=330+i*186, bw=150, bx=W-48-24-bw, by=y+52;
+      if (k!=='buy'+key || !inRect(p,bx,by,bw,58)) return;
+      const def=PERM[key], lv=Meta.lv[key];
+      if (lv<def.max && Meta.cores>=def.cost(lv)){
+        Meta.cores-=def.cost(lv); Meta.lv[key]=lv+1; Meta.save();
+        ui.buy=key; ui.buyT=0;
+      } else ui.deny=key, ui.denyT=0;
+    });
+    return;
+  }
+  if (scene==='draft' && k.startsWith('card')){
+    const i=+k.slice(4), cw=200, gap=16, x0=W/2-(cw*3+gap*2)/2;
+    if (inRect(p,x0+i*(cw+gap),352,cw,452)) takeDraft(i);
+    return;
+  }
+  if (scene==='over'){
+    if (k==='retry' && inRect(p,W/2-150,920,300,76)) startRun();
+    else if (k==='forge' && inRect(p,W/2-150,1020,300,76)) scene='forge';
+    else if (k==='menu'  && inRect(p,W/2-150,1120,300,76)) scene='menu';
+  }
+}
+addEventListener('keydown',e=>{
+  if (scene!=='play'||!S) return;
+  if (e.key===' '){ launch(); e.preventDefault(); }
+  if (e.key==='ArrowLeft') S.paddle.tx-=48;
+  if (e.key==='ArrowRight') S.paddle.tx+=48;
+});
+
+/* ==========================================================================
+   BOOT
+   ========================================================================== */
+cv=document.getElementById('cv');
+resize(); initDust(); Meta.load();
+addEventListener('resize',resize);
+addEventListener('orientationchange',()=>setTimeout(resize,120));
+cv.addEventListener('pointerdown',down);
+cv.addEventListener('pointermove',move);
+cv.addEventListener('pointerup',up);
+cv.addEventListener('pointercancel',()=>{ui.press=null;});
+requestAnimationFrame(frame);
+
+window.__PB={get S(){return S;}, get scene(){return scene;}, set scene(v){scene=v;},
+             Meta, startRun, POWERS, PERM, openDraft, get draft(){return draft;},
+             takeDraft, pushRow, launch, hpHue};
+})();
+</script>
+</body>
+</html>
