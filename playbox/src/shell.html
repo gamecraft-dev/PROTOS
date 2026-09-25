@@ -1,0 +1,499 @@
+<title>Playbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;600;700;800&family=Lilita+One&display=swap">
+<style>
+/* ==========================================================
+   PLAYBOX — one shell, many small games.
+   The shell owns the home screen, settings, saving, sound and
+   the shared sheet/toast UI. Each game is a separate file in
+   src/games/ that calls Playbox.register().
+   ========================================================== */
+:root{
+  color-scheme:light;
+  --bg:#EEF1F6;
+  --bg-2:#E1E6EF;
+  --surface:#FFFFFF;
+  --surface-2:#F4F6FA;
+  --ink:#141A2B;
+  --muted:#586079;
+  --dim:#8E96AE;
+  --line:#D9DFEA;
+  --accent:#2B59F0;
+  --accent-ink:#FFFFFF;
+  --accent-deep:#1B3FB8;
+  --accent-soft:#E3EAFE;
+  --good:#16935D;
+  --bad:#D92F45;
+  --hard:#E0413F;
+  --hard-deep:#A92A2B;
+  --super:#8646E0;
+  --super-deep:#5E2BA6;
+  --coin:#F4B31B;
+  --coin-edge:#C27F06;
+  --scrim:rgba(16,22,40,.46);
+  --shadow:0 18px 40px -22px rgba(20,32,70,.55);
+  --shadow-sm:0 2px 0 var(--line);
+  --f-disp:"Lilita One","Arial Rounded MT Bold","Trebuchet MS",system-ui,sans-serif;
+  --f-body:"Figtree","Avenir Next","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0E1220; --bg-2:#080B15; --surface:#181E31; --surface-2:#1F2740;
+    --ink:#EDF0F8; --muted:#A2AAC4; --dim:#6B7494; --line:#2A3350;
+    --accent:#7090FF; --accent-ink:#0B1024; --accent-deep:#4A63C9; --accent-soft:#1F2A52;
+    --good:#3DCB8B; --bad:#FF6275; --hard:#FF5E5B; --hard-deep:#B83533; --super:#B07CFF; --super-deep:#7446BD;
+    --coin:#FFC83D; --coin-edge:#B98609;
+    --scrim:rgba(0,0,0,.6); --shadow:0 18px 44px -20px rgba(0,0,0,.85);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0E1220; --bg-2:#080B15; --surface:#181E31; --surface-2:#1F2740;
+  --ink:#EDF0F8; --muted:#A2AAC4; --dim:#6B7494; --line:#2A3350;
+  --accent:#7090FF; --accent-ink:#0B1024; --accent-deep:#4A63C9; --accent-soft:#1F2A52;
+  --good:#3DCB8B; --bad:#FF6275; --hard:#FF5E5B; --hard-deep:#B83533; --super:#B07CFF; --super-deep:#7446BD;
+  --coin:#FFC83D; --coin-edge:#B98609;
+  --scrim:rgba(0,0,0,.6); --shadow:0 18px 44px -20px rgba(0,0,0,.85);
+}
+html{box-sizing:border-box;height:100%}
+*,*::before,*::after{box-sizing:inherit;-webkit-tap-highlight-color:transparent}
+body{
+  height:100%;margin:0;background:var(--bg);color:var(--ink);
+  font:500 15px/1.45 var(--f-body);
+  overscroll-behavior:none;-webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:10px}
+
+#app{position:relative;height:100%;width:100%;max-width:480px;margin:0 auto;overflow:hidden;background:var(--bg)}
+@media (min-width:560px) and (min-height:640px){
+  body{display:grid;place-items:center;background:var(--bg-2)}
+  #app{width:430px;height:min(900px,calc(100% - 40px));border-radius:30px;box-shadow:var(--shadow),0 0 0 1px var(--line)}
+}
+.view{position:absolute;inset:0;display:flex;flex-direction:column;overflow:hidden}
+.view.enter{animation:viewIn .34s cubic-bezier(.2,.9,.25,1)}
+@keyframes viewIn{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
+
+/* ---------- shared controls ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:16px;
+  padding:15px 20px;font-family:var(--f-disp);font-size:19px;letter-spacing:.01em;line-height:1;
+  transition:transform .1s,box-shadow .1s,filter .15s}
+.btn-primary{background:var(--accent);color:var(--accent-ink);box-shadow:0 5px 0 var(--accent-deep)}
+.btn-hard{background:var(--hard);color:#fff;box-shadow:0 5px 0 var(--hard-deep)}
+.btn-super{background:var(--super);color:#fff;box-shadow:0 5px 0 var(--super-deep)}
+.btn-ghost{background:var(--surface-2);color:var(--ink);box-shadow:0 4px 0 var(--line)}
+.btn-primary:active,.btn-hard:active,.btn-super:active,.btn-ghost:active{transform:translateY(4px);box-shadow:none}
+.btn:disabled{filter:grayscale(.8) opacity(.55);cursor:default;transform:none}
+.btn-sm{padding:12px 16px;font-size:16px;border-radius:14px}
+.btn-wide{width:100%}
+.icon-btn{width:42px;height:42px;border-radius:14px;background:var(--surface);color:var(--muted);
+  display:grid;place-items:center;flex:0 0 auto;box-shadow:var(--shadow-sm);transition:transform .1s}
+.icon-btn:active{transform:translateY(2px);box-shadow:none}
+.icon-btn svg{width:22px;height:22px}
+.coin{display:inline-block;width:18px;height:18px;border-radius:50%;flex:0 0 auto;
+  background:radial-gradient(circle at 35% 32%,#FFE9A6 0 18%,var(--coin) 38%);
+  box-shadow:inset 0 -2px 0 var(--coin-edge),0 0 0 1.5px var(--coin-edge)}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:7px 12px 7px 8px;border-radius:999px;
+  background:var(--surface);box-shadow:var(--shadow-sm);font-weight:800;font-size:15px;
+  font-variant-numeric:tabular-nums}
+
+/* switches and segmented control */
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;
+  border-bottom:1px solid var(--line)}
+.set-row:last-child{border-bottom:0}
+.set-row .lab{font-weight:700;font-size:15.5px}
+.set-row .hint{font-size:12.5px;color:var(--dim);font-weight:600;margin-top:1px}
+.sw{width:52px;height:30px;border-radius:999px;background:var(--line);position:relative;flex:0 0 auto;
+  transition:background .2s}
+.sw i{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--surface);
+  box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s}
+.sw[aria-checked="true"]{background:var(--accent)}
+.sw[aria-checked="true"] i{transform:translateX(22px)}
+.seg{display:flex;background:var(--surface-2);border-radius:12px;padding:3px;gap:2px;flex:0 0 auto}
+.seg button{padding:7px 11px;border-radius:9px;font-size:13px;font-weight:700;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+
+/* ---------- sheets + toast ---------- */
+#layer{position:absolute;inset:0;z-index:50;pointer-events:none}
+.scrim{position:absolute;inset:0;background:var(--scrim);opacity:0;transition:opacity .26s;pointer-events:none}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;
+  background:var(--surface);border-radius:28px 28px 0 0;
+  padding:12px 20px calc(22px + env(safe-area-inset-bottom,0px));
+  transform:translateY(104%);transition:transform .36s cubic-bezier(.2,.9,.25,1);
+  pointer-events:auto;box-shadow:0 -20px 50px -24px rgba(10,16,40,.6)}
+.sheet.on{transform:translateY(0)}
+.sheet .grab{width:42px;height:5px;border-radius:999px;background:var(--line);margin:0 auto 14px}
+.sheet .eyebrow{font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--accent);margin-bottom:4px}
+.sheet h2{font-family:var(--f-disp);font-weight:400;font-size:30px;line-height:1.05;margin:0 0 6px;text-wrap:balance;letter-spacing:.005em}
+.sheet .sub{color:var(--muted);font-size:15px;line-height:1.5;margin:0 0 12px;max-width:44ch}
+.sheet .actions{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+.sheet[data-tone="hard"] .eyebrow{color:var(--hard)}
+.sheet[data-tone="super"] .eyebrow{color:var(--super)}
+.sheet[data-tone="bad"] .eyebrow{color:var(--bad)}
+#toast{position:absolute;left:50%;top:calc(76px + env(safe-area-inset-top,0px));z-index:60;
+  transform:translate(-50%,-8px);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;
+  font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+  max-width:86%;text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- home ---------- */
+#home{overflow-y:auto;padding:calc(18px + env(safe-area-inset-top,0px)) 18px calc(24px + env(safe-area-inset-bottom,0px));gap:20px}
+.home-top{display:flex;align-items:center;gap:12px}
+.mark{font-family:var(--f-disp);font-size:34px;line-height:1;letter-spacing:.01em;display:flex;align-items:center;gap:10px}
+.mark-box{width:38px;height:38px;border-radius:11px;background:var(--accent);position:relative;flex:0 0 auto;
+  box-shadow:inset 0 -4px 0 var(--accent-deep)}
+.mark-box::before,.mark-box::after{content:"";position:absolute;border-radius:50%}
+.mark-box::before{width:12px;height:12px;left:7px;top:8px;background:var(--coin)}
+.mark-box::after{width:10px;height:10px;right:7px;bottom:10px;background:#fff;opacity:.9;border-radius:3px}
+.home-top .spacer{flex:1}
+.home-hello{display:flex;flex-direction:column;gap:4px}
+.home-hello h1{font-family:var(--f-disp);font-weight:400;font-size:clamp(28px,8.4vw,36px);line-height:1.02;margin:0;text-wrap:balance}
+.home-hello p{margin:0;color:var(--muted);font-size:15px;max-width:40ch}
+.shelf-label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--dim)}
+.shelf{display:grid;gap:14px}
+.game-card{display:flex;flex-direction:column;border-radius:26px;overflow:hidden;background:var(--surface);
+  box-shadow:var(--shadow),0 0 0 1px var(--line);text-align:left;transition:transform .14s}
+.game-card:active{transform:scale(.985)}
+.game-card .gc-art{position:relative;height:190px;overflow:hidden}
+.game-card .gc-body{display:flex;align-items:center;gap:14px;padding:16px 18px 18px}
+.game-card .gc-text{flex:1;min-width:0}
+.game-card .gc-title{font-family:var(--f-disp);font-size:26px;line-height:1.05}
+.game-card .gc-tag{color:var(--muted);font-size:14px;margin-top:3px;line-height:1.35}
+.game-card .gc-status{display:inline-flex;align-items:center;gap:6px;margin-top:9px;font-size:12.5px;font-weight:800;
+  color:var(--accent);background:var(--accent-soft);padding:5px 10px;border-radius:999px;font-variant-numeric:tabular-nums}
+.game-card .gc-go{width:54px;height:54px;border-radius:18px;background:var(--accent);color:var(--accent-ink);
+  display:grid;place-items:center;flex:0 0 auto;box-shadow:0 4px 0 var(--accent-deep)}
+.game-card .gc-go svg{width:26px;height:26px}
+.home-note{font-size:13.5px;color:var(--dim);text-align:center;margin:0 auto;max-width:34ch;line-height:1.5}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.06s!important}
+}
+</style>
+<div id="app">
+  <section id="home" class="view" aria-label="Playbox home">
+    <header class="home-top">
+      <div class="mark"><span class="mark-box" aria-hidden="true"></span>Playbox</div>
+      <span class="spacer"></span>
+      <button class="icon-btn" id="homeSettings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
+      </button>
+    </header>
+    <div class="home-hello">
+      <h1 id="homeTitle">Pick a game</h1>
+      <p id="homeSub">Short puzzles that remember where you left off.</p>
+    </div>
+    <div class="shelf-label">Games</div>
+    <div class="shelf" id="shelf"></div>
+    <p class="home-note">More games will land on this shelf. Your progress in each one is saved on this device.</p>
+  </section>
+  <section id="stage" class="view" hidden></section>
+  <div id="layer">
+    <div class="scrim" id="scrim"></div>
+    <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"></section>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+</div>
+<script>
+/* ==========================================================
+   PLAYBOX shell services: store · audio · buzz · ui · registry
+   ========================================================== */
+(function(){
+'use strict';
+const $ = s => document.querySelector(s);
+const root = document.documentElement;
+
+/* ---------- store: one localStorage key, one sub-object per game ---------- */
+const KEY = 'playbox.v1';
+function readLS(){ try{ const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; }catch(e){ return null; } }
+function writeLS(d){ try{ localStorage.setItem(KEY, JSON.stringify(d)); }catch(e){} }
+const loaded = readLS() || {};
+const data = {
+  v: 1,
+  settings: Object.assign({ sound: true, haptics: true, theme: 'system' }, loaded.settings),
+  games: loaded.games && typeof loaded.games === 'object' ? loaded.games : {},
+  last: loaded.last || null
+};
+let saveTimer = 0;
+const store = {
+  data,
+  settings: data.settings,
+  game(id){ return data.games[id] || (data.games[id] = {}); },
+  save(now){
+    clearTimeout(saveTimer);
+    if(now) writeLS(data); else saveTimer = setTimeout(() => writeLS(data), 150);
+  },
+  wipe(){
+    for(const k of Object.keys(data.games)) delete data.games[k];
+    data.last = null; writeLS(data);
+  }
+};
+window.addEventListener('pagehide', () => writeLS(data));
+document.addEventListener('visibilitychange', () => { if(document.hidden) writeLS(data); });
+
+/* ---------- events ---------- */
+const handlers = {};
+const on = (ev, fn) => { (handlers[ev] = handlers[ev] || new Set()).add(fn); return () => handlers[ev].delete(fn); };
+const emit = (ev, x) => { if(handlers[ev]) for(const fn of [...handlers[ev]]) try{ fn(x); }catch(e){ console.error(e); } };
+
+/* ---------- theme ---------- */
+const hostTheme = root.getAttribute('data-theme');       // whatever the page was opened with
+let settingTheme = false;
+function applyTheme(){
+  const t = data.settings.theme;
+  settingTheme = true;
+  if(t === 'light' || t === 'dark') root.setAttribute('data-theme', t);
+  else if(hostTheme) root.setAttribute('data-theme', hostTheme);
+  else root.removeAttribute('data-theme');
+  settingTheme = false;
+  emit('theme');
+}
+try{ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => emit('theme')); }catch(e){}
+new MutationObserver(() => { if(!settingTheme) emit('theme'); }).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* ---------- audio: tiny synth, everything generated on the fly ---------- */
+const audio = (() => {
+  let ctx = null, master = null, noiseBuf = null;
+  function ensure(){
+    if(!data.settings.sound) return null;
+    if(!ctx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return null;
+      try{ ctx = new AC(); }catch(e){ return null; }
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -16; comp.knee.value = 14; comp.ratio.value = 5;
+      comp.attack.value = .002; comp.release.value = .16;
+      master = ctx.createGain(); master.gain.value = .7;
+      master.connect(comp); comp.connect(ctx.destination);
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for(let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    if(ctx.state === 'suspended') ctx.resume().catch(() => {});
+    return ctx;
+  }
+  function env(g, t, peak, attack, dur){
+    g.gain.setValueAtTime(.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(.0002, peak), t + attack);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  }
+  // a pitched blip: optional glide to f1 and an optional filter
+  function tone(o){
+    const c = ensure(); if(!c) return;
+    const t = c.currentTime + (o.at || 0), dur = o.dur || .12;
+    const osc = c.createOscillator(), g = c.createGain();
+    osc.type = o.type || 'sine';
+    osc.frequency.setValueAtTime(o.f || 440, t);
+    if(o.f1) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.f1), t + (o.glide || dur));
+    env(g, t, o.gain == null ? .25 : o.gain, o.attack || .004, dur);
+    let node = osc;
+    if(o.filter){
+      const fl = c.createBiquadFilter();
+      fl.type = o.filter; fl.frequency.value = o.ff || 1200; fl.Q.value = o.q || .8;
+      osc.connect(fl); node = fl;
+    }
+    node.connect(g); g.connect(master);
+    osc.start(t); osc.stop(t + dur + .05);
+  }
+  // filtered noise: splashes, pops, whooshes
+  function noise(o){
+    const c = ensure(); if(!c) return;
+    const t = c.currentTime + (o.at || 0), dur = o.dur || .15;
+    const src = c.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    src.playbackRate.value = o.rate || 1;
+    const fl = c.createBiquadFilter(); fl.type = o.filter || 'bandpass';
+    fl.frequency.setValueAtTime(o.f || 1000, t);
+    if(o.f1) fl.frequency.exponentialRampToValueAtTime(o.f1, t + dur);
+    fl.Q.value = o.q || 1;
+    const g = c.createGain(); env(g, t, o.gain == null ? .15 : o.gain, o.attack || .004, dur);
+    src.connect(fl); fl.connect(g); g.connect(master);
+    src.start(t, Math.random() * .5); src.stop(t + dur + .05);
+  }
+  // a small glass bell: fundamental plus inharmonic partials
+  function bell(f, at, gain){
+    gain = gain == null ? .18 : gain;
+    tone({ f, at, dur: 1.1, gain, attack: .003 });
+    tone({ f: f * 2.76, at, dur: .45, gain: gain * .35, attack: .002 });
+    tone({ f: f * 5.4, at, dur: .2, gain: gain * .12, attack: .002 });
+  }
+  return { ensure, tone, noise, bell, get ctx(){ return ctx; } };
+})();
+function buzz(p){ if(data.settings.haptics && navigator.vibrate){ try{ navigator.vibrate(p); }catch(e){} } }
+const click = () => audio.tone({ f: 900, f1: 1300, dur: .05, gain: .08, type: 'triangle' });
+
+/* ---------- ui: one sheet at a time, plus a toast ---------- */
+const sheetEl = $('#sheet'), scrim = $('#scrim'), toastEl = $('#toast');
+let sheetClose = null, toastTimer = 0;
+function h(tag, attrs, ...kids){
+  const el = document.createElement(tag);
+  if(attrs) for(const [k, v] of Object.entries(attrs)){
+    if(v == null || v === false) continue;
+    if(k === 'class') el.className = v;
+    else if(k === 'html') el.innerHTML = v;
+    else if(k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for(const kid of kids.flat()) if(kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(kid));
+  return el;
+}
+function closeSheet(){
+  if(!sheetEl.classList.contains('on')) return;
+  sheetEl.classList.remove('on'); scrim.classList.remove('on');
+  const cb = sheetClose; sheetClose = null;
+  if(cb) cb();
+}
+/* sheet({eyebrow, title, sub, body, actions:[{label, kind, onClick, keepOpen, disabled}], tone, dismiss, onClose}) */
+function sheet(o){
+  if(sheetEl.classList.contains('on')){ const cb = sheetClose; sheetClose = null; if(cb) cb(); }
+  sheetEl.replaceChildren();
+  sheetEl.dataset.tone = o.tone || '';
+  sheetEl.append(h('div', { class: 'grab', 'aria-hidden': 'true' }));
+  if(o.eyebrow) sheetEl.append(h('div', { class: 'eyebrow' }, o.eyebrow));
+  sheetEl.append(h('h2', { id: 'sheetTitle' }, o.title || ''));
+  if(o.sub) sheetEl.append(h('p', { class: 'sub' }, o.sub));
+  if(o.body) sheetEl.append(o.body);
+  if(o.actions && o.actions.length){
+    const box = h('div', { class: 'actions' });
+    for(const a of o.actions){
+      const b = h('button', { class: 'btn btn-wide ' + (a.kind === 'ghost' ? 'btn-ghost btn-sm' : 'btn-' + (a.kind || 'primary')),
+        id: a.id, disabled: a.disabled }, a.label);
+      b.addEventListener('click', () => { click(); if(!a.keepOpen) closeSheet(); if(a.onClick) a.onClick(); });
+      box.append(b);
+    }
+    sheetEl.append(box);
+  }
+  sheetClose = o.onClose || null;
+  scrim.onclick = o.dismiss === false ? null : closeSheet;
+  requestAnimationFrame(() => { sheetEl.classList.add('on'); scrim.classList.add('on'); });
+  sheetEl.scrollTop = 0;
+  return sheetEl;
+}
+function toast(msg, ms){
+  toastEl.textContent = msg; toastEl.classList.add('on');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('on'), ms || 1900);
+}
+function toggle(label, hint, get, set){
+  const sw = h('button', { class: 'sw', role: 'switch', 'aria-checked': String(!!get()), 'aria-label': label }, h('i'));
+  sw.addEventListener('click', () => { const v = !get(); set(v); sw.setAttribute('aria-checked', String(v)); click(); });
+  return h('div', { class: 'set-row' }, h('div', null, h('div', { class: 'lab' }, label), hint ? h('div', { class: 'hint' }, hint) : null), sw);
+}
+// the shared settings rows; games append their own rows under these
+function settingsRows(){
+  const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Theme' });
+  for(const [v, lab] of [['system', 'Auto'], ['light', 'Light'], ['dark', 'Dark']]){
+    const b = h('button', { 'aria-pressed': String(data.settings.theme === v) }, lab);
+    b.addEventListener('click', () => {
+      data.settings.theme = v; store.save(); applyTheme(); click();
+      for(const x of seg.children) x.setAttribute('aria-pressed', String(x === b));
+    });
+    seg.append(b);
+  }
+  return h('div', null,
+    toggle('Sound', 'Every sound is synthesised live', () => data.settings.sound, v => { data.settings.sound = v; store.save(); if(v) audio.ensure(); }),
+    toggle('Vibration', 'On phones that support it', () => data.settings.haptics, v => { data.settings.haptics = v; store.save(); if(v) buzz(20); }),
+    h('div', { class: 'set-row' }, h('div', null, h('div', { class: 'lab' }, 'Theme'), h('div', { class: 'hint' }, 'Auto follows your device')), seg)
+  );
+}
+function openSettings(extra){
+  const body = h('div', null, settingsRows(), extra || null);
+  const wipe = h('button', { class: 'btn btn-ghost btn-sm btn-wide', style: 'margin-top:14px;color:var(--bad)' }, 'Erase all saved progress');
+  wipe.addEventListener('click', () => {
+    click();
+    sheet({ eyebrow: 'Erase progress', title: 'Start every game from scratch?', tone: 'bad',
+      sub: 'Levels, coins and boosters in every Playbox game go back to zero. Settings stay.',
+      actions: [
+        { label: 'Erase everything', kind: 'hard', onClick: () => { store.wipe(); emit('wipe'); renderHome(); toast('Progress erased'); } },
+        { label: 'Keep my progress', kind: 'ghost' }
+      ] });
+  });
+  body.append(wipe);
+  sheet({ eyebrow: 'Settings', title: 'Options', body, actions: [{ label: 'Done' }] });
+}
+
+/* ---------- registry + navigation ---------- */
+const games = [];
+let current = null;                              // { def, handle }
+const home = $('#home'), stage = $('#stage');
+
+function register(def){ games.push(def); if(booted) renderHome(); }
+function renderHome(){
+  const shelf = $('#shelf'); shelf.replaceChildren();
+  for(const g of games){
+    const save = store.game(g.id);
+    const art = h('div', { class: 'gc-art', 'aria-hidden': 'true' });
+    try{ g.card && g.card(art, save); }catch(e){ console.error(e); }
+    const status = g.status ? g.status(save) : '';
+    const card = h('button', { class: 'game-card', 'aria-label': 'Play ' + g.title },
+      art,
+      h('div', { class: 'gc-body' },
+        h('div', { class: 'gc-text' },
+          h('div', { class: 'gc-title' }, g.title),
+          h('div', { class: 'gc-tag' }, g.tagline),
+          status ? h('div', { class: 'gc-status' }, status) : null),
+        h('span', { class: 'gc-go', html: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>' })));
+    card.addEventListener('click', () => { click(); openGame(g.id); });
+    shelf.append(card);
+  }
+  const played = data.last && games.find(g => g.id === data.last);
+  $('#homeTitle').textContent = played ? 'Welcome back' : 'Pick a game';
+  $('#homeSub').textContent = played ? `${played.title} is right where you left it.` : 'Short puzzles that remember where you left off.';
+}
+function openGame(id, opts){
+  const def = games.find(g => g.id === id);
+  if(!def) return;
+  audio.ensure();
+  if(current) closeGame(true);
+  data.last = id; store.save();
+  stage.replaceChildren();
+  stage.hidden = false; home.hidden = true;
+  stage.classList.remove('enter'); void stage.offsetWidth; stage.classList.add('enter');
+  const api = {
+    save: store.game(id),
+    persist: now => store.save(now),
+    audio, buzz, click, ui: { sheet, closeSheet, toast, h, toggle, openSettings },
+    settings: data.settings,
+    on, exit: () => closeGame()
+  };
+  current = { def, handle: def.mount(stage, api, opts || {}) || {} };
+  try{ history.replaceState(null, '', '#' + id); }catch(e){}
+}
+function closeGame(silent){
+  if(!current) return;
+  closeSheet();
+  try{ current.handle.unmount && current.handle.unmount(); }catch(e){ console.error(e); }
+  current = null;
+  stage.replaceChildren(); stage.hidden = true;
+  store.save(true);
+  if(silent) return;
+  home.hidden = false; renderHome();
+  home.classList.remove('enter'); void home.offsetWidth; home.classList.add('enter');
+  try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+}
+$('#homeSettings').addEventListener('click', () => { click(); openSettings(); });
+on('theme', () => { if(booted && !home.hidden) renderHome(); });
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape' && sheetEl.classList.contains('on')) closeSheet();
+});
+
+let booted = false;
+function boot(){
+  booted = true;
+  applyTheme();
+  renderHome();
+  const want = (location.hash || '').slice(1);
+  if(want && games.some(g => g.id === want)) openGame(want);
+}
+window.Playbox = { register, store, audio, buzz, on, emit, ui: { sheet, closeSheet, toast, h }, boot, openGame };
+})();
+</script>
+<!-- @games -->
+<script>
+(function(){
+  const start = () => window.Playbox.boot();
+  const hot = window.claude && window.claude.hot;
+  if(hot && hot.ready) hot.ready(start); else start();
+})();
+</script>

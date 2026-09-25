@@ -1,0 +1,2449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#EEF1F6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E1220" media="(prefers-color-scheme: dark)">
+<meta name="description" content="Playbox: a shelf of small puzzle games. First up, Paint Sort: pour paint between vials until each holds one colour.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>html,body{margin:0;padding:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Playbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;600;700;800&family=Lilita+One&display=swap">
+<style>
+/* ==========================================================
+   PLAYBOX — one shell, many small games.
+   The shell owns the home screen, settings, saving, sound and
+   the shared sheet/toast UI. Each game is a separate file in
+   src/games/ that calls Playbox.register().
+   ========================================================== */
+:root{
+  color-scheme:light;
+  --bg:#EEF1F6;
+  --bg-2:#E1E6EF;
+  --surface:#FFFFFF;
+  --surface-2:#F4F6FA;
+  --ink:#141A2B;
+  --muted:#586079;
+  --dim:#8E96AE;
+  --line:#D9DFEA;
+  --accent:#2B59F0;
+  --accent-ink:#FFFFFF;
+  --accent-deep:#1B3FB8;
+  --accent-soft:#E3EAFE;
+  --good:#16935D;
+  --bad:#D92F45;
+  --hard:#E0413F;
+  --hard-deep:#A92A2B;
+  --super:#8646E0;
+  --super-deep:#5E2BA6;
+  --coin:#F4B31B;
+  --coin-edge:#C27F06;
+  --scrim:rgba(16,22,40,.46);
+  --shadow:0 18px 40px -22px rgba(20,32,70,.55);
+  --shadow-sm:0 2px 0 var(--line);
+  --f-disp:"Lilita One","Arial Rounded MT Bold","Trebuchet MS",system-ui,sans-serif;
+  --f-body:"Figtree","Avenir Next","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0E1220; --bg-2:#080B15; --surface:#181E31; --surface-2:#1F2740;
+    --ink:#EDF0F8; --muted:#A2AAC4; --dim:#6B7494; --line:#2A3350;
+    --accent:#7090FF; --accent-ink:#0B1024; --accent-deep:#4A63C9; --accent-soft:#1F2A52;
+    --good:#3DCB8B; --bad:#FF6275; --hard:#FF5E5B; --hard-deep:#B83533; --super:#B07CFF; --super-deep:#7446BD;
+    --coin:#FFC83D; --coin-edge:#B98609;
+    --scrim:rgba(0,0,0,.6); --shadow:0 18px 44px -20px rgba(0,0,0,.85);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0E1220; --bg-2:#080B15; --surface:#181E31; --surface-2:#1F2740;
+  --ink:#EDF0F8; --muted:#A2AAC4; --dim:#6B7494; --line:#2A3350;
+  --accent:#7090FF; --accent-ink:#0B1024; --accent-deep:#4A63C9; --accent-soft:#1F2A52;
+  --good:#3DCB8B; --bad:#FF6275; --hard:#FF5E5B; --hard-deep:#B83533; --super:#B07CFF; --super-deep:#7446BD;
+  --coin:#FFC83D; --coin-edge:#B98609;
+  --scrim:rgba(0,0,0,.6); --shadow:0 18px 44px -20px rgba(0,0,0,.85);
+}
+html{box-sizing:border-box;height:100%}
+*,*::before,*::after{box-sizing:inherit;-webkit-tap-highlight-color:transparent}
+body{
+  height:100%;margin:0;background:var(--bg);color:var(--ink);
+  font:500 15px/1.45 var(--f-body);
+  overscroll-behavior:none;-webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:10px}
+
+#app{position:relative;height:100%;width:100%;max-width:480px;margin:0 auto;overflow:hidden;background:var(--bg)}
+@media (min-width:560px) and (min-height:640px){
+  body{display:grid;place-items:center;background:var(--bg-2)}
+  #app{width:430px;height:min(900px,calc(100% - 40px));border-radius:30px;box-shadow:var(--shadow),0 0 0 1px var(--line)}
+}
+.view{position:absolute;inset:0;display:flex;flex-direction:column;overflow:hidden}
+.view.enter{animation:viewIn .34s cubic-bezier(.2,.9,.25,1)}
+@keyframes viewIn{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
+
+/* ---------- shared controls ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:16px;
+  padding:15px 20px;font-family:var(--f-disp);font-size:19px;letter-spacing:.01em;line-height:1;
+  transition:transform .1s,box-shadow .1s,filter .15s}
+.btn-primary{background:var(--accent);color:var(--accent-ink);box-shadow:0 5px 0 var(--accent-deep)}
+.btn-hard{background:var(--hard);color:#fff;box-shadow:0 5px 0 var(--hard-deep)}
+.btn-super{background:var(--super);color:#fff;box-shadow:0 5px 0 var(--super-deep)}
+.btn-ghost{background:var(--surface-2);color:var(--ink);box-shadow:0 4px 0 var(--line)}
+.btn-primary:active,.btn-hard:active,.btn-super:active,.btn-ghost:active{transform:translateY(4px);box-shadow:none}
+.btn:disabled{filter:grayscale(.8) opacity(.55);cursor:default;transform:none}
+.btn-sm{padding:12px 16px;font-size:16px;border-radius:14px}
+.btn-wide{width:100%}
+.icon-btn{width:42px;height:42px;border-radius:14px;background:var(--surface);color:var(--muted);
+  display:grid;place-items:center;flex:0 0 auto;box-shadow:var(--shadow-sm);transition:transform .1s}
+.icon-btn:active{transform:translateY(2px);box-shadow:none}
+.icon-btn svg{width:22px;height:22px}
+.coin{display:inline-block;width:18px;height:18px;border-radius:50%;flex:0 0 auto;
+  background:radial-gradient(circle at 35% 32%,#FFE9A6 0 18%,var(--coin) 38%);
+  box-shadow:inset 0 -2px 0 var(--coin-edge),0 0 0 1.5px var(--coin-edge)}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:7px 12px 7px 8px;border-radius:999px;
+  background:var(--surface);box-shadow:var(--shadow-sm);font-weight:800;font-size:15px;
+  font-variant-numeric:tabular-nums}
+
+/* switches and segmented control */
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;
+  border-bottom:1px solid var(--line)}
+.set-row:last-child{border-bottom:0}
+.set-row .lab{font-weight:700;font-size:15.5px}
+.set-row .hint{font-size:12.5px;color:var(--dim);font-weight:600;margin-top:1px}
+.sw{width:52px;height:30px;border-radius:999px;background:var(--line);position:relative;flex:0 0 auto;
+  transition:background .2s}
+.sw i{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:var(--surface);
+  box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s}
+.sw[aria-checked="true"]{background:var(--accent)}
+.sw[aria-checked="true"] i{transform:translateX(22px)}
+.seg{display:flex;background:var(--surface-2);border-radius:12px;padding:3px;gap:2px;flex:0 0 auto}
+.seg button{padding:7px 11px;border-radius:9px;font-size:13px;font-weight:700;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+
+/* ---------- sheets + toast ---------- */
+#layer{position:absolute;inset:0;z-index:50;pointer-events:none}
+.scrim{position:absolute;inset:0;background:var(--scrim);opacity:0;transition:opacity .26s;pointer-events:none}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:92%;overflow-y:auto;
+  background:var(--surface);border-radius:28px 28px 0 0;
+  padding:12px 20px calc(22px + env(safe-area-inset-bottom,0px));
+  transform:translateY(104%);transition:transform .36s cubic-bezier(.2,.9,.25,1);
+  pointer-events:auto;box-shadow:0 -20px 50px -24px rgba(10,16,40,.6)}
+.sheet.on{transform:translateY(0)}
+.sheet .grab{width:42px;height:5px;border-radius:999px;background:var(--line);margin:0 auto 14px}
+.sheet .eyebrow{font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--accent);margin-bottom:4px}
+.sheet h2{font-family:var(--f-disp);font-weight:400;font-size:30px;line-height:1.05;margin:0 0 6px;text-wrap:balance;letter-spacing:.005em}
+.sheet .sub{color:var(--muted);font-size:15px;line-height:1.5;margin:0 0 12px;max-width:44ch}
+.sheet .actions{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+.sheet[data-tone="hard"] .eyebrow{color:var(--hard)}
+.sheet[data-tone="super"] .eyebrow{color:var(--super)}
+.sheet[data-tone="bad"] .eyebrow{color:var(--bad)}
+#toast{position:absolute;left:50%;top:calc(76px + env(safe-area-inset-top,0px));z-index:60;
+  transform:translate(-50%,-8px);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;
+  font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+  max-width:86%;text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- home ---------- */
+#home{overflow-y:auto;padding:calc(18px + env(safe-area-inset-top,0px)) 18px calc(24px + env(safe-area-inset-bottom,0px));gap:20px}
+.home-top{display:flex;align-items:center;gap:12px}
+.mark{font-family:var(--f-disp);font-size:34px;line-height:1;letter-spacing:.01em;display:flex;align-items:center;gap:10px}
+.mark-box{width:38px;height:38px;border-radius:11px;background:var(--accent);position:relative;flex:0 0 auto;
+  box-shadow:inset 0 -4px 0 var(--accent-deep)}
+.mark-box::before,.mark-box::after{content:"";position:absolute;border-radius:50%}
+.mark-box::before{width:12px;height:12px;left:7px;top:8px;background:var(--coin)}
+.mark-box::after{width:10px;height:10px;right:7px;bottom:10px;background:#fff;opacity:.9;border-radius:3px}
+.home-top .spacer{flex:1}
+.home-hello{display:flex;flex-direction:column;gap:4px}
+.home-hello h1{font-family:var(--f-disp);font-weight:400;font-size:clamp(28px,8.4vw,36px);line-height:1.02;margin:0;text-wrap:balance}
+.home-hello p{margin:0;color:var(--muted);font-size:15px;max-width:40ch}
+.shelf-label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--dim)}
+.shelf{display:grid;gap:14px}
+.game-card{display:flex;flex-direction:column;border-radius:26px;overflow:hidden;background:var(--surface);
+  box-shadow:var(--shadow),0 0 0 1px var(--line);text-align:left;transition:transform .14s}
+.game-card:active{transform:scale(.985)}
+.game-card .gc-art{position:relative;height:190px;overflow:hidden}
+.game-card .gc-body{display:flex;align-items:center;gap:14px;padding:16px 18px 18px}
+.game-card .gc-text{flex:1;min-width:0}
+.game-card .gc-title{font-family:var(--f-disp);font-size:26px;line-height:1.05}
+.game-card .gc-tag{color:var(--muted);font-size:14px;margin-top:3px;line-height:1.35}
+.game-card .gc-status{display:inline-flex;align-items:center;gap:6px;margin-top:9px;font-size:12.5px;font-weight:800;
+  color:var(--accent);background:var(--accent-soft);padding:5px 10px;border-radius:999px;font-variant-numeric:tabular-nums}
+.game-card .gc-go{width:54px;height:54px;border-radius:18px;background:var(--accent);color:var(--accent-ink);
+  display:grid;place-items:center;flex:0 0 auto;box-shadow:0 4px 0 var(--accent-deep)}
+.game-card .gc-go svg{width:26px;height:26px}
+.home-note{font-size:13.5px;color:var(--dim);text-align:center;margin:0 auto;max-width:34ch;line-height:1.5}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.06s!important}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <section id="home" class="view" aria-label="Playbox home">
+    <header class="home-top">
+      <div class="mark"><span class="mark-box" aria-hidden="true"></span>Playbox</div>
+      <span class="spacer"></span>
+      <button class="icon-btn" id="homeSettings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
+      </button>
+    </header>
+    <div class="home-hello">
+      <h1 id="homeTitle">Pick a game</h1>
+      <p id="homeSub">Short puzzles that remember where you left off.</p>
+    </div>
+    <div class="shelf-label">Games</div>
+    <div class="shelf" id="shelf"></div>
+    <p class="home-note">More games will land on this shelf. Your progress in each one is saved on this device.</p>
+  </section>
+  <section id="stage" class="view" hidden></section>
+  <div id="layer">
+    <div class="scrim" id="scrim"></div>
+    <section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"></section>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+</div>
+<script>
+/* ==========================================================
+   PLAYBOX shell services: store · audio · buzz · ui · registry
+   ========================================================== */
+(function(){
+'use strict';
+const $ = s => document.querySelector(s);
+const root = document.documentElement;
+
+/* ---------- store: one localStorage key, one sub-object per game ---------- */
+const KEY = 'playbox.v1';
+function readLS(){ try{ const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; }catch(e){ return null; } }
+function writeLS(d){ try{ localStorage.setItem(KEY, JSON.stringify(d)); }catch(e){} }
+const loaded = readLS() || {};
+const data = {
+  v: 1,
+  settings: Object.assign({ sound: true, haptics: true, theme: 'system' }, loaded.settings),
+  games: loaded.games && typeof loaded.games === 'object' ? loaded.games : {},
+  last: loaded.last || null
+};
+let saveTimer = 0;
+const store = {
+  data,
+  settings: data.settings,
+  game(id){ return data.games[id] || (data.games[id] = {}); },
+  save(now){
+    clearTimeout(saveTimer);
+    if(now) writeLS(data); else saveTimer = setTimeout(() => writeLS(data), 150);
+  },
+  wipe(){
+    for(const k of Object.keys(data.games)) delete data.games[k];
+    data.last = null; writeLS(data);
+  }
+};
+window.addEventListener('pagehide', () => writeLS(data));
+document.addEventListener('visibilitychange', () => { if(document.hidden) writeLS(data); });
+
+/* ---------- events ---------- */
+const handlers = {};
+const on = (ev, fn) => { (handlers[ev] = handlers[ev] || new Set()).add(fn); return () => handlers[ev].delete(fn); };
+const emit = (ev, x) => { if(handlers[ev]) for(const fn of [...handlers[ev]]) try{ fn(x); }catch(e){ console.error(e); } };
+
+/* ---------- theme ---------- */
+const hostTheme = root.getAttribute('data-theme');       // whatever the page was opened with
+let settingTheme = false;
+function applyTheme(){
+  const t = data.settings.theme;
+  settingTheme = true;
+  if(t === 'light' || t === 'dark') root.setAttribute('data-theme', t);
+  else if(hostTheme) root.setAttribute('data-theme', hostTheme);
+  else root.removeAttribute('data-theme');
+  settingTheme = false;
+  emit('theme');
+}
+try{ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => emit('theme')); }catch(e){}
+new MutationObserver(() => { if(!settingTheme) emit('theme'); }).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* ---------- audio: tiny synth, everything generated on the fly ---------- */
+const audio = (() => {
+  let ctx = null, master = null, noiseBuf = null;
+  function ensure(){
+    if(!data.settings.sound) return null;
+    if(!ctx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return null;
+      try{ ctx = new AC(); }catch(e){ return null; }
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -16; comp.knee.value = 14; comp.ratio.value = 5;
+      comp.attack.value = .002; comp.release.value = .16;
+      master = ctx.createGain(); master.gain.value = .7;
+      master.connect(comp); comp.connect(ctx.destination);
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for(let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    if(ctx.state === 'suspended') ctx.resume().catch(() => {});
+    return ctx;
+  }
+  function env(g, t, peak, attack, dur){
+    g.gain.setValueAtTime(.0001, t);
+    g.gain.exponentialRampToValueAtTime(Math.max(.0002, peak), t + attack);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  }
+  // a pitched blip: optional glide to f1 and an optional filter
+  function tone(o){
+    const c = ensure(); if(!c) return;
+    const t = c.currentTime + (o.at || 0), dur = o.dur || .12;
+    const osc = c.createOscillator(), g = c.createGain();
+    osc.type = o.type || 'sine';
+    osc.frequency.setValueAtTime(o.f || 440, t);
+    if(o.f1) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.f1), t + (o.glide || dur));
+    env(g, t, o.gain == null ? .25 : o.gain, o.attack || .004, dur);
+    let node = osc;
+    if(o.filter){
+      const fl = c.createBiquadFilter();
+      fl.type = o.filter; fl.frequency.value = o.ff || 1200; fl.Q.value = o.q || .8;
+      osc.connect(fl); node = fl;
+    }
+    node.connect(g); g.connect(master);
+    osc.start(t); osc.stop(t + dur + .05);
+  }
+  // filtered noise: splashes, pops, whooshes
+  function noise(o){
+    const c = ensure(); if(!c) return;
+    const t = c.currentTime + (o.at || 0), dur = o.dur || .15;
+    const src = c.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    src.playbackRate.value = o.rate || 1;
+    const fl = c.createBiquadFilter(); fl.type = o.filter || 'bandpass';
+    fl.frequency.setValueAtTime(o.f || 1000, t);
+    if(o.f1) fl.frequency.exponentialRampToValueAtTime(o.f1, t + dur);
+    fl.Q.value = o.q || 1;
+    const g = c.createGain(); env(g, t, o.gain == null ? .15 : o.gain, o.attack || .004, dur);
+    src.connect(fl); fl.connect(g); g.connect(master);
+    src.start(t, Math.random() * .5); src.stop(t + dur + .05);
+  }
+  // a small glass bell: fundamental plus inharmonic partials
+  function bell(f, at, gain){
+    gain = gain == null ? .18 : gain;
+    tone({ f, at, dur: 1.1, gain, attack: .003 });
+    tone({ f: f * 2.76, at, dur: .45, gain: gain * .35, attack: .002 });
+    tone({ f: f * 5.4, at, dur: .2, gain: gain * .12, attack: .002 });
+  }
+  return { ensure, tone, noise, bell, get ctx(){ return ctx; } };
+})();
+function buzz(p){ if(data.settings.haptics && navigator.vibrate){ try{ navigator.vibrate(p); }catch(e){} } }
+const click = () => audio.tone({ f: 900, f1: 1300, dur: .05, gain: .08, type: 'triangle' });
+
+/* ---------- ui: one sheet at a time, plus a toast ---------- */
+const sheetEl = $('#sheet'), scrim = $('#scrim'), toastEl = $('#toast');
+let sheetClose = null, toastTimer = 0;
+function h(tag, attrs, ...kids){
+  const el = document.createElement(tag);
+  if(attrs) for(const [k, v] of Object.entries(attrs)){
+    if(v == null || v === false) continue;
+    if(k === 'class') el.className = v;
+    else if(k === 'html') el.innerHTML = v;
+    else if(k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for(const kid of kids.flat()) if(kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(kid));
+  return el;
+}
+function closeSheet(){
+  if(!sheetEl.classList.contains('on')) return;
+  sheetEl.classList.remove('on'); scrim.classList.remove('on');
+  const cb = sheetClose; sheetClose = null;
+  if(cb) cb();
+}
+/* sheet({eyebrow, title, sub, body, actions:[{label, kind, onClick, keepOpen, disabled}], tone, dismiss, onClose}) */
+function sheet(o){
+  if(sheetEl.classList.contains('on')){ const cb = sheetClose; sheetClose = null; if(cb) cb(); }
+  sheetEl.replaceChildren();
+  sheetEl.dataset.tone = o.tone || '';
+  sheetEl.append(h('div', { class: 'grab', 'aria-hidden': 'true' }));
+  if(o.eyebrow) sheetEl.append(h('div', { class: 'eyebrow' }, o.eyebrow));
+  sheetEl.append(h('h2', { id: 'sheetTitle' }, o.title || ''));
+  if(o.sub) sheetEl.append(h('p', { class: 'sub' }, o.sub));
+  if(o.body) sheetEl.append(o.body);
+  if(o.actions && o.actions.length){
+    const box = h('div', { class: 'actions' });
+    for(const a of o.actions){
+      const b = h('button', { class: 'btn btn-wide ' + (a.kind === 'ghost' ? 'btn-ghost btn-sm' : 'btn-' + (a.kind || 'primary')),
+        id: a.id, disabled: a.disabled }, a.label);
+      b.addEventListener('click', () => { click(); if(!a.keepOpen) closeSheet(); if(a.onClick) a.onClick(); });
+      box.append(b);
+    }
+    sheetEl.append(box);
+  }
+  sheetClose = o.onClose || null;
+  scrim.onclick = o.dismiss === false ? null : closeSheet;
+  requestAnimationFrame(() => { sheetEl.classList.add('on'); scrim.classList.add('on'); });
+  sheetEl.scrollTop = 0;
+  return sheetEl;
+}
+function toast(msg, ms){
+  toastEl.textContent = msg; toastEl.classList.add('on');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('on'), ms || 1900);
+}
+function toggle(label, hint, get, set){
+  const sw = h('button', { class: 'sw', role: 'switch', 'aria-checked': String(!!get()), 'aria-label': label }, h('i'));
+  sw.addEventListener('click', () => { const v = !get(); set(v); sw.setAttribute('aria-checked', String(v)); click(); });
+  return h('div', { class: 'set-row' }, h('div', null, h('div', { class: 'lab' }, label), hint ? h('div', { class: 'hint' }, hint) : null), sw);
+}
+// the shared settings rows; games append their own rows under these
+function settingsRows(){
+  const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Theme' });
+  for(const [v, lab] of [['system', 'Auto'], ['light', 'Light'], ['dark', 'Dark']]){
+    const b = h('button', { 'aria-pressed': String(data.settings.theme === v) }, lab);
+    b.addEventListener('click', () => {
+      data.settings.theme = v; store.save(); applyTheme(); click();
+      for(const x of seg.children) x.setAttribute('aria-pressed', String(x === b));
+    });
+    seg.append(b);
+  }
+  return h('div', null,
+    toggle('Sound', 'Every sound is synthesised live', () => data.settings.sound, v => { data.settings.sound = v; store.save(); if(v) audio.ensure(); }),
+    toggle('Vibration', 'On phones that support it', () => data.settings.haptics, v => { data.settings.haptics = v; store.save(); if(v) buzz(20); }),
+    h('div', { class: 'set-row' }, h('div', null, h('div', { class: 'lab' }, 'Theme'), h('div', { class: 'hint' }, 'Auto follows your device')), seg)
+  );
+}
+function openSettings(extra){
+  const body = h('div', null, settingsRows(), extra || null);
+  const wipe = h('button', { class: 'btn btn-ghost btn-sm btn-wide', style: 'margin-top:14px;color:var(--bad)' }, 'Erase all saved progress');
+  wipe.addEventListener('click', () => {
+    click();
+    sheet({ eyebrow: 'Erase progress', title: 'Start every game from scratch?', tone: 'bad',
+      sub: 'Levels, coins and boosters in every Playbox game go back to zero. Settings stay.',
+      actions: [
+        { label: 'Erase everything', kind: 'hard', onClick: () => { store.wipe(); emit('wipe'); renderHome(); toast('Progress erased'); } },
+        { label: 'Keep my progress', kind: 'ghost' }
+      ] });
+  });
+  body.append(wipe);
+  sheet({ eyebrow: 'Settings', title: 'Options', body, actions: [{ label: 'Done' }] });
+}
+
+/* ---------- registry + navigation ---------- */
+const games = [];
+let current = null;                              // { def, handle }
+const home = $('#home'), stage = $('#stage');
+
+function register(def){ games.push(def); if(booted) renderHome(); }
+function renderHome(){
+  const shelf = $('#shelf'); shelf.replaceChildren();
+  for(const g of games){
+    const save = store.game(g.id);
+    const art = h('div', { class: 'gc-art', 'aria-hidden': 'true' });
+    try{ g.card && g.card(art, save); }catch(e){ console.error(e); }
+    const status = g.status ? g.status(save) : '';
+    const card = h('button', { class: 'game-card', 'aria-label': 'Play ' + g.title },
+      art,
+      h('div', { class: 'gc-body' },
+        h('div', { class: 'gc-text' },
+          h('div', { class: 'gc-title' }, g.title),
+          h('div', { class: 'gc-tag' }, g.tagline),
+          status ? h('div', { class: 'gc-status' }, status) : null),
+        h('span', { class: 'gc-go', html: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>' })));
+    card.addEventListener('click', () => { click(); openGame(g.id); });
+    shelf.append(card);
+  }
+  const played = data.last && games.find(g => g.id === data.last);
+  $('#homeTitle').textContent = played ? 'Welcome back' : 'Pick a game';
+  $('#homeSub').textContent = played ? `${played.title} is right where you left it.` : 'Short puzzles that remember where you left off.';
+}
+function openGame(id, opts){
+  const def = games.find(g => g.id === id);
+  if(!def) return;
+  audio.ensure();
+  if(current) closeGame(true);
+  data.last = id; store.save();
+  stage.replaceChildren();
+  stage.hidden = false; home.hidden = true;
+  stage.classList.remove('enter'); void stage.offsetWidth; stage.classList.add('enter');
+  const api = {
+    save: store.game(id),
+    persist: now => store.save(now),
+    audio, buzz, click, ui: { sheet, closeSheet, toast, h, toggle, openSettings },
+    settings: data.settings,
+    on, exit: () => closeGame()
+  };
+  current = { def, handle: def.mount(stage, api, opts || {}) || {} };
+  try{ history.replaceState(null, '', '#' + id); }catch(e){}
+}
+function closeGame(silent){
+  if(!current) return;
+  closeSheet();
+  try{ current.handle.unmount && current.handle.unmount(); }catch(e){ console.error(e); }
+  current = null;
+  stage.replaceChildren(); stage.hidden = true;
+  store.save(true);
+  if(silent) return;
+  home.hidden = false; renderHome();
+  home.classList.remove('enter'); void home.offsetWidth; home.classList.add('enter');
+  try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+}
+$('#homeSettings').addEventListener('click', () => { click(); openSettings(); });
+on('theme', () => { if(booted && !home.hidden) renderHome(); });
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape' && sheetEl.classList.contains('on')) closeSheet();
+});
+
+let booted = false;
+function boot(){
+  booted = true;
+  applyTheme();
+  renderHome();
+  const want = (location.hash || '').slice(1);
+  if(want && games.some(g => g.id === want)) openGame(want);
+}
+window.Playbox = { register, store, audio, buzz, on, emit, ui: { sheet, closeSheet, toast, h }, boot, openGame };
+})();
+</script>
+<style>
+/* ---------- Paint Sort: a painter's studio wall, glass vials, a small framed canvas ---------- */
+:root{
+  --ps-wall-a:#EEF3F9; --ps-wall-b:#D3DDEA;
+  --ps-hard-a:#FCECE9; --ps-hard-b:#F1C5C0;
+  --ps-super-a:#F3EAFD; --ps-super-b:#D8C3F3;
+  --ps-glass:rgba(214,227,243,.6);
+  --ps-edge:rgba(48,64,100,.62);
+  --ps-hi:rgba(255,255,255,.9);
+  --ps-floor:rgba(30,44,80,.16);
+  --ps-primer:#7A8294;
+  --ps-frame:#8A5B36; --ps-frame-2:#5C3A20;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ps-wall-a:#1B2442; --ps-wall-b:#0B0F1C;
+    --ps-hard-a:#3B1620; --ps-hard-b:#15080D;
+    --ps-super-a:#2C1A4B; --ps-super-b:#110A21;
+    --ps-glass:rgba(160,186,232,.10);
+    --ps-edge:rgba(198,216,250,.62);
+    --ps-hi:rgba(255,255,255,.5);
+    --ps-floor:rgba(0,0,0,.4);
+    --ps-primer:#5F677B;
+    --ps-frame:#8F633F; --ps-frame-2:#4C301B;
+  }
+}
+:root[data-theme="dark"]{
+  --ps-wall-a:#1B2442; --ps-wall-b:#0B0F1C;
+  --ps-hard-a:#3B1620; --ps-hard-b:#15080D;
+  --ps-super-a:#2C1A4B; --ps-super-b:#110A21;
+  --ps-glass:rgba(160,186,232,.10);
+  --ps-edge:rgba(198,216,250,.62);
+  --ps-hi:rgba(255,255,255,.5);
+  --ps-floor:rgba(0,0,0,.4);
+  --ps-primer:#5F677B;
+  --ps-frame:#8F633F; --ps-frame-2:#4C301B;
+}
+.ps{position:absolute;inset:0;display:flex;flex-direction:column;overflow:hidden;color:var(--ink);
+  background:linear-gradient(180deg,var(--ps-wall-a),var(--ps-wall-b))}
+.ps[data-tier="1"]{background:linear-gradient(180deg,var(--ps-hard-a),var(--ps-hard-b))}
+.ps[data-tier="2"]{background:linear-gradient(180deg,var(--ps-super-a),var(--ps-super-b))}
+.ps-lobby,.ps-play{position:absolute;inset:0;display:flex;flex-direction:column}
+.ps-bar{display:flex;align-items:center;gap:10px;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 6px;flex:0 0 auto}
+.ps-spacer{flex:1}
+.ps-lvl{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
+.ps-lvl>span:first-child{font-family:var(--f-disp);font-size:24px;line-height:1;white-space:nowrap}
+.ps-tier{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#fff;line-height:1;
+  padding:4px 7px;border-radius:999px;background:var(--hard);white-space:nowrap}
+.ps-tier[data-tier="2"]{background:var(--super)}
+
+/* the easel */
+.ps-easel{display:flex;flex-direction:column;align-items:center;gap:8px;padding:4px 16px 0;flex:0 0 auto}
+.ps-frame{position:relative;height:clamp(76px,15.5dvh,142px);aspect-ratio:4/3;max-width:100%;padding:5px;border-radius:5px;
+  background:linear-gradient(145deg,var(--ps-frame),var(--ps-frame-2));
+  box-shadow:0 12px 22px -12px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.25)}
+.ps-frame canvas{display:block;width:100%;height:100%;border-radius:1px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
+.ps-dots{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;max-width:100%}
+.ps-dots i{width:11px;height:11px;border-radius:50%;box-shadow:inset 0 0 0 2px var(--c),0 0 0 1px var(--ps-edge);transition:background .3s,transform .3s}
+.ps-dots i.on{background:var(--c);transform:scale(1.15)}
+.ps-dots i.blank{box-shadow:inset 0 0 0 2px var(--dim);opacity:.6}
+.ps-coach{min-height:40px;display:flex;align-items:center;justify-content:center;text-align:center;
+  font-weight:700;color:var(--muted);font-size:14.5px;line-height:1.35;padding:2px 24px;flex:0 0 auto;text-wrap:balance}
+
+/* the vials */
+.ps-field{position:relative;flex:1;min-height:0}
+.ps-field canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:manipulation;outline:none}
+.ps-floats{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.ps-float{position:absolute;transform:translate(-50%,-50%);font-family:var(--f-disp);font-size:17px;white-space:nowrap;
+  color:var(--c);-webkit-text-stroke:5px var(--surface);paint-order:stroke fill;animation:psFloat 1.5s ease-out forwards}
+@keyframes psFloat{0%{opacity:0;transform:translate(-50%,-10%) scale(.6)}15%{opacity:1;transform:translate(-50%,-60%) scale(1.08)}
+  75%{opacity:1;transform:translate(-50%,-120%) scale(1)}100%{opacity:0;transform:translate(-50%,-160%) scale(1)}}
+
+.ps-stuck{display:flex;align-items:center;gap:8px;margin:0 12px 6px;padding:8px 8px 8px 14px;border-radius:16px;flex:0 0 auto;
+  background:var(--surface);box-shadow:var(--shadow);animation:psRise .3s cubic-bezier(.2,.9,.25,1)}
+.ps-stuck-t{flex:1;font-weight:800;font-size:14px;color:var(--bad);line-height:1.2}
+.ps-stuck .btn{padding:9px 11px;font-size:14px;border-radius:12px;box-shadow:0 3px 0 var(--line)}
+@keyframes psRise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+.ps-tools{display:flex;justify-content:space-around;gap:6px;padding:6px 12px calc(12px + env(safe-area-inset-bottom,0px));flex:0 0 auto}
+.ps-tool{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;width:72px}
+.ps-tool .ic{width:56px;height:56px;border-radius:19px;background:var(--surface);color:var(--ink);display:grid;place-items:center;
+  box-shadow:0 4px 0 var(--line);transition:transform .1s,box-shadow .1s}
+.ps-tool .ic svg{width:27px;height:27px}
+.ps-tool:active .ic{transform:translateY(4px);box-shadow:none}
+.ps-tool .lb{font-size:12px;font-weight:800;color:var(--muted)}
+.ps-tool .n{position:absolute;top:-5px;right:2px;min-width:23px;height:23px;padding:0 6px;border-radius:999px;display:grid;place-items:center;
+  background:var(--accent);color:var(--accent-ink);font-size:12.5px;font-weight:800;box-shadow:0 0 0 2.5px var(--ps-wall-a);font-variant-numeric:tabular-nums}
+.ps-tool .n.buy{background:var(--coin);color:#4A3000}
+.ps-tool.used .ic{opacity:.45}
+.ps-tool.used .n{display:none}
+
+/* hard level intro */
+.ps-intro{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:24px;cursor:pointer;
+  background:repeating-linear-gradient(-45deg,rgba(0,0,0,.05) 0 18px,transparent 18px 36px),color-mix(in srgb,var(--hard) 88%,black)}
+.ps-intro[data-tier="2"]{background:repeating-linear-gradient(-45deg,rgba(0,0,0,.07) 0 18px,transparent 18px 36px),color-mix(in srgb,var(--super) 85%,black)}
+.ps-intro.on{animation:psIntro 2.1s ease forwards}
+@keyframes psIntro{0%{opacity:0}8%{opacity:1}85%{opacity:1}100%{opacity:0}}
+.ps-intro-card{text-align:center;color:#fff;animation:psSlam .55s cubic-bezier(.2,1.5,.4,1)}
+@keyframes psSlam{0%{transform:scale(2.2) rotate(-6deg);opacity:0}60%{opacity:1}100%{transform:none}}
+.ps-intro-k{font-family:var(--f-disp);font-size:clamp(40px,12vw,56px);line-height:1;text-shadow:0 4px 0 rgba(0,0,0,.25)}
+.ps-intro-n{font-weight:800;letter-spacing:.14em;text-transform:uppercase;font-size:13px;margin-top:10px;opacity:.85}
+.ps-intro-s{font-size:16px;font-weight:600;margin-top:14px;opacity:.95}
+
+/* lobby */
+.ps-lobby-body{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:18px;
+  padding:8px 18px calc(22px + env(safe-area-inset-bottom,0px))}
+.ps-word{font-family:var(--f-disp);font-weight:400;font-size:clamp(40px,12.5vw,54px);line-height:.95;margin:4px 0 0;letter-spacing:.005em}
+.ps-word-sort i{font-style:normal;color:var(--c);text-shadow:0 3px 0 color-mix(in srgb,var(--c) 60%,black)}
+.ps-next{display:flex;align-items:center;gap:16px;padding:14px;border-radius:22px;background:var(--surface);box-shadow:var(--shadow)}
+.ps-frame-next{height:auto;width:44%;flex:0 0 auto}
+.ps-next-meta{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ps-next-eyebrow{font-size:11.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.ps-next-eyebrow[data-tier="1"]{color:var(--hard)}
+.ps-next-eyebrow[data-tier="2"]{color:var(--super)}
+.ps-next-title{font-family:var(--f-disp);font-size:24px;line-height:1.05}
+.ps-next-sub{font-size:13.5px;color:var(--muted);font-weight:600}
+.ps-dots-next{justify-content:flex-start;margin-top:6px}
+.ps-road{padding:14px 14px 6px;border-radius:22px;background:var(--surface);box-shadow:var(--shadow)}
+.ps-road-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.ps-road-title{font-family:var(--f-disp);font-size:19px}
+.ps-road-key{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--muted)}
+.ps-road-key i{width:10px;height:10px;border-radius:50%;background:var(--hard);margin-left:6px}
+.ps-road-key i.k2{background:var(--super)}
+.ps-road svg{display:block;width:100%;height:auto;overflow:visible}
+.rd-line{fill:none;stroke:var(--line);stroke-width:4;stroke-linejoin:round;stroke-linecap:round}
+.rd-done{fill:none;stroke:var(--accent);stroke-width:4;stroke-linejoin:round;stroke-linecap:round}
+.rd-node{stroke-width:3}
+.rd-todo{fill:var(--surface);stroke:var(--line)}
+.rd-todo.rd-t1{stroke:var(--hard)}
+.rd-todo.rd-t2{stroke:var(--super)}
+circle.rd-done{fill:var(--accent);stroke:var(--accent)}
+circle.rd-done.rd-t1{fill:var(--hard);stroke:var(--hard)}
+circle.rd-done.rd-t2{fill:var(--super);stroke:var(--super)}
+.rd-now{fill:var(--surface);stroke:var(--accent);stroke-width:4}
+.rd-now.rd-t1{stroke:var(--hard)}
+.rd-now.rd-t2{stroke:var(--super)}
+.rd-pulse{fill:none;stroke:var(--accent);stroke-width:2;opacity:.5;transform-box:fill-box;transform-origin:center;animation:rdPulse 1.6s ease-out infinite}
+@keyframes rdPulse{from{transform:scale(.7);opacity:.7}to{transform:scale(1.25);opacity:0}}
+.rd-check{fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.rd-num{font:700 11px var(--f-body);fill:var(--dim);text-anchor:middle;font-variant-numeric:tabular-nums}
+.rd-num-now{fill:var(--ink);font-weight:800}
+.ps-go svg{width:22px;height:22px}
+.ps-lobby-note{margin:0;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.5}
+
+/* sheets that belong to this game */
+.ps-win{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:6px}
+.ps-frame-win{height:min(25dvh,210px)}
+.ps-win-cap{font-family:var(--f-disp);font-size:18px}
+.ps-win-cap span{font-family:var(--f-body);font-size:13.5px;color:var(--muted);font-weight:600}
+.ps-win-coins{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:var(--muted)}
+.ps-win-coins b{font-family:var(--f-disp);font-weight:400;font-size:26px;color:var(--ink);font-variant-numeric:tabular-nums}
+.ps-win-coins .coin{width:24px;height:24px}
+.ps-how{padding:12px 0;border-bottom:1px solid var(--line)}
+.ps-how:last-child{border-bottom:0}
+.ps-how-t{font-weight:800;font-size:15.5px}
+.ps-how-d{color:var(--muted);font-size:14px;line-height:1.45;margin-top:2px}
+.ps-card-art{background:linear-gradient(180deg,var(--ps-wall-a),var(--ps-wall-b))}
+.ps-card-art canvas{position:absolute;inset:0;width:100%;height:100%}
+</style>
+<script>
+/* ==========================================================
+   PAINT SORT — pour paint between vials until each holds one colour.
+   0 engine (pure, headless-testable) · 1 pigments · 2 painting
+   3 geometry · 4 audio · 5 game · 6 lobby · 7 register
+   ========================================================== */
+(function(){
+'use strict';
+
+// @engine-start ------------------------------------------------------------
+// Everything between the engine markers is pure: no DOM, no Playbox. The
+// balance probe (tools/probe.mjs) evaluates this slice on its own in Node.
+
+const CAP = 4;                                  // units of paint per vial
+
+function rng32(seed){
+  let a = seed >>> 0;
+  return function(){
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function seedFor(n, salt){
+  let h = (0x9E3779B9 ^ Math.imul(n | 0, 0x85EBCA6B) ^ Math.imul((salt | 0) + 1, 0xC2B2AE35)) >>> 0;
+  h ^= h >>> 16; h = Math.imul(h, 0x7FEB352D);
+  h ^= h >>> 15; h = Math.imul(h, 0x846CA68B);
+  h ^= h >>> 16; return h >>> 0;
+}
+function shuffle(a, r){
+  for(let i = a.length - 1; i > 0; i--){ const j = (r() * (i + 1)) | 0; const t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a;
+}
+
+/* ---- difficulty curve ----
+   Levels come in blocks of ten. Inside a block the heat climbs, spikes at the
+   5th level (hard), drops back, climbs again and spikes harder at the 10th
+   (super hard). Each block starts a notch above the last one, so the curve is
+   a rising sawtooth. RAMP is the in-block shape, PICK chooses which of the
+   generated candidates to keep (0 = the most forgiving, 1 = the most punishing). */
+const RAMP = [0, .45, .9, 1.35, 2.5, .6, 1.05, 1.5, 1.95, 3.6];
+const PICK = [0, .35, .55, .7, 1, 0, .45, .6, .75, 1];
+const BLOCK_STEP = 1.15;                        // heat added per block of ten
+const MAX_COLOURS = 12;
+const K_CAP = [10, 11, 12];                     // colour ceiling per tier keeps the spikes above the ramp forever
+
+function spec(n){
+  n = Math.max(1, n | 0);
+  const block = Math.floor((n - 1) / 10), pos = (n - 1) % 10;
+  const tier = pos === 9 ? 2 : pos === 4 ? 1 : 0;           // 0 normal · 1 hard · 2 super hard
+  const heat = block * BLOCK_STEP + RAMP[pos];
+  const K = n === 1 ? 3 : Math.min(K_CAP[tier], Math.round(3 + heat));
+  // hidden layers start at level 13: on the spikes and two ramp levels per
+  // block, and from level 61 on every ramp level except the breathers
+  const mysteryOn = n >= 13 && (tier > 0 || pos === 2 || pos === 7 || (block >= 6 && pos !== 0 && pos !== 5));
+  const mystery = mysteryOn ? Math.min(.7, .3 + block * .04 + tier * .12) : 0;
+  return {
+    n, block, pos, tier, heat, K, E: 2, cap: CAP, mystery,
+    pick: PICK[pos],
+    cands: tier === 2 ? 14 : tier === 1 ? 9 : 4,
+    reward: tier === 2 ? 60 : tier === 1 ? 30 : 10
+  };
+}
+
+/* ---- rules ---- */
+function isFull(v, C){
+  if(v.length !== C) return false;
+  for(let i = 1; i < C; i++) if(v[i] !== v[0]) return false;
+  return true;
+}
+function isSolved(s, C){
+  for(const v of s) if(v.length && !isFull(v, C)) return false;
+  return true;
+}
+function runLen(v){
+  const c = v[v.length - 1]; let k = 1;
+  for(let i = v.length - 2; i >= 0 && v[i] === c; i--) k++;
+  return k;
+}
+// Moves worth considering. Skips pouring a single-colour vial into an empty
+// one (it changes nothing) and, with `prune`, tries only the first empty vial.
+function listMoves(s, C, prune){
+  const out = [];
+  for(let i = 0; i < s.length; i++){
+    const v = s[i];
+    if(!v.length || isFull(v, C)) continue;
+    const c = v[v.length - 1], k = runLen(v), whole = k === v.length;
+    let emptySeen = false;
+    for(let j = 0; j < s.length; j++){
+      if(j === i) continue;
+      const w = s[j];
+      if(w.length >= C) continue;
+      if(!w.length){
+        if(whole) continue;
+        if(prune){ if(emptySeen) continue; emptySeen = true; }
+      } else if(w[w.length - 1] !== c) continue;
+      out.push([i, j, Math.min(k, C - w.length)]);
+    }
+  }
+  return out;
+}
+function applyMove(s, m){
+  const [i, j, n] = m, ns = s.slice(), c = s[i][s[i].length - 1];
+  ns[i] = s[i].slice(0, s[i].length - n);
+  ns[j] = s[j].slice();
+  for(let k = 0; k < n; k++) ns[j].push(c);
+  return ns;
+}
+// runs of colour minus distinct colours: 0 exactly when solved
+function heur(s){
+  let segs = 0; const seen = new Set();
+  for(const v of s){
+    let prev = -1;
+    for(const c of v){ if(c !== prev){ segs++; seen.add(c); prev = c; } }
+  }
+  return segs - seen.size;
+}
+function keyOf(s){
+  const parts = new Array(s.length);
+  for(let i = 0; i < s.length; i++){
+    let t = ''; for(const c of s[i]) t += String.fromCharCode(97 + c);
+    parts[i] = t;
+  }
+  parts.sort();
+  return parts.join('|');
+}
+
+/* weighted A*. Returns {ok, path, nodes, exhausted}. `exhausted` with ok=false
+   means the position is proven dead; without it the budget simply ran out. */
+function solve(start, C, budget, weight){
+  budget = budget || 40000; weight = weight || 2.5;
+  const s0 = start.map(v => v.slice());
+  if(isSolved(s0, C)) return { ok: true, path: [], nodes: 0, exhausted: true };
+  const heap = [], seen = new Set([keyOf(s0)]);
+  const push = node => {
+    heap.push(node); let i = heap.length - 1;
+    while(i > 0){ const p = (i - 1) >> 1; if(heap[p].f <= node.f) break; heap[i] = heap[p]; i = p; }
+    heap[i] = node;
+  };
+  const pop = () => {
+    const top = heap[0], last = heap.pop();
+    if(heap.length){
+      let i = 0; const n = heap.length;
+      for(;;){
+        let l = 2 * i + 1, r = l + 1, m = i;
+        if(l < n && heap[l].f < (m === i ? last.f : heap[m].f)) m = l;
+        if(r < n && heap[r].f < (m === i ? last.f : heap[m].f)) m = r;
+        if(m === i) break;
+        heap[i] = heap[m]; i = m;
+      }
+      heap[i] = last;
+    }
+    return top;
+  };
+  push({ s: s0, g: 0, f: weight * heur(s0), parent: null, mv: null });
+  let nodes = 0;
+  while(heap.length){
+    const cur = pop();
+    if(++nodes > budget) return { ok: false, path: null, nodes, exhausted: false };
+    const moves = listMoves(cur.s, C, true);
+    for(const m of moves){
+      const ns = applyMove(cur.s, m), k = keyOf(ns);
+      if(seen.has(k)) continue;
+      seen.add(k);
+      const node = { s: ns, g: cur.g + 1, f: 0, parent: cur, mv: m };
+      if(isSolved(ns, C)){
+        const path = [];
+        for(let x = node; x.parent; x = x.parent) path.push(x.mv);
+        return { ok: true, path: path.reverse(), nodes, exhausted: true };
+      }
+      node.f = node.g + weight * heur(ns);
+      push(node);
+    }
+  }
+  return { ok: false, path: null, nodes, exhausted: true };
+}
+
+/* a casual player with no lookahead: always takes a pour that finishes a
+   vial, usually stacks onto matching paint, otherwise pours at random, and
+   never immediately undoes its last pour. Returns moves used, or -1 if it got
+   stuck or wandered too long. How often this player fails is the level's
+   measured difficulty. */
+function playout(start, C, r, maxSteps){
+  let s = start.map(v => v.slice()), li = -1, lj = -1;
+  for(let step = 0; step < maxSteps; step++){
+    if(isSolved(s, C)) return step;
+    const ms = listMoves(s, C, false).filter(m => !(m[0] === lj && m[1] === li));
+    if(!ms.length) return -1;
+    let m = null;
+    for(const x of ms){
+      const w = s[x[1]];
+      if(w.length + x[2] === C && (w.length === 0 ? runLen(s[x[0]]) === C : runLen(w) === w.length)){ m = x; break; }
+    }
+    if(!m){
+      const onto = ms.filter(x => s[x[1]].length > 0);
+      m = (onto.length && r() < .8) ? onto[(r() * onto.length) | 0] : ms[(r() * ms.length) | 0];
+    }
+    s = applyMove(s, m); li = m[0]; lj = m[1];
+  }
+  return -1;
+}
+/* one-move-deep judgement of a pour: finish a vial, stack a whole run onto
+   its match, don't spend empty vials, uncover paint that has somewhere to go */
+function rateMove(s, C, x){
+  const v = s[x[0]], w = s[x[1]], k = runLen(v);
+  let sc = 0;
+  if(w.length){
+    sc += 2;
+    if(x[2] === k) sc += 1;                                    // whole run moves, nothing split
+    if(runLen(w) === w.length && w.length + x[2] === C) sc += 3;
+  } else {
+    sc -= 1.5;
+    if(k === v.length) sc -= 3;
+  }
+  if(x[2] === k && v.length > k){
+    const under = v[v.length - k - 1];
+    for(let j = 0; j < s.length; j++){
+      if(j === x[0] || j === x[1]) continue;
+      const u = s[j];
+      if(u.length && u.length < C && u[u.length - 1] === under){ sc += .8; break; }
+    }
+  }
+  return sc;
+}
+/* a steadier player: takes the best-rated pour with a little noise. It keeps
+   separating boards after the casual player has stopped winning any. */
+function playoutSkilled(start, C, r, maxSteps){
+  let s = start.map(v => v.slice()), li = -1, lj = -1;
+  for(let step = 0; step < maxSteps; step++){
+    if(isSolved(s, C)) return step;
+    const ms = listMoves(s, C, false).filter(m => !(m[0] === lj && m[1] === li));
+    if(!ms.length) return -1;
+    let best = null, bestScore = -1e9;
+    for(const x of ms){
+      const sc = rateMove(s, C, x) + r() * 1.6;
+      if(sc > bestScore){ bestScore = sc; best = x; }
+    }
+    s = applyMove(s, best); li = best[0]; lj = best[1];
+  }
+  return -1;
+}
+
+function deal(K, E, C, r){
+  const pool = [];
+  for(let c = 0; c < K; c++) for(let u = 0; u < C; u++) pool.push(c);
+  let s = null;
+  for(let tries = 0; tries < 60; tries++){
+    shuffle(pool, r);
+    s = [];
+    for(let i = 0; i < K; i++) s.push(pool.slice(i * C, i * C + C));
+    if(s.some(v => isFull(v, C))) continue;
+    let pairs = 0;
+    for(const v of s) for(let i = 1; i < C; i++) if(v[i] === v[i - 1]) pairs++;
+    if(pairs > Math.max(1, Math.floor(K * .5))) continue;
+    break;
+  }
+  for(let e = 0; e < E; e++) s.push([]);
+  return s;
+}
+
+/* Build level n. Deterministic: the same n always yields the same board, on
+   every device, so a restart or a reinstall replays the same puzzle. */
+function generate(n){
+  const sp = spec(n), C = sp.cap;
+  const r = rng32(seedFor(n, 7));
+  const cands = [];
+  let attempts = 0;
+  while(cands.length < sp.cands && attempts < sp.cands * 6){
+    attempts++;
+    const s = deal(sp.K, sp.E, C, r);
+    const sol = solve(s, C, 25000);
+    if(!sol.ok) continue;
+    const R = sp.tier ? 20 : 14, pr = rng32(seedFor(n, 100 + attempts)), steps = 60 + sp.K * 14;
+    let casual = 0, skilled = 0;
+    for(let i = 0; i < R; i++){
+      if(playout(s, C, pr, steps) < 0) casual++;
+      if(playoutSkilled(s, C, pr, steps) < 0) skilled++;
+    }
+    cands.push({ s, casual: casual / R, skilled: skilled / R, fail: (casual + skilled) / (2 * R), len: sol.path.length });
+  }
+  while(!cands.length){                        // practically unreachable; keeps generate() total
+    const s = deal(sp.K, sp.E, C, r), sol = solve(s, C, 300000);
+    if(sol.ok) cands.push({ s, casual: 0, skilled: 0, fail: 0, len: sol.path.length });
+  }
+  cands.sort((a, b) => a.fail - b.fail || a.len - b.len);
+  const pick = cands[Math.round(sp.pick * (cands.length - 1))];
+
+  const pr = rng32(seedFor(n, 3));
+  const palette = shuffle([...Array(MAX_COLOURS).keys()], pr).slice(0, sp.K);
+  const hidden = pick.s.map(v => {
+    const keep = v.length ? runLen(v) : 0;
+    return v.map((_, i) => sp.mystery > 0 && i < v.length - keep && pr() < sp.mystery);
+  });
+  return { spec: sp, vials: pick.s, palette, hidden, fail: pick.fail, casual: pick.casual,
+    skilled: pick.skilled, len: pick.len, pool: cands.length };
+}
+
+function probe(from, to){
+  const rows = [];
+  for(let n = from; n <= to; n++){
+    const t0 = Date.now(), g = generate(n);
+    const hid = g.hidden.reduce((a, v) => a + v.filter(Boolean).length, 0);
+    rows.push({ n, tier: g.spec.tier, K: g.spec.K, heat: +g.spec.heat.toFixed(2),
+      fail: +g.fail.toFixed(2), casual: +g.casual.toFixed(2), skilled: +g.skilled.toFixed(2),
+      len: g.len, hidden: hid, pool: g.pool, ms: Date.now() - t0 });
+  }
+  return rows;
+}
+// @engine-end --------------------------------------------------------------
+
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeInOutSine = t => -(Math.cos(Math.PI * t) - 1) / 2;
+const easeInOutCubic = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const easeOutBack = t => { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+function easeOutBounce(t){
+  const n = 7.5625, d = 2.75;
+  if(t < 1 / d) return n * t * t;
+  if(t < 2 / d) return n * (t -= 1.5 / d) * t + .75;
+  if(t < 2.5 / d) return n * (t -= 2.25 / d) * t + .9375;
+  return n * (t -= 2.625 / d) * t + .984375;
+}
+const now = () => performance.now();
+
+/* ==================== 1. pigments ==================== */
+// Real artists' pigments. The name shows when a vial of it is finished.
+const PIGMENTS = [
+  { name: 'Cadmium Red',       hex: '#E23A3F' },
+  { name: 'Cadmium Orange',    hex: '#F5862B' },
+  { name: 'Hansa Yellow',      hex: '#F7CF36' },
+  { name: 'Sap Green',         hex: '#45A646' },
+  { name: 'Viridian',          hex: '#10A08F' },
+  { name: 'Cerulean',          hex: '#3AAEEA' },
+  { name: 'Ultramarine',       hex: '#3448D0' },
+  { name: 'Dioxazine Violet',  hex: '#7D44CF' },
+  { name: 'Quinacridone Rose', hex: '#E0489B' },
+  { name: 'Burnt Sienna',      hex: '#9A5431' },
+  { name: 'Titanium White',    hex: '#F3F1EA' },
+  { name: "Payne's Grey",      hex: '#343B4D' }
+];
+function rgbOf(hex){ const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function mix(hex, amt){                      // amt > 0 toward white, < 0 toward black
+  const c = rgbOf(hex), t = amt < 0 ? 0 : 255, p = Math.abs(amt);
+  return `rgb(${c.map(x => Math.round(x + (t - x) * p)).join(',')})`;
+}
+for(const p of PIGMENTS){
+  const [r, g, b] = rgbOf(p.hex);
+  p.light = mix(p.hex, .32); p.dark = mix(p.hex, -.28);
+  p.ink = (r * .299 + g * .587 + b * .114) > 150 ? 'rgba(30,30,40,.72)' : 'rgba(255,255,255,.9)';
+}
+// colour-blind symbols, one per pigment
+function glyph(ctx, k, x, y, s){
+  ctx.beginPath();
+  const star = (pts, ro, ri) => {
+    for(let i = 0; i < pts * 2; i++){
+      const a = -Math.PI / 2 + i * Math.PI / pts, rr = i % 2 ? ri : ro;
+      i ? ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr) : ctx.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    ctx.closePath();
+  };
+  switch(k){
+    case 0: ctx.arc(x, y, s * .46, 0, 7); break;
+    case 1: ctx.moveTo(x, y - s * .55); ctx.lineTo(x + s * .55, y + s * .42); ctx.lineTo(x - s * .55, y + s * .42); ctx.closePath(); break;
+    case 2: ctx.rect(x - s * .4, y - s * .4, s * .8, s * .8); break;
+    case 3: ctx.moveTo(x, y - s * .6); ctx.lineTo(x + s * .48, y); ctx.lineTo(x, y + s * .6); ctx.lineTo(x - s * .48, y); ctx.closePath(); break;
+    case 4: star(5, s * .6, s * .26); break;
+    case 5: ctx.rect(x - s * .16, y - s * .55, s * .32, s * 1.1); ctx.rect(x - s * .55, y - s * .16, s * 1.1, s * .32); break;
+    case 6: star(4, s * .62, s * .18); break;
+    case 7: star(6, s * .55, s * .48); break;
+    case 8: ctx.arc(x, y, s * .5, 0, 7); ctx.arc(x, y, s * .26, 0, 7, true); break;
+    case 9: ctx.rect(x - s * .55, y - s * .16, s * 1.1, s * .32); break;
+    case 10: ctx.arc(x - s * .3, y, s * .22, 0, 7); ctx.moveTo(x + s * .52, y); ctx.arc(x + s * .3, y, s * .22, 0, 7); break;
+    default: ctx.arc(x, y, s * .5, Math.PI, 0); ctx.closePath();
+  }
+  ctx.fill('evenodd');
+}
+
+/* ==================== 2. painting ==================== */
+// Every level comes with an abstract picture, one shape per pigment. It starts
+// as a pencil underdrawing; each finished vial brushes its colour in.
+const ART_W = 400, ART_H = 300;
+function makeShape(kind, R){
+  const p = new Path2D();
+  const poly = pts => { p.moveTo(pts[0], pts[1]); for(let i = 2; i < pts.length; i += 2) p.lineTo(pts[i], pts[i + 1]); p.closePath(); };
+  const bbOf = pts => {
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for(let i = 0; i < pts.length; i += 2){ x0 = Math.min(x0, pts[i]); x1 = Math.max(x1, pts[i]); y0 = Math.min(y0, pts[i + 1]); y1 = Math.max(y1, pts[i + 1]); }
+    x0 = Math.max(0, x0); y0 = Math.max(0, y0); x1 = Math.min(ART_W, x1); y1 = Math.min(ART_H, y1);
+    return [x0, y0, x1 - x0, y1 - y0];
+  };
+  const rot = (cx, cy, a, pts) => {
+    const c = Math.cos(a), s = Math.sin(a), out = [];
+    for(let i = 0; i < pts.length; i += 2) out.push(cx + pts[i] * c - pts[i + 1] * s, cy + pts[i] * s + pts[i + 1] * c);
+    return out;
+  };
+  switch(kind){
+    case 'hill': {
+      const y0 = R(170, 228), amp = R(12, 30), f = R(.8, 2.2) * Math.PI * 2 / ART_W, ph = R(0, 6.3), pts = [0, ART_H];
+      for(let x = 0; x <= ART_W; x += 10) pts.push(x, y0 + amp * Math.sin(x * f + ph));
+      pts.push(ART_W, ART_H); poly(pts);
+      return [p, [0, y0 - amp, ART_W, ART_H - y0 + amp]];
+    }
+    case 'wave': {
+      const y0 = R(80, 190), amp = R(10, 22), t = R(18, 30), f = R(1, 2.4) * Math.PI * 2 / ART_W, ph = R(0, 6.3), pts = [];
+      for(let x = -10; x <= ART_W + 10; x += 10) pts.push(x, y0 + amp * Math.sin(x * f + ph));
+      for(let x = ART_W + 10; x >= -10; x -= 10) pts.push(x, y0 + t + amp * Math.sin(x * f + ph));
+      poly(pts);
+      return [p, [0, y0 - amp, ART_W, t + amp * 2]];
+    }
+    case 'arch': {
+      const cx = R(70, 330), rad = R(46, 78), base = R(232, 300);
+      p.moveTo(cx - rad, ART_H); p.lineTo(cx - rad, base); p.arc(cx, base, rad, Math.PI, 0); p.lineTo(cx + rad, ART_H); p.closePath();
+      return [p, [cx - rad, base - rad, rad * 2, ART_H - base + rad]];
+    }
+    case 'stripe': {
+      const a = R(-.55, .55), cx = R(90, 310), cy = R(70, 220), t = R(24, 46);
+      const pts = rot(cx, cy, a, [-420, -t / 2, 420, -t / 2, 420, t / 2, -420, t / 2]);
+      poly(pts); return [p, bbOf(pts)];
+    }
+    case 'block': {
+      const w = R(70, 140), h = R(55, 110), a = R(-.28, .28), cx = R(90, 310), cy = R(90, 210);
+      const pts = rot(cx, cy, a, [-w / 2, -h / 2, w / 2, -h / 2, w / 2, h / 2, -w / 2, h / 2]);
+      poly(pts); return [p, bbOf(pts)];
+    }
+    case 'peak': {
+      const base = R(236, 300), px = R(80, 320), ht = R(100, 170), hw = R(80, 150);
+      const pts = [px - hw, ART_H, px - hw, base, px, base - ht, px + hw, base, px + hw, ART_H];
+      poly(pts); return [p, bbOf(pts)];
+    }
+    case 'sun': case 'sun2': {
+      const rad = kind === 'sun' ? R(28, 46) : R(16, 26), cx = R(40 + rad, 360 - rad), cy = R(30 + rad, 170);
+      p.arc(cx, cy, rad, 0, Math.PI * 2);
+      return [p, [cx - rad, cy - rad, rad * 2, rad * 2]];
+    }
+    case 'ring': {
+      const ro = R(30, 48), ri = ro * R(.48, .64), cx = R(60, 340), cy = R(60, 220);
+      p.arc(cx, cy, ro, 0, Math.PI * 2); p.moveTo(cx + ri, cy); p.arc(cx, cy, ri, 0, Math.PI * 2, true);
+      return [p, [cx - ro, cy - ro, ro * 2, ro * 2], 'evenodd'];
+    }
+    case 'leaf': {
+      const len = R(80, 130), wid = len * R(.3, .44), a = R(0, Math.PI), cx = R(80, 320), cy = R(70, 230);
+      const pts = rot(cx, cy, a, [-len / 2, 0, 0, -wid, len / 2, 0, 0, wid]);
+      p.moveTo(pts[0], pts[1]); p.quadraticCurveTo(pts[2], pts[3], pts[4], pts[5]); p.quadraticCurveTo(pts[6], pts[7], pts[0], pts[1]); p.closePath();
+      return [p, bbOf(pts)];
+    }
+    case 'dots': {
+      const cx = R(70, 330), cy = R(60, 230), cnt = 5 + ((R(0, 4)) | 0), pts = [];
+      for(let i = 0; i < cnt; i++){
+        const a = R(0, 6.3), d = R(0, 46), rr = R(6, 12), x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
+        p.moveTo(x + rr, y); p.arc(x, y, rr, 0, Math.PI * 2); pts.push(x - rr, y - rr, x + rr, y + rr);
+      }
+      return [p, bbOf(pts)];
+    }
+    default: {                                                   // blob
+      const cx = R(80, 320), cy = R(70, 220), n = 9, pts = [];
+      for(let i = 0; i < n; i++){ const a = i / n * Math.PI * 2, rr = R(26, 54); pts.push(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); }
+      const mid = i => [(pts[i * 2] + pts[((i + 1) % n) * 2]) / 2, (pts[i * 2 + 1] + pts[((i + 1) % n) * 2 + 1]) / 2];
+      const m0 = mid(n - 1); p.moveTo(m0[0], m0[1]);
+      for(let i = 0; i < n; i++){ const m = mid(i); p.quadraticCurveTo(pts[i * 2], pts[i * 2 + 1], m[0], m[1]); }
+      p.closePath();
+      return [p, bbOf(pts)];
+    }
+  }
+}
+function buildArt(n, K){
+  const r = rng32(seedFor(n, 11)), R = (a, b) => a + r() * (b - a);
+  const ground = new Path2D(); ground.rect(0, 0, ART_W, ART_H);
+  const shapes = [{ path: ground, bb: [0, 0, ART_W, ART_H], rule: 'nonzero', ground: true }];
+  const big = shuffle(['hill', 'arch', 'stripe', 'block', 'peak', 'wave'], r);
+  const small = shuffle(['sun', 'ring', 'leaf', 'dots', 'blob', 'sun2'], r);
+  const nBig = Math.min(K - 1, 1 + Math.floor((K - 1) * .45));
+  const kinds = [];
+  for(let i = 0; i < nBig; i++) kinds.push(big[i % big.length]);
+  for(let i = 0; kinds.length < K - 1; i++) kinds.push(small[i % small.length]);
+  for(const k of kinds){ const [path, bb, rule] = makeShape(k, R); shapes.push({ path, bb, rule: rule || 'nonzero' }); }
+  const slots = shuffle([...Array(K).keys()], r);
+  shapes.forEach((s, i) => {
+    s.slot = slots[i];
+    s.streaks = [];
+    for(let k = 0; k < 10; k++) s.streaks.push([r(), r(), R(.35, .9), R(1.2, 3.4), r() < .5]);
+  });
+  return shapes;
+}
+let toothCanvas = null;
+function tooth(ctx){
+  if(!toothCanvas){
+    toothCanvas = document.createElement('canvas'); toothCanvas.width = toothCanvas.height = 8;
+    const t = toothCanvas.getContext('2d');
+    t.fillStyle = 'rgba(90,80,60,.07)';
+    t.fillRect(0, 0, 8, 1); t.fillRect(0, 4, 8, 1); t.fillRect(2, 0, 1, 8); t.fillRect(6, 0, 1, 8);
+  }
+  return ctx.createPattern(toothCanvas, 'repeat');
+}
+function brushIn(ctx, s, hex, p){
+  const [x, y, w, h] = s.bb, N = Math.max(2, Math.min(7, Math.round(h / 34)));
+  const band = h / N, d = .55 / N;
+  ctx.lineCap = 'round'; ctx.strokeStyle = hex; ctx.lineWidth = band * 1.4 + 6;
+  for(let i = 0; i < N; i++){
+    const q = clamp((p - i * d) / (1 - (N - 1) * d), 0, 1);
+    if(q <= 0) continue;
+    const e = 1 - Math.pow(1 - q, 2.2), yy = y + (i + .5) * band, ltr = i % 2 === 0;
+    const x0 = ltr ? x - 14 : x + w + 14, x1 = x0 + (ltr ? 1 : -1) * (w + 28) * e;
+    ctx.beginPath(); ctx.moveTo(x0, yy); ctx.quadraticCurveTo((x0 + x1) / 2, yy + (ltr ? -5 : 5), x1, yy); ctx.stroke();
+  }
+}
+/* prog[slot]: 0 = pencil only, 1 = fully painted */
+function drawArt(ctx, cw, ch, art, palette, prog){
+  ctx.save();
+  ctx.scale(cw / ART_W, ch / ART_H);
+  ctx.fillStyle = '#F3F0E8'; ctx.fillRect(0, 0, ART_W, ART_H);
+  ctx.fillStyle = tooth(ctx); ctx.fillRect(0, 0, ART_W, ART_H);
+  for(const s of art){
+    const p = prog[s.slot] || 0;
+    if(p <= 0) continue;
+    const pig = PIGMENTS[palette[s.slot]];
+    ctx.save(); ctx.clip(s.path, s.rule);
+    if(p >= 1){ ctx.fillStyle = pig.hex; ctx.fillRect(s.bb[0] - 2, s.bb[1] - 2, s.bb[2] + 4, s.bb[3] + 4); }
+    else brushIn(ctx, s, pig.hex, p);
+    // dry-brush streaks give the flat fill some texture
+    ctx.lineCap = 'round';
+    for(const [u, v, len, lw, light] of s.streaks){
+      const [x, y, w, h] = s.bb, sx = x + u * w * .7, sy = y + v * h;
+      ctx.strokeStyle = light ? pig.light : pig.dark;
+      ctx.globalAlpha = .28 * Math.min(1, p * 1.2); ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + len * w * .5, sy + (v - .5) * 3); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+  ctx.lineJoin = 'round';
+  for(const s of art){
+    const p = prog[s.slot] || 0;
+    if(p >= 1 || s.ground) continue;
+    ctx.globalAlpha = .55 * (1 - p); ctx.strokeStyle = '#5F6474'; ctx.lineWidth = 1.5;
+    ctx.stroke(s.path);
+  }
+  ctx.restore();
+}
+function paintCanvas(cv, art, palette, prog){
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const w = Math.max(1, cv.clientWidth), h = Math.max(1, cv.clientHeight);
+  if(cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)){ cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawArt(ctx, w, h, art, palette, prog);
+}
+
+/* ==================== 3. vial geometry ==================== */
+/* A vial is a tube with a round bottom, drawn in local coordinates with the
+   mouth centre at (0,0) and y pointing down. Liquid is drawn in world space
+   with a flat surface, so when a vial tilts the paint stays level and slides
+   toward the lip, as it would in a real glass. Volumes are areas. */
+function areaBelow(p, Y){
+  const out = [], n = p.length / 2;
+  for(let i = 0; i < n; i++){
+    const ax = p[2 * i], ay = p[2 * i + 1], j = (i + 1) % n, bx = p[2 * j], by = p[2 * j + 1];
+    const ain = ay >= Y, bin = by >= Y;
+    if(ain) out.push(ax, ay);
+    if(ain !== bin){ const t = (Y - ay) / (by - ay); out.push(ax + (bx - ax) * t, Y); }
+  }
+  let s = 0; const m = out.length / 2;
+  for(let i = 0; i < m; i++){ const j = (i + 1) % m; s += out[2 * i] * out[2 * j + 1] - out[2 * j] * out[2 * i + 1]; }
+  return Math.abs(s) / 2;
+}
+function levelFor(p, V, lo, hi){                 // surface height holding volume V
+  for(let k = 0; k < 22; k++){ const mid = (lo + hi) / 2; if(areaBelow(p, mid) > V) lo = mid; else hi = mid; }
+  return (lo + hi) / 2;
+}
+function makeGeom(w){
+  const r = w / 2, head = w * .5, unitH = w * .8;
+  const H = head + r + (CAP * w * unitH - Math.PI * r * r / 2) / w;
+  const pts = [-w / 2, 0, w / 2, 0, w / 2, H - r];
+  const N = 16;
+  for(let k = 1; k < N; k++){ const a = k / N * Math.PI; pts.push(r * Math.cos(a), H - r + r * Math.sin(a)); }
+  pts.push(-w / 2, H - r);
+  // what the vial still holds when tipped by d degrees about its lip
+  const table = [];
+  for(let d = 0; d <= 125; d++){
+    const a = d * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a), q = [];
+    for(let i = 0; i < pts.length; i += 2){ const x = pts[i] - w / 2, y = pts[i + 1]; q.push(x * ca - y * sa, x * sa + y * ca); }
+    table.push(areaBelow(q, 0));
+  }
+  return { w, r, head, H, unitA: w * unitH, pts, table };
+}
+function capAt(g, ang){
+  const d = Math.abs(ang) * 180 / Math.PI;
+  if(d >= 125) return 0;
+  const i = Math.floor(d), f = d - i;
+  return g.table[i] * (1 - f) + g.table[i + 1] * f;
+}
+function angleFor(g, V){
+  const t = g.table;
+  if(V >= t[0]) return 0;
+  for(let d = 0; d < t.length - 1; d++){
+    if(t[d + 1] <= V){ const f = (t[d] - V) / (t[d] - t[d + 1] || 1); return (d + f) * Math.PI / 180; }
+  }
+  return 125 * Math.PI / 180;
+}
+function worldPoly(g, ps){
+  const ca = Math.cos(ps.a), sa = Math.sin(ps.a), out = new Array(g.pts.length);
+  for(let i = 0; i < g.pts.length; i += 2){
+    const x = g.pts[i] - ps.lx, y = g.pts[i + 1] - ps.ly;
+    out[i] = ps.px + x * ca - y * sa; out[i + 1] = ps.py + x * sa + y * ca;
+  }
+  return out;
+}
+function applyPose(ctx, ps){ ctx.translate(ps.px, ps.py); if(ps.a) ctx.rotate(ps.a); ctx.translate(-ps.lx, -ps.ly); }
+function interiorPath(ctx, g){
+  const w = g.w, r = g.r;
+  ctx.beginPath(); ctx.moveTo(-w / 2, 0); ctx.lineTo(-w / 2, g.H - r);
+  ctx.arc(0, g.H - r, r, Math.PI, 0, true); ctx.lineTo(w / 2, 0); ctx.closePath();
+}
+function outlinePath(ctx, g){
+  const w = g.w, r = g.r;
+  ctx.beginPath(); ctx.moveTo(-w / 2, 0); ctx.lineTo(-w / 2, g.H - r);
+  ctx.arc(0, g.H - r, r, Math.PI, 0, true); ctx.lineTo(w / 2, 0);
+}
+function rrect(ctx, x, y, w, h, r){
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function axisAt(ps, Y){                           // where the vial's centre line crosses height Y
+  const ca = Math.cos(ps.a), sa = Math.sin(ps.a);
+  if(Math.abs(ca) < .4) return null;
+  const s = ps.ly + (Y - ps.py + ps.lx * sa) / ca;
+  return ps.px - ps.lx * ca - (s - ps.ly) * sa;
+}
+function readTheme(el){
+  const cs = getComputedStyle(el), v = n => cs.getPropertyValue(n).trim();
+  return { glass: v('--ps-glass'), edge: v('--ps-edge'), hi: v('--ps-hi'), floor: v('--ps-floor'),
+    primer: v('--ps-primer'), accent: v('--accent'), ink: v('--ink'), surface: v('--surface') };
+}
+
+/* bands: [{c: pigment, u: units (may be fractional), hid}] bottom to top.
+   o: {theme, base (device px ratio), t, wob, symbols, selected, cork (px above rest, or null), shadow} */
+function drawVial(ctx, g, ps, bands, o){
+  const w = g.w, H = g.H, r = g.r, th = o.theme, lw = Math.max(1.6, w * .075);
+  if(o.shadow){
+    ctx.save(); ctx.globalAlpha = o.shadow; ctx.fillStyle = th.floor;
+    ctx.beginPath(); ctx.ellipse(o.shadowX, o.shadowY, w * .62, w * .13, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  ctx.save(); applyPose(ctx, ps);
+  if(o.selected){
+    ctx.save(); ctx.shadowColor = th.accent; ctx.shadowBlur = w * .5; ctx.strokeStyle = th.accent; ctx.lineWidth = lw * 1.8;
+    outlinePath(ctx, g); ctx.stroke(); ctx.restore();
+  }
+  if(o.glow){
+    ctx.save(); ctx.shadowColor = o.glow; ctx.shadowBlur = w * .9 * o.glowAmt; ctx.fillStyle = th.glass;
+    interiorPath(ctx, g); ctx.fill(); ctx.restore();
+  }
+  interiorPath(ctx, g); ctx.fillStyle = th.glass; ctx.fill();
+  ctx.restore();
+
+  let total = 0; for(const b of bands) total += b.u;
+  if(total > .004){
+    const poly = worldPoly(g, ps);
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for(let i = 0; i < poly.length; i += 2){
+      x0 = Math.min(x0, poly[i]); x1 = Math.max(x1, poly[i]); y0 = Math.min(y0, poly[i + 1]); y1 = Math.max(y1, poly[i + 1]);
+    }
+    ctx.save();
+    applyPose(ctx, ps); interiorPath(ctx, g);
+    ctx.setTransform(o.base, 0, 0, o.base, 0, 0);
+    ctx.clip();
+    const lv = []; let acc = 0;
+    for(const b of bands){ acc += b.u; lv.push(levelFor(poly, acc * g.unitA, y0 - 1, y1 + 1)); }
+    const top = lv[lv.length - 1];
+    const amp = Math.min(w * .09, o.wob || 0), k = Math.PI * 2 / (w * 1.15), ph = o.t * .011;
+    const surf = (bottom) => {
+      ctx.beginPath(); ctx.moveTo(x0 - 3, bottom);
+      if(amp > .05) for(let x = x0 - 3; x <= x1 + 3; x += 3) ctx.lineTo(x, top + amp * Math.sin(x * k + ph));
+      else { ctx.lineTo(x0 - 3, top); ctx.lineTo(x1 + 3, top); }
+      ctx.lineTo(x1 + 3, bottom); ctx.closePath();
+    };
+    for(let i = 0; i < bands.length; i++){
+      const b = bands[i], yt = lv[i], yb = i ? lv[i - 1] : y1 + 2;
+      if(yb - yt < .05) continue;
+      ctx.fillStyle = b.hid ? th.primer : PIGMENTS[b.c].hex;
+      if(i === bands.length - 1) { surf(yb + .6); ctx.fill(); }
+      else ctx.fillRect(x0 - 3, yt, x1 - x0 + 6, yb - yt + .6);
+      if(b.hid){
+        ctx.save(); ctx.beginPath(); ctx.rect(x0 - 3, yt, x1 - x0 + 6, yb - yt); ctx.clip();
+        ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = w * .07;
+        for(let x = x0 - w; x < x1 + w; x += w * .28){ ctx.beginPath(); ctx.moveTo(x, yb); ctx.lineTo(x + (yb - yt), yt); ctx.stroke(); }
+        ctx.restore();
+      }
+    }
+    // gloss: paint is thick and shiny, lit from the left
+    const ca = Math.cos(ps.a), sa = Math.sin(ps.a);
+    const lx = ps.px + (-w / 2 - ps.lx) * ca - (H / 2 - ps.ly) * sa, ly = ps.py + (-w / 2 - ps.lx) * sa + (H / 2 - ps.ly) * ca;
+    const rx = ps.px + (w / 2 - ps.lx) * ca - (H / 2 - ps.ly) * sa, ry = ps.py + (w / 2 - ps.lx) * sa + (H / 2 - ps.ly) * ca;
+    const gr = ctx.createLinearGradient(lx, ly, rx, ry);
+    gr.addColorStop(0, 'rgba(255,255,255,.30)'); gr.addColorStop(.24, 'rgba(255,255,255,.10)');
+    gr.addColorStop(.55, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(0,0,0,.20)');
+    ctx.fillStyle = gr; surf(y1 + 2); ctx.fill();
+    // seams between colours, and a bright meniscus on top
+    ctx.fillStyle = 'rgba(0,0,0,.13)';
+    for(let i = 0; i < lv.length - 1; i++) ctx.fillRect(x0 - 3, lv[i] - .5, x1 - x0 + 6, 1.2);
+    ctx.strokeStyle = 'rgba(255,255,255,.42)'; ctx.lineWidth = Math.max(1.2, w * .045);
+    ctx.beginPath();
+    if(amp > .05){ for(let x = x0 - 3; x <= x1 + 3; x += 3) x === x0 - 3 ? ctx.moveTo(x, top + 1 + amp * Math.sin(x * k + ph)) : ctx.lineTo(x, top + 1 + amp * Math.sin(x * k + ph)); }
+    else { ctx.moveTo(x0 - 3, top + 1); ctx.lineTo(x1 + 3, top + 1); }
+    ctx.stroke();
+    // question marks on hidden paint, symbols if asked for
+    const unitMarks = o.symbols || bands.some(b => b.hid);
+    if(unitMarks){
+      let before = 0;
+      for(const b of bands){
+        const whole = Math.floor(b.u + 1e-6);
+        for(let u = 0; u < whole; u++){
+          if(!b.hid && !o.symbols) break;
+          const Y = levelFor(poly, (before + u + .5) * g.unitA, y0 - 1, y1 + 1);
+          const X = axisAt(ps, Y);
+          if(X == null) continue;
+          if(b.hid){
+            ctx.fillStyle = 'rgba(255,255,255,.82)'; ctx.font = `${Math.round(w * .46)}px ${o.font}`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', X, Y + w * .02);
+          } else {
+            ctx.fillStyle = PIGMENTS[b.c].ink; glyph(ctx, b.c, X, Y, w * .34);
+          }
+        }
+        before += b.u;
+      }
+    }
+    ctx.restore();
+  }
+
+  // the glass in front: highlights, outline, rim, cork
+  ctx.save(); applyPose(ctx, ps);
+  ctx.lineCap = 'round'; ctx.strokeStyle = th.hi;
+  ctx.globalAlpha = .7; ctx.lineWidth = w * .1;
+  ctx.beginPath(); ctx.moveTo(-w * .27, g.head * .7); ctx.lineTo(-w * .27, H - r * 1.1); ctx.stroke();
+  ctx.globalAlpha = .45; ctx.lineWidth = w * .05;
+  ctx.beginPath(); ctx.moveTo(-w * .1, g.head * .8); ctx.lineTo(-w * .1, g.head + w * .55); ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = th.edge; ctx.lineWidth = lw; ctx.lineJoin = 'round';
+  outlinePath(ctx, g); ctx.stroke();
+  ctx.fillStyle = th.edge; rrect(ctx, -w / 2 - lw * 1.15, -lw * 1.1, w + lw * 2.3, lw * 2, lw); ctx.fill();
+  if(o.cork != null) drawCork(ctx, w, o.cork);
+  ctx.restore();
+}
+function drawCork(ctx, w, lift){
+  const cw = w * .8, ch = w * .6, y = -w * .36 - lift;
+  const gr = ctx.createLinearGradient(-cw / 2, 0, cw / 2, 0);
+  gr.addColorStop(0, '#DDAE78'); gr.addColorStop(.45, '#C68D57'); gr.addColorStop(1, '#94623A');
+  ctx.fillStyle = gr; rrect(ctx, -cw / 2, y, cw, ch, w * .12); ctx.fill();
+  ctx.fillStyle = 'rgba(255,236,200,.45)'; rrect(ctx, -cw / 2 + w * .06, y + w * .05, cw - w * .12, w * .1, w * .05); ctx.fill();
+  ctx.fillStyle = 'rgba(90,50,20,.35)';
+  for(const [dx, dy] of [[-.2, .3], [.12, .22], [.22, .42], [-.05, .45], [-.24, .5]]){
+    ctx.beginPath(); ctx.arc(dx * w, y + dy * w, w * .025, 0, 7); ctx.fill();
+  }
+}
+
+/* ==================== 4. sound ==================== */
+function makeSfx(A){
+  const penta = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28];
+  const note = (base, semi) => base * Math.pow(2, semi / 12);
+  return {
+    pick(){ A.tone({ f: 1568, dur: .06, gain: .05, type: 'triangle' }); A.tone({ f: 480, f1: 860, dur: .1, gain: .13 }); },
+    drop(){ A.tone({ f: 720, f1: 430, dur: .09, gain: .09 }); },
+    bonk(){
+      A.tone({ f: 190, f1: 105, dur: .18, gain: .22, type: 'square', filter: 'lowpass', ff: 650 });
+      A.tone({ f: 2400, dur: .05, gain: .04, type: 'triangle' });
+    },
+    tink(){ A.tone({ f: 2093, dur: .14, gain: .07, type: 'triangle' }); A.tone({ f: 3136, dur: .1, gain: .03, type: 'triangle', at: .04 }); },
+    // glugs: each bubble is a quick upward chirp, pitched by how full the
+    // target is, so a vial audibly "fills up" as it would under a tap
+    pour(n, fill0, startMs, durMs){
+      const count = Math.max(3, Math.round(durMs / 58));
+      for(let k = 0; k < count; k++){
+        const frac = (fill0 + n * (k + .5) / count) / CAP;
+        const f = 210 * Math.pow(2, frac * 1.45) * (.93 + Math.random() * .14);
+        const at = (startMs + k * durMs / count + Math.random() * 16) / 1000;
+        A.tone({ f, f1: f * 1.95, glide: .045, dur: .09, gain: .19 + Math.random() * .05, at, attack: .003 });
+      }
+      A.noise({ filter: 'lowpass', f: 700, f1: 1500, dur: durMs / 1000 + .1, gain: .045, at: startMs / 1000, attack: .06, rate: .55 });
+    },
+    plop(fill, at){ const f = 260 * Math.pow(2, fill / CAP); A.tone({ f, f1: f * .55, dur: .11, gain: .12, at }); },
+    complete(k){
+      A.noise({ f: 1700, dur: .05, gain: .3, q: 2.2 });           // cork squeak-pop
+      A.tone({ f: 640, f1: 170, dur: .08, gain: .2 });
+      const f = note(523.25, penta[Math.min(k, penta.length - 1)]);
+      A.bell(f, .07, .15); A.bell(f * 2, .15, .06);
+    },
+    reveal(){ A.tone({ f: 990, f1: 1480, dur: .12, gain: .07, type: 'triangle' }); A.tone({ f: 1480, dur: .1, gain: .04, type: 'triangle', at: .06 }); },
+    undo(){ A.noise({ f: 2600, f1: 480, dur: .22, gain: .12, q: 1.4 }); A.tone({ f: 700, f1: 420, dur: .14, gain: .06 }); },
+    hint(){ [0, 4, 7, 12].forEach((s, i) => A.bell(note(880, s), i * .06, .07)); },
+    vial(){ A.bell(1318.5, 0, .1); A.bell(1975.5, .08, .06); A.tone({ f: 280, f1: 900, dur: .28, gain: .07 }); },
+    win(){
+      [0, 4, 7, 12, 16, 19].forEach((s, i) => A.bell(note(523.25, s), i * .085, .15));
+      A.noise({ filter: 'highpass', f: 5500, dur: .9, gain: .04, at: .4, attack: .1 });
+      A.tone({ f: 130.8, f1: 131, dur: .9, gain: .12, type: 'triangle', at: .5 });
+    },
+    coin(i){
+      A.tone({ f: 1318.5, dur: .06, gain: .05, type: 'square', at: i * .055, filter: 'lowpass', ff: 3800 });
+      A.tone({ f: 1975.5, dur: .12, gain: .05, type: 'square', at: i * .055 + .05, filter: 'lowpass', ff: 3800 });
+    },
+    hard(tier){
+      A.tone({ f: 140, f1: 48, dur: .4, gain: .4 }); A.noise({ filter: 'lowpass', f: 400, dur: .2, gain: .2 });
+      A.tone({ f: 140, f1: 48, dur: .4, gain: .35, at: .22 }); A.noise({ filter: 'lowpass', f: 400, dur: .2, gain: .18, at: .22 });
+      const chord = tier === 2 ? [0, 3, 6, 10] : [0, 3, 7];
+      chord.forEach((s, i) => A.tone({ f: note(196, s), dur: 1.1, gain: .07, type: 'sawtooth', filter: 'lowpass', ff: 900, at: .44 + i * .02, attack: .08 }));
+    }
+  };
+}
+
+/* ==================== 5. the game ==================== */
+const IC = {
+  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg>',
+  restart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4 4.5v4.2h4.2"/></svg>',
+  undo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>',
+  hint: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21.5h4"/><path d="M12 2.5a6.5 6.5 0 0 0-3.9 11.7c.6.5.9 1.1.9 1.8v.5h6V16c0-.7.3-1.3.9-1.8A6.5 6.5 0 0 0 12 2.5z"/></svg>',
+  vial: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h6M8 3v14a2 2 0 0 0 4 0V3"/><path d="M8 11h4"/><path d="M18 8v6M15 11h6"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>'
+};
+const TIER_NAME = ['', 'Hard', 'Super hard'];
+const UNDOS_PER_TRY = 5;
+const PRICES = { hint: 40, vial: 90, undo: 30 };
+
+const TEMPLATE = `
+<section class="ps-lobby" data-ref="lobby" aria-label="Paint Sort levels">
+  <header class="ps-bar">
+    <button class="icon-btn" data-act="home" aria-label="Back to Playbox">${IC.back}</button>
+    <span class="ps-spacer"></span>
+    <span class="pill"><i class="coin"></i><b data-bind="coins">0</b></span>
+    <button class="icon-btn" data-act="settings" aria-label="Settings">${IC.menu}</button>
+  </header>
+  <div class="ps-lobby-body">
+    <h1 class="ps-word" aria-label="Paint Sort">Paint <span class="ps-word-sort"><i style="--c:#E23A3F">S</i><i style="--c:#F7CF36">o</i><i style="--c:#3AAEEA">r</i><i style="--c:#45A646">t</i></span></h1>
+    <div class="ps-next">
+      <div class="ps-frame ps-frame-next"><canvas data-ref="nextArt"></canvas></div>
+      <div class="ps-next-meta">
+        <div class="ps-next-eyebrow" data-bind="nextEyebrow">Up next</div>
+        <div class="ps-next-title" data-bind="nextTitle">Study No. 1</div>
+        <div class="ps-next-sub" data-bind="nextSub"></div>
+        <div class="ps-dots ps-dots-next" data-ref="nextDots"></div>
+      </div>
+    </div>
+    <div class="ps-road">
+      <div class="ps-road-head">
+        <span class="ps-road-title" data-bind="blockLabel">Levels 1–10</span>
+        <span class="ps-road-key"><i class="k1"></i>Hard<i class="k2"></i>Super hard</span>
+      </div>
+      <svg data-ref="road" viewBox="0 0 340 136" role="img" aria-label="Difficulty of the ten levels in this block"></svg>
+    </div>
+    <button class="btn btn-primary btn-wide ps-go" data-act="play" data-ref="go">Play</button>
+    <p class="ps-lobby-note" data-bind="lobbyNote"></p>
+  </div>
+</section>
+<section class="ps-play" data-ref="play" hidden aria-label="Paint Sort level">
+  <header class="ps-bar">
+    <button class="icon-btn" data-act="lobby" aria-label="Back to levels">${IC.back}</button>
+    <div class="ps-lvl"><span data-bind="lvl">Level 1</span><span class="ps-tier" data-ref="tier" hidden></span></div>
+    <span class="ps-spacer"></span>
+    <span class="pill"><i class="coin"></i><b data-bind="coins">0</b></span>
+    <button class="icon-btn" data-act="menu" aria-label="Menu">${IC.menu}</button>
+  </header>
+  <div class="ps-easel">
+    <div class="ps-frame"><canvas data-ref="art" role="img" aria-label="The painting for this level"></canvas></div>
+    <div class="ps-dots" data-ref="dots"></div>
+  </div>
+  <div class="ps-coach" data-ref="coach" aria-live="polite"></div>
+  <div class="ps-field" data-ref="field">
+    <canvas data-ref="cv" role="application" aria-label="Vials of paint. Number keys pick a vial, or use arrow keys and Enter." tabindex="0"></canvas>
+    <div class="ps-floats" data-ref="floats"></div>
+  </div>
+  <div class="ps-stuck" data-ref="stuck" hidden>
+    <span class="ps-stuck-t">No way out from here</span>
+    <button class="btn btn-ghost btn-sm" data-act="undo">Undo</button>
+    <button class="btn btn-ghost btn-sm" data-act="vial" data-ref="stuckVial">Add vial</button>
+    <button class="btn btn-ghost btn-sm" data-act="restart">Restart</button>
+  </div>
+  <nav class="ps-tools" aria-label="Boosters">
+    <button class="ps-tool" data-act="restart"><span class="ic">${IC.restart}</span><span class="lb">Restart</span></button>
+    <button class="ps-tool" data-act="undo"><span class="ic">${IC.undo}</span><b class="n" data-ref="undoN">5</b><span class="lb">Undo</span></button>
+    <button class="ps-tool" data-act="hint"><span class="ic">${IC.hint}</span><b class="n" data-ref="hintN">3</b><span class="lb">Hint</span></button>
+    <button class="ps-tool" data-act="vial"><span class="ic">${IC.vial}</span><b class="n" data-ref="vialN">2</b><span class="lb">Add vial</span></button>
+  </nav>
+  <div class="ps-intro" data-ref="intro" hidden>
+    <div class="ps-intro-card">
+      <div class="ps-intro-k" data-ref="introK">Hard level</div>
+      <div class="ps-intro-n" data-ref="introN">Level 5</div>
+      <div class="ps-intro-s" data-ref="introS"></div>
+    </div>
+  </div>
+</section>`;
+
+function mount(stage, api){
+  const { h, sheet, closeSheet, toast, toggle } = api.ui;
+  const A = api.audio, sfx = makeSfx(A), buzz = api.buzz;
+  const S = api.save;
+  if(!(S.level >= 1)) S.level = 1;
+  if(!(S.coins >= 0)) S.coins = 120;
+  S.inv = Object.assign({ hint: 3, vial: 2 }, S.inv);
+  S.tips = S.tips || {};
+  S.stats = Object.assign({ won: 0, hard: 0, super: 0 }, S.stats);
+  if(S.symbols == null) S.symbols = false;
+
+  const el = h('div', { class: 'ps', 'data-tier': '0' });
+  el.innerHTML = TEMPLATE;
+  stage.append(el);
+  const ref = n => el.querySelector(`[data-ref="${n}"]`);
+  const bind = (n, v) => el.querySelectorAll(`[data-bind="${n}"]`).forEach(x => { x.textContent = v; });
+  const cv = ref('cv'), ctx = cv.getContext('2d'), field = ref('field'), floats = ref('floats');
+  const artCv = ref('art'), coachEl = ref('coach'), stuckEl = ref('stuck');
+  const FONT = getComputedStyle(document.documentElement).getPropertyValue('--f-disp').trim() || 'sans-serif';
+
+  let view = 'lobby';
+  let L = null;                  // the level being played
+  let g = null;                  // vial geometry for the current layout
+  let vs = [];                   // per-vial visual state
+  let anims = [];                // pours in flight
+  let parts = [];                // particles
+  let sel = -1, kf = -1;         // selected vial, keyboard focus
+  let hintMv = null;             // [from, to] from a hint or the tutorial
+  let theme = readTheme(el);
+  let W = 0, H = 0, dpr = 1, slotW = 0, raf = 0, lastT = 0;
+  let art = null, artProg = [], artAnim = {};
+  let stuckShown = false, won = false;
+  const timers = new Set();
+  const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); return id; };
+  const cache = new Map();
+  const levelData = n => { if(!cache.has(n)) cache.set(n, generate(n)); return cache.get(n); };
+
+  /* ---------- level state ---------- */
+  function freshLevel(n){
+    const gd = levelData(n), colorOf = [], vials = [], rev = [];
+    gd.vials.forEach((v, vi) => {
+      const ids = [];
+      v.forEach((c, ui) => { const id = colorOf.length; colorOf.push(gd.palette[c]); ids.push(id); if(!gd.hidden[vi][ui]) rev.push(id); });
+      vials.push(ids);
+    });
+    return { n, colorOf, palette: gd.palette.slice(), vials, rev, init: vials.map(v => v.slice()), rev0: rev.slice(),
+      hist: [], undos: UNDOS_PER_TRY, moves: 0, extra: false, help: false };
+  }
+  function hydrate(cur){
+    L = Object.assign({}, cur);
+    L.sp = spec(cur.n);
+    L.revSet = new Set(cur.rev);
+    L.won = false;
+    art = buildArt(cur.n, L.palette.length);
+    artProg = L.palette.map(() => 0); artAnim = {};
+    L.doneSet = new Set();
+    refreshDone(true);
+  }
+  function persist(){
+    if(L && !L.won){
+      S.cur = { n: L.n, colorOf: L.colorOf, palette: L.palette, vials: L.vials, rev: [...L.revSet], init: L.init,
+        rev0: L.rev0, hist: L.hist, undos: L.undos, moves: L.moves, extra: L.extra, help: L.help };
+    }
+    api.persist();
+  }
+  const col = id => L.colorOf[id];
+  const colors = () => L.vials.map(v => v.map(col));
+  function vialFull(i){ const v = L.vials[i]; return v.length === CAP && v.every(id => col(id) === col(v[0])); }
+  function topRun(i){ const v = L.vials[i]; if(!v.length) return 0; const c = col(v[v.length - 1]); let k = 0; for(let x = v.length - 1; x >= 0 && col(v[x]) === c; x--) k++; return k; }
+  function canPour(i, j){
+    if(i === j) return false;
+    const a = L.vials[i], b = L.vials[j];
+    if(!a.length || vialFull(i) || b.length >= CAP) return false;
+    return !b.length || col(b[b.length - 1]) === col(a[a.length - 1]);
+  }
+  function revealTops(){
+    const fresh = [];
+    L.vials.forEach((v, i) => {
+      const k = topRun(i);
+      for(let x = v.length - k; x < v.length; x++) if(!L.revSet.has(v[x])){ L.revSet.add(v[x]); fresh.push({ i, id: v[x] }); }
+    });
+    return fresh;
+  }
+  function bandsOf(i){
+    const out = [];
+    for(const id of L.vials[i]){
+      const hid = !L.revSet.has(id), c = col(id), last = out[out.length - 1];
+      if(last && !hid && !last.hid && last.c === c) last.u++;
+      else if(last && hid && last.hid) last.u++;
+      else out.push({ c, u: 1, hid });
+    }
+    return out;
+  }
+  // which pigments currently sit in a finished vial; paints/unpaints the picture to match
+  function refreshDone(instant){
+    const done = new Set();
+    L.vials.forEach((v, i) => { if(vialFull(i)) done.add(col(v[0])); });
+    L.palette.forEach((pig, slot) => {
+      if(done.has(pig) && !L.doneSet.has(pig)){ if(instant) artProg[slot] = 1; else artAnim[slot] = now() + 120; }
+      if(!done.has(pig)){ artProg[slot] = 0; delete artAnim[slot]; }
+    });
+    L.doneSet = done;
+    renderDots();
+    drawEasel();
+  }
+
+  /* ---------- layout ---------- */
+  function layout(){
+    const r = field.getBoundingClientRect();
+    W = r.width; H = r.height; dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.max(1, Math.round(W * dpr)); cv.height = Math.max(1, Math.round(H * dpr));
+    if(!L) return;
+    const count = L.vials.length;
+    const rows = count <= 6 || (W > 540 && count <= 8) ? 1 : 2;
+    const perRow = Math.ceil(count / rows);
+    slotW = (W - 16) / perRow;
+    const byW = slotW * (rows === 1 ? .66 : .62);
+    const byH = (H - 12) / (rows * 3.95 + (rows - 1) * 1.2 + 1.6);
+    const w = Math.max(14, Math.min(60, byW, byH));
+    if(!g || Math.abs(g.w - w) > .5) g = makeGeom(w);
+    const vialH = g.H + w * .1, gap = w * 1.2, used = rows * vialH + (rows - 1) * gap + w * 1.6;
+    const top = Math.max(0, (H - used) / 2) + w * 1.25;
+    const counts = rows === 1 ? [count] : [Math.ceil(count / 2), Math.floor(count / 2)];
+    let idx = 0;
+    counts.forEach((cnt, row) => {
+      for(let k = 0; k < cnt; k++, idx++){
+        const v = vs[idx] || (vs[idx] = { lift: 0, shake: 0, wob: 0, busy: false, cork: null, glow: 0, pop: 0, hop: 0 });
+        v.x = W / 2 + (k - (cnt - 1) / 2) * slotW;
+        v.y = top + row * (vialH + gap);
+        if(v.dx == null){ v.dx = v.x; v.dy = v.y; }
+      }
+    });
+    vs.length = count;
+    drawEasel();
+    kick();
+  }
+
+  /* ---------- poses ---------- */
+  function restPose(i){
+    const v = vs[i], w = g.w;
+    let y = v.dy - v.lift;
+    if(v.hop){ const t = (now() - v.hop) / 420; if(t > 0 && t < 1) y -= Math.sin(Math.PI * t) * w * .6; }
+    const sx = v.shake > 0 ? Math.sin(v.shake * 42) * v.shake * w * .22 : 0;
+    return { px: v.dx + sx, py: y, lx: 0, ly: 0, a: sx ? sx * .012 : 0 };
+  }
+  function pourPose(an, t){
+    const a = vs[an.i], b = vs[an.j], w = g.w, lip = an.dir * w / 2;
+    const home = [a.dx + lip, a.dy - an.lift0], rest = [a.x + lip, a.y], at = [b.x - an.dir * w * .1, b.y - w * 1.05];
+    if(t < an.tA){
+      const u = t / an.tA, e = easeInOutCubic(u);
+      return { px: lerp(home[0], at[0], e), py: lerp(home[1], at[1], e) - Math.sin(Math.PI * e) * w * .5, lx: lip, ly: 0, a: an.dir * an.thS * easeInOutSine(u) };
+    }
+    if(t < an.tA + an.tB){
+      const u = (t - an.tA) / an.tB;
+      return { px: at[0], py: at[1], lx: lip, ly: 0, a: an.dir * (an.thS + (an.thE - an.thS) * easeInOutSine(u)) };
+    }
+    const u = clamp((t - an.tA - an.tB) / an.tC, 0, 1), e = easeInOutCubic(u);
+    return { px: lerp(at[0], rest[0], e), py: lerp(at[1], rest[1], e) - Math.sin(Math.PI * e) * w * .3, lx: lip, ly: 0, a: an.dir * an.thE * (1 - easeOutBack(u)) };
+  }
+  function srcUnits(an, t){
+    if(t <= an.tA) return an.v0;
+    if(t >= an.tA + an.tB) return an.v1;
+    const u = (t - an.tA) / an.tB, ang = an.thS + (an.thE - an.thS) * easeInOutSine(u);
+    return clamp(capAt(g, ang) / g.unitA, an.v1, an.v0);
+  }
+  const poured = (an, t) => an.v0 - srcUnits(an, t);
+  function surfaceY(j, units){
+    const ps = restPose(j), poly = worldPoly(g, ps);
+    let y0 = 1e9, y1 = -1e9;
+    for(let i = 1; i < poly.length; i += 2){ y0 = Math.min(y0, poly[i]); y1 = Math.max(y1, poly[i]); }
+    return units <= .001 ? y1 : levelFor(poly, units * g.unitA, y0, y1);
+  }
+  function trimTop(bands, amount){
+    const out = bands.map(b => Object.assign({}, b));
+    while(amount > 1e-6 && out.length){
+      const t = out[out.length - 1], d = Math.min(t.u, amount);
+      t.u -= d; amount -= d;
+      if(t.u <= 1e-6) out.pop();
+    }
+    return out;
+  }
+  function addTop(bands, c, amount){
+    const out = bands.map(b => Object.assign({}, b));
+    if(amount <= 1e-6) return out;
+    const t = out[out.length - 1];
+    if(t && !t.hid && t.c === c) t.u += amount; else out.push({ c, u: amount, hid: false });
+    return out;
+  }
+
+  /* ---------- playing ---------- */
+  function tapVial(i){
+    if(!L || L.won || view !== 'play' || i < 0 || i >= L.vials.length) return;
+    A.ensure();
+    const v = vs[i];
+    if(v.busy){ return; }
+    if(sel === -1){
+      if(!L.vials[i].length){ v.shake = 1; sfx.tink(); kick(); return; }
+      if(vialFull(i)){ v.shake = .6; sfx.tink(); kick(); return; }
+      sel = i; sfx.pick(); buzz(6);
+    } else if(sel === i){
+      sel = -1; sfx.drop();
+    } else if(canPour(sel, i)){
+      pour(sel, i);
+    } else {
+      v.shake = 1; sfx.bonk(); buzz([18, 30, 18]);
+      sel = -1;
+    }
+    coach(); kick();
+  }
+  function pour(i, j){
+    const before = bandsOf(i), beforeDst = bandsOf(j);
+    const v0 = L.vials[i].length, d0 = L.vials[j].length;
+    const n = Math.min(topRun(i), CAP - d0), pig = col(L.vials[i][v0 - 1]);
+    L.hist.push({ v: L.vials.map(v => v.slice()), m: L.moves });
+    if(L.hist.length > 40) L.hist.shift();
+    const moved = L.vials[i].splice(v0 - n, n);
+    L.vials[j].push(...moved);
+    L.moves++;
+    const fresh = revealTops();
+    const completes = vialFull(j);
+    const a = vs[i], b = vs[j], dir = b.x > a.x + 1 ? 1 : b.x < a.x - 1 ? -1 : (i < j ? 1 : -1);
+    const v1 = v0 - n;
+    const thS = angleFor(g, v0 * g.unitA);
+    const thE = v1 > 0 ? angleFor(g, v1 * g.unitA) : Math.min(angleFor(g, g.unitA * .02) + .1, 2.05);
+    const an = { i, j, n, pig, dir, v0, v1, d0, thS, thE, src: before, dst: beforeDst,
+      tA: 230, tB: 190 + 105 * n, tC: 280, lag: 85, t0: now(), lift0: a.lift, fresh, completes, splashed: false };
+    anims.push(an);
+    a.busy = b.busy = true;
+    sel = -1; hintMv = null;
+    sfx.pour(n, d0, an.tA + an.lag, an.tB);
+    buzz(8);
+    hideStuck();
+    if(isSolved(colors(), CAP)) onSolved();
+    persist();
+    updateHud();
+  }
+  function finishPour(an){
+    const a = vs[an.i], b = vs[an.j];
+    a.busy = b.busy = false; a.lift = 0;
+    a.wob = g.w * .07; b.wob = Math.max(b.wob, g.w * .06);
+    sfx.plop(an.d0 + an.n, 0);
+    if(an.fresh.some(f => f.i === an.i)){
+      sfx.reveal();
+      const ps = restPose(an.i), yy = surfaceY(an.i, an.v1);
+      sparkle(ps.px, yy, '#FFFFFF', 8, .7);
+    }
+    if(an.completes) celebrate(an.j, an.pig);
+    refreshDone(false);
+    if(L.won && !anims.some(x => x !== an)) later(winSequence, 250);
+    else checkStuckSoon();
+  }
+  function celebrate(j, pig){
+    const v = vs[j], w = g.w, P = PIGMENTS[pig];
+    v.cork = now(); v.glow = now(); v.glowCol = P.hex;
+    const k = [...L.vials.keys()].filter(vialFull).length - 1;
+    later(() => {
+      sfx.complete(k); buzz([12, 30, 16]);
+      sparkle(v.x, v.y - w * .2, P.hex, 16, 1.2);
+      sparkle(v.x, v.y - w * .2, '#FFFFFF', 8, .9);
+    }, 150);
+    const f = h('div', { class: 'ps-float', style: `left:${v.x}px;top:${v.y - w * 1.1}px;--c:${P.hex}` }, P.name);
+    floats.append(f); later(() => f.remove(), 1500);
+    if(L.n === 1 && !S.tips.tut) later(coach, 200);
+  }
+  function onSolved(){
+    L.won = true; won = true;
+    const sp = L.sp;
+    S.coins += sp.reward;
+    S.stats.won++; if(sp.tier === 1) S.stats.hard++; if(sp.tier === 2) S.stats.super++;
+    L.clean = !L.help;
+    if(L.clean) S.coins += 5;
+    if(L.n === 1) S.tips.tut = true;
+    S.level = Math.max(S.level, L.n + 1);
+    S.cur = null;
+    api.persist(true);
+    later(() => levelData(L.n + 1), 900);        // mix the next board while the player admires this one
+  }
+  function winSequence(){
+    if(!L || view !== 'play') return;
+    vs.forEach((v, k) => { v.hop = now() + k * 55; });
+    const w = g.w;
+    for(let k = 0; k < 46; k++){
+      const pig = L.palette[k % L.palette.length];
+      parts.push({ kind: 'splat', x: W / 2 + (Math.random() - .5) * W * .3, y: H * .45, vx: (Math.random() - .5) * .9, vy: -.45 - Math.random() * .55,
+        life: 0, max: 1300 + Math.random() * 700, r: w * (.08 + Math.random() * .12), c: PIGMENTS[pig].hex, spin: Math.random() * 6 });
+    }
+    sfx.win(); buzz([20, 60, 20, 60, 40]);
+    coach();
+    kick();
+    later(showWin, 1250);
+  }
+
+  /* ---------- boosters ---------- */
+  function undo(){
+    if(!L || L.won) return;
+    if(anims.length) return;
+    if(!L.hist.length){ toast('Nothing to undo yet'); return; }
+    if(L.undos <= 0){ buy('undo'); return; }
+    const e = L.hist.pop();
+    L.vials = e.v.map(v => v.slice()); L.moves = e.m; L.undos--; L.help = true;
+    sel = -1; hintMv = null;
+    vs.forEach(v => { v.wob = g.w * .06; });
+    refreshDone(false);
+    sfx.undo(); buzz(10);
+    hideStuck(); persist(); updateHud(); coach(); checkStuckSoon(); kick();
+  }
+  function hint(){
+    if(!L || L.won) return;
+    if(S.inv.hint <= 0){ buy('hint'); return; }
+    const s = colors(), r = solve(s, CAP, 30000);
+    let mv = null;
+    if(r.ok && r.path.length) mv = r.path[0];
+    else if(!r.ok && r.exhausted){ showStuck(); toast('No pour wins from here. Undo or restart.'); return; }
+    else {
+      const ms = listMoves(s, CAP, false);
+      if(ms.length){ ms.sort((a, b) => rateMove(s, CAP, b) - rateMove(s, CAP, a)); mv = ms[0]; }
+    }
+    if(!mv) return;
+    S.inv.hint--; L.help = true;
+    hintMv = [mv[0], mv[1]]; sel = -1;
+    sfx.hint(); persist(); updateHud(); kick();
+  }
+  function addVial(){
+    if(!L || L.won) return;
+    if(L.extra){ toast('One extra vial per level'); return; }
+    if(S.inv.vial <= 0){ buy('vial'); return; }
+    S.inv.vial--; L.extra = true; L.help = true;
+    L.vials.push([]); L.init.push([]); L.hist.forEach(e => e.v.push([]));
+    layout();
+    const v = vs[vs.length - 1]; v.pop = now();
+    vs.forEach(x => { x.dx = x.dx == null ? x.x : x.dx; });
+    sfx.vial(); buzz(12);
+    sparkle(v.x, v.y + g.H / 2, '#FFFFFF', 12, 1);
+    hideStuck(); persist(); updateHud(); checkStuckSoon(); kick();
+  }
+  function restart(ask){
+    if(!L || L.won || anims.length) return;
+    if(ask && L.moves > 0){
+      sheet({ eyebrow: `Level ${L.n}`, title: 'Start this level again?', sub: 'The board goes back to how it started. Your 5 undos come back too.',
+        actions: [{ label: 'Restart level', onClick: () => restart(false) }, { label: 'Keep playing', kind: 'ghost' }] });
+      return;
+    }
+    L.vials = L.init.map(v => v.slice()); L.revSet = new Set(L.rev0);
+    L.hist = []; L.undos = UNDOS_PER_TRY; L.moves = 0;
+    sel = -1; hintMv = null;
+    vs.forEach((v, k) => { v.wob = g.w * .08; v.hop = now() + k * 30; v.cork = null; });
+    refreshDone(false);
+    sfx.undo(); hideStuck(); persist(); updateHud(); coach(); kick();
+  }
+  function buy(kind){
+    const price = PRICES[kind];
+    const info = {
+      undo: ['Out of undos', `Take back 5 more pours on this try.`, 'Buy 5 undos'],
+      hint: ['Out of hints', 'A hint points at one pour that still leads to a finished board.', 'Buy a hint'],
+      vial: ['Out of spare vials', 'An empty vial gives you room to park paint. One per level.', 'Buy a vial']
+    }[kind];
+    const short = S.coins < price;
+    sheet({ eyebrow: 'Boosters', title: info[0],
+      sub: short ? `${info[1]} It costs ${price} coins and you have ${S.coins}. Levels pay 10, hard ones 30 and super hard ones 60.` : info[1],
+      actions: [
+        { label: `${info[2]} · ${price} coins`, disabled: short, onClick: () => {
+          S.coins -= price;
+          if(kind === 'undo') L.undos += 5; else S.inv[kind]++;
+          [0, 1, 2].forEach(sfx.coin);
+          persist(); updateHud();
+          if(kind === 'hint') hint(); else if(kind === 'vial') addVial(); else toast('5 more undos');
+        } },
+        { label: 'Not now', kind: 'ghost' }
+      ] });
+  }
+
+  /* ---------- dead ends ---------- */
+  let stuckTimer = 0;
+  function checkStuckSoon(){ clearTimeout(stuckTimer); timers.delete(stuckTimer); stuckTimer = later(checkStuck, 380); }
+  function checkStuck(){
+    if(!L || L.won || view !== 'play') return;
+    if(anims.length){ checkStuckSoon(); return; }
+    const s = colors();
+    let dead = !listMoves(s, CAP, false).length;
+    if(!dead){ const r = solve(s, CAP, 5000); dead = !r.ok && r.exhausted; }
+    if(dead) showStuck(); else hideStuck();
+  }
+  function showStuck(){
+    if(stuckShown) return;
+    stuckShown = true; stuckEl.hidden = false;
+    ref('stuckVial').hidden = L.extra;
+    sfx.bonk();
+  }
+  function hideStuck(){ stuckShown = false; stuckEl.hidden = true; }
+
+  /* ---------- tutorial + coach line ---------- */
+  function coach(){
+    if(!L || view !== 'play'){ coachEl.textContent = ''; return; }
+    let msg = '';
+    if(L.won) msg = L.n === 1 ? 'That is the whole painting. Nicely done.' : '';
+    else if(L.n === 1 && !S.tips.tut){
+      if(L.moves < 3 && !anims.length){
+        const r = solve(colors(), CAP, 4000);
+        hintMv = r.ok && r.path.length ? [r.path[0][0], r.path[0][1]] : null;
+      } else if(L.moves >= 3) hintMv = null;
+      if(sel !== -1) msg = 'Now tap where it goes. Paint lands only on its own colour, or in an empty vial.';
+      else if(L.moves === 0) msg = 'Tap a vial to pick it up.';
+      else if(!L.doneSet.size) msg = 'Keep going until a vial holds a single colour.';
+      else msg = 'Every finished vial paints part of the picture above.';
+    }
+    else if(L.sp.mystery && L.moves === 0 && sel === -1) msg = 'Grey paint shows its colour once it reaches the top.';
+    coachEl.textContent = msg;
+  }
+
+  /* ---------- particles ---------- */
+  function sparkle(x, y, c, count, power){
+    for(let k = 0; k < count; k++){
+      const a = Math.random() * Math.PI * 2, sp = (.08 + Math.random() * .22) * power;
+      parts.push({ kind: 'spark', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - .08, life: 0, max: 500 + Math.random() * 400,
+        r: g.w * (.07 + Math.random() * .08), c, spin: Math.random() * 6 });
+    }
+    kick();
+  }
+
+  /* ---------- the frame loop ---------- */
+  function kick(){ if(!raf && view === 'play' && !document.hidden) { lastT = 0; raf = requestAnimationFrame(frame); } }
+  function busy(){
+    if(anims.length || parts.length || hintMv || kf >= 0) return true;
+    const t = now();
+    for(const k in artAnim) if(t - artAnim[k] < 1000) return true;
+    for(const v of vs){
+      if(Math.abs(v.lift - (vs.indexOf(v) === sel ? g.w * .5 : 0)) > .2 || v.shake > 0 || v.wob > .06) return true;
+      if(Math.abs(v.dx - v.x) > .3 || Math.abs(v.dy - v.y) > .3) return true;
+      if(v.cork && t - v.cork < 700) return true;
+      if(v.hop && t - v.hop < 460) return true;
+      if(v.pop && t - v.pop < 400) return true;
+      if(v.glow && t - v.glow < 1200) return true;
+    }
+    return false;
+  }
+  function frame(t){
+    raf = 0;
+    const dt = lastT ? Math.min(50, t - lastT) : 16; lastT = t;
+    step(t, dt);
+    draw(t);
+    if(busy()) raf = requestAnimationFrame(frame);
+  }
+  function step(t, dt){
+    if(!L || !g) return;
+    const w = g.w;
+    vs.forEach((v, i) => {
+      const target = i === sel ? w * .5 : 0;
+      if(!v.busy) v.lift += (target - v.lift) * Math.min(1, dt * .022);
+      v.shake = Math.max(0, v.shake - dt / 320);
+      v.wob *= Math.exp(-dt / 420);
+      v.dx += (v.x - v.dx) * Math.min(1, dt * .014); v.dy += (v.y - v.dy) * Math.min(1, dt * .014);
+    });
+    for(const an of anims.slice()){
+      const e = t - an.t0;
+      const flowing = e > an.tA + an.lag && e < an.tA + an.tB + an.lag;
+      if(flowing){
+        const b = vs[an.j], recv = poured(an, e - an.lag), sy = surfaceY(an.j, an.d0 + recv);
+        const x = b.x - an.dir * w * .08;
+        if(!an.splashed){
+          an.splashed = true;
+          for(let k = 0; k < 7; k++) parts.push({ kind: 'drop', x, y: sy, vx: (Math.random() - .5) * .16, vy: -.12 - Math.random() * .2, life: 0, max: 380, r: w * (.04 + Math.random() * .04), c: PIGMENTS[an.pig].hex, floor: sy });
+        }
+        if(Math.random() < dt / 38) parts.push({ kind: 'drop', x: x + (Math.random() - .5) * w * .2, y: sy, vx: (Math.random() - .5) * .12, vy: -.07 - Math.random() * .12, life: 0, max: 300, r: w * (.03 + Math.random() * .03), c: PIGMENTS[an.pig].hex, floor: sy });
+        b.wob = Math.max(b.wob, w * .065);
+      }
+      if(e >= an.tA + an.tB + an.tC){ anims.splice(anims.indexOf(an), 1); finishPour(an); }
+    }
+    for(let k = parts.length - 1; k >= 0; k--){
+      const p = parts[k];
+      p.life += dt;
+      if(p.life >= p.max){ parts.splice(k, 1); continue; }
+      p.vy += (p.kind === 'splat' ? .0011 : p.kind === 'drop' ? .0012 : .0004) * dt;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      if(p.kind === 'spark'){ p.vx *= .985; p.vy *= .985; }
+      if(p.floor != null && p.y > p.floor && p.vy > 0) p.life = p.max;
+    }
+    for(const k in artAnim){
+      const q = clamp((t - artAnim[k]) / 900, 0, 1);
+      if(q > 0) artProg[k] = q;
+      if(q >= 1) delete artAnim[k];
+      drawEasel();
+    }
+  }
+  function vialOpts(i, t){
+    const v = vs[i];
+    let cork = null;
+    if(vialFull(i) && !v.busy){
+      const ct = v.cork ? clamp((t - v.cork) / 520, 0, 1) : 1;
+      cork = (1 - easeOutBounce(ct)) * g.w * 1.8;
+    }
+    let glow = null, glowAmt = 0;
+    if(v.glow && t - v.glow < 1200){ glow = v.glowCol; glowAmt = Math.sin(Math.PI * clamp((t - v.glow) / 1200, 0, 1)); }
+    return { theme, base: dpr, t, wob: v.wob, symbols: S.symbols, selected: i === sel, cork, glow, glowAmt, font: FONT };
+  }
+  function draw(t){
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    if(!L || !g) return;
+    const w = g.w, srcs = new Set(anims.map(a => a.i)), dsts = new Map(anims.map(a => [a.j, a]));
+    // resting vials (and pour targets, which stay put)
+    for(let i = 0; i < vs.length; i++){
+      if(srcs.has(i)) continue;
+      const v = vs[i], ps = restPose(i), o = vialOpts(i, t);
+      let bands;
+      const an = dsts.get(i);
+      if(an){ bands = addTop(an.dst, an.pig, clamp(poured(an, t - an.t0 - an.lag), 0, an.n)); o.cork = null; }
+      else bands = bandsOf(i);
+      o.shadow = clamp(1 - v.lift / (w * 1.2), .3, 1); o.shadowX = v.dx; o.shadowY = v.dy + g.H + w * .16;
+      if(v.pop && t - v.pop < 380){
+        const s = easeOutBack(clamp((t - v.pop) / 380, 0, 1));
+        ctx.save(); ctx.translate(v.dx, v.dy + g.H); ctx.scale(s, s); ctx.translate(-v.dx, -v.dy - g.H);
+        drawVial(ctx, g, ps, bands, o); ctx.restore();
+      } else drawVial(ctx, g, ps, bands, o);
+      if(kf === i){
+        ctx.save(); ctx.strokeStyle = theme.accent; ctx.setLineDash([5, 4]); ctx.lineWidth = 2;
+        rrect(ctx, v.dx - slotW / 2 + 3, ps.py - w * .6, slotW - 6, g.H + w * 1.1, 12); ctx.stroke(); ctx.restore();
+      }
+    }
+    // streams, then the tipped vials over them
+    for(const an of anims){
+      const e = t - an.t0, s0 = an.tA, s1 = an.tA + an.tB;
+      if(e > s0 && e < s1 + an.lag){
+        const ps = pourPose(an, Math.min(e, s1 - 1)), b = vs[an.j];
+        const recv = clamp(poured(an, e - an.lag), 0, an.n);
+        const sy = surfaceY(an.j, an.d0 + recv), lipX = ps.px, lipY = ps.py;
+        const endX = b.x - an.dir * w * .08;
+        const head = clamp((e - s0) / an.lag, 0, 1), tail = e > s1 ? clamp((e - s1) / an.lag, 0, 1) : 0;
+        const flow = poured(an, e) - poured(an, e - 40);
+        const width = w * clamp(.07 + flow * 1.05, .07, .27) * (e > s1 ? 1 - tail * .5 : 1);
+        const ya = lipY + (sy - lipY) * tail, yb = lipY + (sy - lipY) * head;
+        if(yb - ya > 1){
+          const cx = lipX + an.dir * w * .07, sway = Math.sin(t * .03) * w * .015;
+          const xa = lerp(lipX, endX, tail * tail), xb = lerp(lipX, endX, head);
+          ctx.save(); ctx.lineCap = 'round';
+          ctx.strokeStyle = PIGMENTS[an.pig].hex; ctx.lineWidth = width;
+          ctx.beginPath(); ctx.moveTo(xa, ya); ctx.quadraticCurveTo(cx + sway, lerp(ya, yb, .3), xb + sway, yb); ctx.stroke();
+          ctx.strokeStyle = 'rgba(255,255,255,.38)'; ctx.lineWidth = Math.max(1, width * .22);
+          ctx.beginPath(); ctx.moveTo(xa - width * .22, ya + 2); ctx.quadraticCurveTo(cx + sway - width * .22, lerp(ya, yb, .3), xb + sway - width * .22, yb - 2); ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+    for(const an of anims){
+      const e = t - an.t0, ps = pourPose(an, e);
+      const o = vialOpts(an.i, t); o.selected = false; o.cork = null; o.shadow = 0;
+      drawVial(ctx, g, ps, trimTop(an.src, poured(an, e)), o);
+    }
+    // particles
+    for(const p of parts){
+      const q = p.life / p.max;
+      ctx.globalAlpha = p.kind === 'splat' ? Math.min(1, (1 - q) * 2.2) : 1 - q * q;
+      ctx.fillStyle = p.c;
+      if(p.kind === 'spark'){
+        const s = p.r * (1 - q * .6), a = p.spin + p.life * .006;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
+        ctx.beginPath();
+        for(let k = 0; k < 8; k++){ const rr = k % 2 ? s * .32 : s; const aa = k * Math.PI / 4; k ? ctx.lineTo(Math.cos(aa) * rr, Math.sin(aa) * rr) : ctx.moveTo(rr, 0); }
+        ctx.closePath(); ctx.fill(); ctx.restore();
+      } else if(p.kind === 'splat'){
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.spin + p.life * .004);
+        ctx.beginPath(); ctx.ellipse(0, 0, p.r, p.r * .72, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(p.r * .95, p.r * .3, p.r * .28, 0, 7); ctx.arc(-p.r * .7, -p.r * .6, p.r * .2, 0, 7); ctx.fill();
+        ctx.restore();
+      } else { ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill(); }
+    }
+    ctx.globalAlpha = 1;
+    // pointer for hints and the tutorial
+    if(hintMv && !L.won){
+      const target = sel === hintMv[0] ? hintMv[1] : hintMv[0];
+      if(vs[target]){
+        const v = vs[target], bob = Math.sin(t * .008) * w * .14;
+        const x = v.dx, y = v.dy - v.lift - w * .95 + bob;
+        ctx.save();
+        ctx.fillStyle = theme.accent; ctx.strokeStyle = theme.surface; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(x, y + w * .42); ctx.lineTo(x - w * .34, y - w * .02); ctx.lineTo(x - w * .13, y - w * .02);
+        ctx.lineTo(x - w * .13, y - w * .42); ctx.lineTo(x + w * .13, y - w * .42); ctx.lineTo(x + w * .13, y - w * .02);
+        ctx.lineTo(x + w * .34, y - w * .02); ctx.closePath(); ctx.stroke(); ctx.fill();
+        ctx.restore();
+        if(hintMv[1] !== target){
+          const d = vs[hintMv[1]];
+          if(d){ ctx.save(); ctx.globalAlpha = .35 + .2 * Math.sin(t * .008); ctx.strokeStyle = theme.accent; ctx.lineWidth = 2.5; ctx.setLineDash([4, 5]);
+            rrect(ctx, d.dx - slotW / 2 + 4, d.dy - w * .5, slotW - 8, g.H + w * .9, 12); ctx.stroke(); ctx.restore(); }
+        }
+      }
+    }
+  }
+
+  /* ---------- easel ---------- */
+  function drawEasel(){ if(L && art && view === 'play') paintCanvas(artCv, art, L.palette, artProg); }
+  function renderDots(){
+    const box = ref('dots'); box.replaceChildren();
+    if(!L) return;
+    L.palette.forEach(pig => box.append(h('i', { class: L.doneSet.has(pig) ? 'on' : null, style: `--c:${PIGMENTS[pig].hex}`, title: PIGMENTS[pig].name })));
+  }
+
+  /* ---------- HUD ---------- */
+  function updateHud(){
+    bind('coins', S.coins);
+    if(!L) return;
+    bind('lvl', `Level ${L.n}`);
+    const tierEl = ref('tier');
+    tierEl.hidden = !L.sp.tier; tierEl.textContent = TIER_NAME[L.sp.tier]; tierEl.dataset.tier = L.sp.tier;
+    const setN = (n, v, buyable) => { const b = ref(n); b.textContent = v > 0 ? v : '+'; b.classList.toggle('buy', !(v > 0) && buyable); };
+    setN('undoN', L.undos, true); setN('hintN', S.inv.hint, true); setN('vialN', L.extra ? 0 : S.inv.vial, !L.extra);
+    ref('vialN').closest('.ps-tool').classList.toggle('used', L.extra);
+  }
+
+  /* ---------- screens ---------- */
+  function showView(which){
+    view = which;
+    ref('lobby').hidden = which !== 'lobby';
+    ref('play').hidden = which !== 'play';
+    el.dataset.tier = which === 'play' && L ? L.sp.tier : 0;
+    if(which === 'lobby') renderLobby();
+  }
+  function startLevel(n, fresh){
+    closeSheet();
+    won = false; sel = -1; hintMv = null; anims = []; parts = []; kf = -1;
+    floats.replaceChildren(); hideStuck();
+    const resume = !fresh && S.cur && S.cur.n === n;
+    showView('play');
+    el.dataset.tier = spec(n).tier;
+    coachEl.textContent = resume ? '' : 'Mixing paint…';
+    bind('lvl', `Level ${n}`);
+    later(() => {
+      hydrate(resume ? S.cur : freshLevel(n));
+      vs = []; g = null;
+      layout();
+      vs.forEach((v, k) => { v.pop = now() + k * 35; });
+      updateHud(); persist(); coach(); drawEasel(); kick();
+      if(!resume && L.sp.tier) intro(L.sp.tier);
+      else if(!resume && L.sp.mystery && !S.tips.mystery) mysteryTip();
+      checkStuckSoon();
+    }, resume ? 0 : 40);
+  }
+  function intro(tier){
+    const box = ref('intro');
+    ref('introK').textContent = tier === 2 ? 'Super hard level' : 'Hard level';
+    ref('introN').textContent = `Level ${L.n}`;
+    ref('introS').textContent = `${L.sp.K} colours${L.sp.mystery ? ', some hidden' : ''}. Worth ${L.sp.reward} coins.`;
+    box.dataset.tier = tier; box.hidden = false;
+    box.classList.remove('on'); void box.offsetWidth; box.classList.add('on');
+    sfx.hard(tier); buzz([30, 60, 30]);
+    const done = () => { box.hidden = true; box.onclick = null; if(L.sp.mystery && !S.tips.mystery) mysteryTip(); };
+    box.onclick = done;
+    later(() => { if(!box.hidden) done(); }, 2100);
+  }
+  function mysteryTip(){
+    S.tips.mystery = true; persist();
+    sheet({ eyebrow: 'New', title: 'Hidden paint',
+      sub: 'Grey layers with a question mark are paint you can’t see yet. Pour off whatever sits on top and the colour shows.',
+      actions: [{ label: 'Got it' }] });
+  }
+  function showWin(){
+    if(!L || view !== 'play') return;
+    const sp = L.sp, next = spec(L.n + 1);
+    const frame = h('div', { class: 'ps-frame ps-frame-win' }, h('canvas'));
+    const coinsEl = h('b', null, '+0');
+    const body = h('div', { class: 'ps-win' },
+      frame,
+      h('div', { class: 'ps-win-cap' }, `Study No. ${L.n}`, h('span', null, ` · ${L.palette.length} pigments · ${L.moves} pours`)),
+      h('div', { class: 'ps-win-coins' }, h('i', { class: 'coin' }), coinsEl, h('span', null, L.clean ? ' incl. 5 for no boosters' : ''))
+    );
+    const nextKind = next.tier === 2 ? 'super' : next.tier === 1 ? 'hard' : 'primary';
+    sheet({ eyebrow: sp.tier ? `${TIER_NAME[sp.tier]} level beaten` : `Level ${L.n} complete`,
+      title: sp.tier === 2 ? 'Masterpiece.' : sp.tier === 1 ? 'That was a tough one.' : ['Lovely.', 'Clean pours.', 'Framed.', 'Gallery ready.'][L.n % 4],
+      tone: sp.tier === 2 ? 'super' : sp.tier === 1 ? 'hard' : '', body, dismiss: false,
+      actions: [
+        { label: next.tier ? `Next: ${TIER_NAME[next.tier].toLowerCase()} level ${L.n + 1}` : `Next level`, kind: nextKind, onClick: () => startLevel(S.level, true) },
+        { label: 'Back to levels', kind: 'ghost', onClick: () => { showView('lobby'); } }
+      ] });
+    requestAnimationFrame(() => paintCanvas(frame.firstChild, art, L.palette, L.palette.map(() => 1)));
+    const total = sp.reward + (L.clean ? 5 : 0);
+    let shown = 0; const stepN = Math.max(1, Math.round(total / 12));
+    const tick = () => {
+      shown = Math.min(total, shown + stepN); coinsEl.textContent = `+${shown}`;
+      sfx.coin(0);
+      if(shown < total) later(tick, 55);
+    };
+    later(tick, 350);
+    updateHud();
+  }
+  function menu(){
+    const body = h('div', null,
+      toggle('Colour symbols', 'Adds a shape to every colour of paint', () => S.symbols, v => { S.symbols = v; persist(); kick(); }),
+      toggle('Sound', 'Glugs, pops and chimes', () => api.settings.sound, v => { api.settings.sound = v; api.persist(); if(v) A.ensure(); }),
+      toggle('Vibration', 'On phones that support it', () => api.settings.haptics, v => { api.settings.haptics = v; api.persist(); }));
+    sheet({ eyebrow: `Level ${L ? L.n : S.level}`, title: 'Paused', body,
+      actions: [
+        { label: 'Resume' },
+        { label: 'How to play', kind: 'ghost', onClick: howTo },
+        { label: 'Restart level', kind: 'ghost', onClick: () => restart(true) },
+        { label: 'Back to levels', kind: 'ghost', onClick: () => showView('lobby') }
+      ] });
+  }
+  function howTo(){
+    const row = (t, d) => h('div', { class: 'ps-how' }, h('div', { class: 'ps-how-t' }, t), h('div', { class: 'ps-how-d' }, d));
+    sheet({ eyebrow: 'How to play', title: 'Sort the paint',
+      body: h('div', null,
+        row('Tap a vial, then tap another', 'The top colour pours across. It lands only on the same colour, or in an empty vial, and only as much as fits.'),
+        row('Fill a vial with one colour', 'It gets corked, and that pigment paints its part of the picture above.'),
+        row('Grey paint is hidden', 'A question mark hides a colour until the paint above it has been poured off.'),
+        row('Boosters', 'Undo takes back a pour (5 per try). A hint points at a pour that still wins. An extra vial gives you room, once per level.'),
+        row('Hard levels', 'Levels 5 and 10 of every ten are harder, then the next level eases off. They pay 30 and 60 coins.')),
+      actions: [{ label: 'Got it' }] });
+  }
+
+  /* ---------- lobby ---------- */
+  function renderLobby(){
+    bind('coins', S.coins);
+    const n = S.level, sp = spec(n), resume = S.cur && S.cur.n === n;
+    bind('nextEyebrow', sp.tier ? `Up next · ${TIER_NAME[sp.tier]}` : 'Up next');
+    ref('lobby').querySelector('.ps-next-eyebrow').dataset.tier = sp.tier;
+    bind('nextTitle', `Study No. ${n}`);
+    bind('nextSub', `${sp.K} colours · ${sp.K + 2} vials${sp.mystery ? ' · some hidden' : ''}`);
+    const pal = resume ? S.cur.palette : null;
+    const box = ref('nextDots'); box.replaceChildren();
+    for(let k = 0; k < sp.K; k++) box.append(h('i', { style: pal ? `--c:${PIGMENTS[pal[k]].hex}` : null, class: pal ? null : 'blank' }));
+    requestAnimationFrame(() => {
+      const nextArt = buildArt(n, sp.K);
+      paintCanvas(ref('nextArt'), nextArt, pal || [...Array(sp.K).keys()], []);
+    });
+    const go = ref('go');
+    go.className = 'btn btn-wide ps-go ' + (sp.tier === 2 ? 'btn-super' : sp.tier === 1 ? 'btn-hard' : 'btn-primary');
+    go.innerHTML = `${IC.play}<span>${resume ? 'Continue' : 'Play'} level ${n}</span>`;
+    const block = Math.floor((n - 1) / 10);
+    bind('blockLabel', `Levels ${block * 10 + 1}–${block * 10 + 10}`);
+    bind('lobbyNote', S.stats.won
+      ? `${S.stats.won} painting${S.stats.won === 1 ? '' : 's'} finished · ${S.stats.hard + S.stats.super} hard level${S.stats.hard + S.stats.super === 1 ? '' : 's'} beaten`
+      : 'Every level is mixed fresh on your device. Levels 5 and 10 of each ten are the hard ones.');
+    renderRoad(n);
+    later(() => levelData(n), 120);             // have the board ready before Play is tapped
+  }
+  function renderRoad(n){
+    const svg = ref('road'), block = Math.floor((n - 1) / 10), first = block * 10 + 1;
+    const X = p => 22 + p * (296 / 9), Y = p => 104 - RAMP[p] / 3.6 * 76;
+    const ns = 'http://www.w3.org/2000/svg', mk = (tag, a) => { const e = document.createElementNS(ns, tag); for(const k in a) e.setAttribute(k, a[k]); return e; };
+    svg.replaceChildren();
+    const pts = RAMP.map((_, p) => `${X(p)},${Y(p)}`);
+    svg.append(mk('polyline', { points: pts.join(' '), class: 'rd-line' }));
+    const doneP = n - first;
+    if(doneP > 0) svg.append(mk('polyline', { points: pts.slice(0, doneP + 1).join(' '), class: 'rd-done' }));
+    RAMP.forEach((_, p) => {
+      const lv = first + p, tier = p === 9 ? 2 : p === 4 ? 1 : 0, r = tier === 2 ? 13 : tier === 1 ? 11.5 : 9;
+      const state = lv < n ? 'done' : lv === n ? 'now' : 'todo';
+      if(state === 'now') svg.append(mk('circle', { cx: X(p), cy: Y(p), r: r + 6, class: 'rd-pulse' }));
+      svg.append(mk('circle', { cx: X(p), cy: Y(p), r, class: `rd-node rd-${state} rd-t${tier}` }));
+      const num = mk('text', { x: X(p), y: Y(p) + 24 + (tier ? 3 : 0), class: `rd-num${state === 'now' ? ' rd-num-now' : ''}` });
+      num.textContent = lv; svg.append(num);
+      if(state === 'done'){
+        svg.append(mk('path', { d: `M${X(p) - 4} ${Y(p)} l3 3 l5.5 -6`, class: 'rd-check' }));
+      }
+    });
+  }
+
+  /* ---------- input ---------- */
+  function hitVial(x, y){
+    if(!g) return -1;
+    let best = -1, bd = 1e9;
+    vs.forEach((v, i) => {
+      const top = v.dy - v.lift - g.w * .9, bot = v.dy + g.H + g.w * .35;
+      if(y < top || y > bot) return;
+      const d = Math.abs(x - v.dx);
+      if(d < slotW / 2 && d < bd){ bd = d; best = i; }
+    });
+    return best;
+  }
+  cv.addEventListener('pointerdown', e => {
+    if(e.button > 0) return;
+    const r = cv.getBoundingClientRect();
+    kf = -1;
+    const i = hitVial(e.clientX - r.left, e.clientY - r.top);
+    if(i >= 0) tapVial(i);
+    else if(sel >= 0){ sel = -1; sfx.drop(); coach(); kick(); }
+  });
+  const KEYMAP = '1234567890-=';
+  function onKey(e){
+    if(view !== 'play' || !L || e.metaKey || e.ctrlKey || e.altKey) return;
+    if(document.querySelector('#sheet.on')) return;
+    const k = e.key.toLowerCase(), idx = KEYMAP.indexOf(k);
+    if(idx >= 0 && idx < vs.length){ tapVial(idx); e.preventDefault(); return; }
+    if(k === 'arrowright' || k === 'arrowleft'){ kf = kf < 0 ? (sel >= 0 ? sel : 0) : (kf + (k === 'arrowright' ? 1 : -1) + vs.length) % vs.length; kick(); e.preventDefault(); }
+    else if((k === 'enter' || k === ' ') && kf >= 0){ tapVial(kf); e.preventDefault(); }
+    else if(k === 'u') undo(); else if(k === 'h') hint(); else if(k === 'r') restart(true);
+    else if(k === 'escape' && sel >= 0){ sel = -1; sfx.drop(); kick(); }
+  }
+  document.addEventListener('keydown', onKey);
+  el.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if(!b) return;
+    const act = b.dataset.act;
+    A.ensure();
+    if(act !== 'undo' && act !== 'vial') api.click();
+    switch(act){
+      case 'home': api.exit(); break;
+      case 'settings': api.ui.openSettings(h('div', null,
+        toggle('Colour symbols', 'Adds a shape to every colour of paint', () => S.symbols, v => { S.symbols = v; persist(); }),
+        h('button', { class: 'btn btn-ghost btn-sm btn-wide', style: 'margin-top:12px', onclick: () => { api.click(); howTo(); } }, 'How to play Paint Sort'))); break;
+      case 'play': startLevel(S.level, false); break;
+      case 'lobby': showView('lobby'); break;
+      case 'menu': menu(); break;
+      case 'undo': undo(); break;
+      case 'hint': hint(); break;
+      case 'vial': addVial(); break;
+      case 'restart': restart(true); break;
+    }
+  });
+  const ro = new ResizeObserver(() => { if(view === 'play'){ layout(); kick(); } });
+  ro.observe(field);
+  const offTheme = api.on('theme', () => { theme = readTheme(el); if(view === 'play'){ drawEasel(); kick(); } else renderLobby(); });
+  const offWipe = api.on('wipe', () => { api.exit(); });
+  const onVis = () => { if(!document.hidden) kick(); };
+  document.addEventListener('visibilitychange', onVis);
+
+  window.__ps = Object.assign(window.__ps || {}, {
+    state: () => L && colors(), level: () => L && L.n, tap: tapVial, undo, hint, addVial, restart: () => restart(false),
+    solveNow: () => L && solve(colors(), CAP, 200000), view: () => view, idle: () => !anims.length,
+    save: () => JSON.parse(JSON.stringify({ level: S.level, coins: S.coins, inv: S.inv, stats: S.stats })),
+    play: n => { if(n){ S.level = n; S.cur = null; } startLevel(S.level, false); }     // dev: jump to a level
+  });
+
+  showView('lobby');
+  return {
+    unmount(){
+      persist();
+      cancelAnimationFrame(raf); raf = 0;
+      for(const id of timers) clearTimeout(id);
+      ro.disconnect(); offTheme(); offWipe();
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('visibilitychange', onVis);
+    }
+  };
+}
+
+/* ==================== 6. the shelf card ==================== */
+function drawCard(box){
+  const cv = document.createElement('canvas');
+  box.classList.add('ps-card-art');
+  box.append(cv);
+  requestAnimationFrame(() => {
+    const W = box.clientWidth, H = box.clientHeight;
+    if(!W || !H) return;
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = W * dpr; cv.height = H * dpr;
+    const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const theme = readTheme(document.documentElement);
+    const w = Math.min(36, W / 11), g = makeGeom(w), y = H - g.H - w * .55;
+    const o = { theme, base: dpr, t: 0, wob: 0, font: 'sans-serif' };
+    const B = (...a) => a.map(([c, u]) => ({ c, u, hid: false }));
+    const vials = [
+      [.1, B([6, 1], [0, 1], [2, 1], [6, 1])],
+      [.24, B([2, 1], [8, 1], [0, 1])],
+      [.62, B([0, 2], [2, 1.35])],
+      [.78, B([6, 4])],
+      [.91, B([8, 2], [3, 1])]
+    ];
+    for(const [fx, bands] of vials){
+      const x = W * fx;
+      drawVial(ctx, g, { px: x, py: y, lx: 0, ly: 0, a: 0 }, bands, Object.assign({}, o, {
+        shadow: 1, shadowX: x, shadowY: y + g.H + w * .16, cork: fx === .78 ? 0 : null }));
+    }
+    // the vial mid-pour, and its stream
+    const tx = W * .62, lipX = tx - w * .1, lipY = y - w * .62, ang = 1.18;
+    const sy = y + g.H - (g.H - g.head) * (3.35 / CAP) * .98;
+    ctx.lineCap = 'round'; ctx.strokeStyle = PIGMENTS[2].hex; ctx.lineWidth = w * .2;
+    ctx.beginPath(); ctx.moveTo(lipX, lipY); ctx.quadraticCurveTo(lipX + w * .06, lipY + (sy - lipY) * .3, tx - w * .08, sy); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.38)'; ctx.lineWidth = w * .05;
+    ctx.beginPath(); ctx.moveTo(lipX - w * .05, lipY + 3); ctx.lineTo(tx - w * .12, sy - 3); ctx.stroke();
+    ctx.fillStyle = PIGMENTS[2].hex;
+    for(const [dx, dy, r] of [[-.35, -.25, .07], [.28, -.4, .05], [.18, -.12, .045]]){ ctx.beginPath(); ctx.arc(tx + dx * w, sy + dy * w, r * w, 0, 7); ctx.fill(); }
+    drawVial(ctx, g, { px: lipX, py: lipY, lx: w / 2, ly: 0, a: ang }, B([3, 1], [2, .7]), o);
+  });
+}
+
+/* ==================== 7. register ==================== */
+window.__ps = Object.assign(window.__ps || {}, { spec, generate, solve, probe });
+window.Playbox.register({
+  id: 'paint-sort',
+  title: 'Paint Sort',
+  tagline: 'Pour paint between vials until each one holds a single colour.',
+  status: s => s.level > 1 ? `Level ${s.level} · ${s.coins} coins` : 'New · 120 coins to start',
+  card: drawCard,
+  mount
+});
+})();
+</script>
+
+<script>
+(function(){
+  const start = () => window.Playbox.boot();
+  const hot = window.claude && window.claude.hot;
+  if(hot && hot.ready) hot.ready(start); else start();
+})();
+</script>
+
+</body>
+</html>
