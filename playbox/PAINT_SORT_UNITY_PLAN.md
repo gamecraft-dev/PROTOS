@@ -5,14 +5,102 @@ puzzle) in Unity. It covers the architecture, the code hierarchy, the full
 engine port, and every asset the agent must **generate through code**: meshes,
 shaders, textures, paintings, particles, sounds, prefabs, scenes and UI layouts.
 
-The reference implementation is the web prototype in this repo
-(`playbox/src/games/paint-sort.html`). This document is self-contained: where it
-gives code, port it exactly; where it gives numbers, use them as written.
+The reference implementation is the web prototype in this repo, and the agent
+gets its source alongside this plan (§0). Where the plan gives code, port it
+exactly; where it gives numbers, use them as written.
+
+---
+
+## 0. Using this plan with the HTML source
+
+### 0.1 Files the agent receives
+
+| File | What it is |
+| --- | --- |
+| `playbox/src/games/paint-sort.html` | The whole game: CSS, engine, painting, vial drawing, sounds, game logic, lobby. **The main reference.** |
+| `playbox/src/shell.html` | The hub: save store, the Web Audio synth (`tone`, `noise`, `bell`, compressor), sheets, toasts, settings, home screen. |
+| `playbox/tools/probe.mjs` | Runs the engine in Node and prints the difficulty table. Use it to produce extra golden fixtures. |
+| `playbox/index.html` | Built output of the two sources in one file. Open it in a browser to see and hear the target; don't read it for code (it duplicates the sources). |
+
+### 0.2 Which one wins
+
+1. **This plan wins** for everything it specifies: architecture, Unity
+   settings, the y-up coordinate conversion, units, the C# code, shaders,
+   generated asset specs, file names, save format and tests. The web version
+   draws everything live on a 2D canvas; the plan deliberately replaces that
+   with meshes, shaders, pre-rendered audio clips and generated textures.
+2. **The HTML wins** for behaviour or look that the plan doesn't pin down (an
+   animation detail, a colour in an edge case, a string). Port what the HTML
+   does, converted to the plan's conventions.
+3. **For engine output, the HTML is ground truth.** The golden fixtures
+   (Appendix B) were produced by it. If the C# port and the plan's C# listing
+   ever disagree with the HTML's output, match the HTML and report the
+   difference.
+
+### 0.3 Where each part lives in the HTML
+
+Everything below is in `paint-sort.html` unless marked `shell`. Find code by
+name; line numbers will drift.
+
+| Plan section | HTML source |
+| --- | --- |
+| §5 Engine | Between the `// @engine-start` and `// @engine-end` markers: `rng32`, `seedFor`, `shuffle`, `RAMP`, `PICK`, `K_CAP`, `spec`, `isFull`, `isSolved`, `runLen`, `listMoves`, `applyMove`, `heur`, `keyOf`, `solve`, `playout`, `rateMove`, `playoutSkilled`, `deal`, `generate`, `probe` |
+| §5.9 Painting composition | `makeShape`, `buildArt` |
+| §6 Level state and rules | inside `mount`: `freshLevel`, `hydrate`, `persist`, `canPour`, `revealTops`, `bandsOf`, `refreshDone`, `pour`, `finishPour`, `celebrate`, `onSolved`, `winSequence` |
+| §6.4 Input | `tapVial`, `hitVial`, `onKey`, the `pointerdown` listener |
+| §6.5–6.7 Boosters, dead ends, tutorial | `undo`, `hint`, `addVial`, `restart`, `buy`, `checkStuckSoon`, `checkStuck`, `showStuck`, `coach` |
+| §7 Layout | `layout` |
+| §8 Vial geometry and drawing | `areaBelow`, `levelFor`, `makeGeom`, `capAt`, `angleFor`, `worldPoly`, `axisAt`, `interiorPath`, `outlinePath`, `drawVial`, `drawCork`, `vialOpts` |
+| §8.9 Motion | `step` (lift, shake, wobble, glide), `restPose`, `busy` |
+| §9 Pour | `pour`, `pourPose`, `srcUnits`, `poured`, `trimTop`, `addTop`, `surfaceY` |
+| §10–11 Stream, particles, hint pointer | `draw` (stream, particles and pointer sections), `step` (splash spawning), `sparkle` |
+| §12 Paintings | `tooth`, `brushIn`, `drawArt`, `paintCanvas` |
+| §13 Sound | `makeSfx` (every game sound); `shell`: the `audio` object (`tone`, `noise`, `bell`, compressor settings) |
+| §15 UI | `TEMPLATE` (markup), the `<style>` block (sizes, colours, animations), `renderLobby`, `renderRoad`, `showWin`, `intro`, `menu`, `howTo`, `updateHud`; `shell`: `sheet`, `toast`, `openSettings`, `renderHome` |
+| §15.1 Card art | `drawCard` |
+| §16 Theme and pigments | CSS custom properties at the top of both files; `PIGMENTS`, `mix`, `glyph` |
+| §17 Save | `persist`, `hydrate`; `shell`: `store` |
+
+### 0.4 Converting while you read
+
+- **Canvas y points down; Unity y points up.** Every board formula in this plan
+  is already converted. When reading one straight from the HTML, flip the sign
+  of every y offset and of every rotation angle.
+- **Canvas pixels = Unity world units (dp).** Velocities in the HTML are px/ms:
+  multiply by 1000 for units per second, and by 1,000,000 for accelerations.
+- **Sound:** the web synthesises every sound live. Unity pre-renders clips
+  (§13) and plays the glug train as scheduled clips at varying pitch; the
+  recipes in §13.4 are `makeSfx` translated.
+- **Don't port the web-only parts:** Google Fonts links, `localStorage`,
+  `history.replaceState` and the `#hash` deep link, `window.claude.hot`,
+  `ResizeObserver`, DOM building, and the `window.__ps` debug hooks (the Unity
+  equivalents are the tests and the probe CLI).
+
+### 0.5 Making more golden fixtures
+
+`probe.mjs` shows how to run the engine in Node: it reads `paint-sort.html`,
+extracts the text between the engine markers, and evaluates it with `node:vm`.
+Use the same approach to dump any value you want to test against, for example:
+
+```js
+// node dump.mjs 42
+import { readFileSync } from 'node:fs'; import vm from 'node:vm';
+const src = readFileSync('playbox/src/games/paint-sort.html', 'utf8');
+const eng = src.match(/\/\/ @engine-start[^\n]*\n([\s\S]*?)\/\/ @engine-end/)[1];
+const ctx = {}; vm.createContext(ctx);
+vm.runInContext(eng + '\nthis.e = { generate, solve, spec };', ctx);
+const g = ctx.e.generate(+process.argv[2]);
+console.log(JSON.stringify({ vials: g.vials, palette: g.palette, hidden: g.hidden, len: g.len, fail: g.fail }));
+```
+
+`node playbox/tools/probe.mjs 1 60` prints the difficulty table; the C# probe
+CLI (§19.3) must print the same numbers.
 
 ---
 
 ## Contents
 
+0. Using this plan with the HTML source
 1. Ground rules for the agent
 2. Project setup
 3. Units and coordinate conventions
