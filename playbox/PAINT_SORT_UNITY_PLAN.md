@@ -1826,6 +1826,43 @@ UI `Image` with `tex_frame_{light,dark}` (9-slice), 5 dp border, the RawImage
 inset 5 dp; behind it `tex_frame_shadow` (9-slice), offset 12 dp down. Easel
 frame height `clamp(76, 15.5% of screen height, 142)` dp, aspect 4:3.
 
+### 12.7 How the painting follows the game (required in the build)
+
+The painting on the easel is a core feature, not decoration: **while the player
+sorts, the canvas above the vials paints itself one colour at a time.**
+
+- **Where it is:** on the play screen, the framed canvas ("easel") sits at the
+  top, under the top bar and above the coach line and the vials (§15.3), with
+  the row of pigment dots under it. It is always visible while playing.
+- **What it shows at level start:** the level's composition
+  (`ArtBuilder.Build(N, K)`) as a pencil underdrawing on the canvas ground: every
+  shape outlined, nothing coloured. When resuming a saved level, pigments that
+  are already corked show fully painted straight away (no animation).
+- **Shape ↔ colour:** shape `s` is painted with pigment
+  `LevelState.Palette[s.Slot]`. The easel keeps `progress[slot]` (0..1) for
+  each of the level's K colour slots.
+- **Trigger:** whenever `DoneSet` is recomputed (end of every pour, undo,
+  restart, add vial): for each slot, if its pigment is now in a corked vial and
+  wasn't before, start its reveal (0 → 1 over 900 ms, starting 120 ms after the
+  pour ends; §12.5); if its pigment is no longer corked, set its progress to 0
+  immediately. The matching pigment dot fills at the same moment.
+- **Rendering while playing:** re-render the easel RenderTexture every frame
+  while any reveal is running, once after any instant change, and not at all
+  otherwise.
+- **End of level:** after the last vial corks, the easel finishes its last
+  reveal and the Win sheet shows the same painting at full progress, larger, in
+  the frame, captioned "Study No. N · K pigments · M pours".
+- **Lobby:** the "Up next" card shows the next level's underdrawing (all
+  progress 0) so the player sees the canvas they are about to paint.
+- **Theme:** the canvas ground and pigments are the same in light and dark mode;
+  only the frame sprite switches (`tex_frame_light` / `tex_frame_dark`).
+
+Checks (add to the M5 acceptance and PlayMode tests): cork one vial on level 5
+and assert its slot's progress is 0 before the pour ends, and reaches 1 within
+1100 ms after; undo that pour and assert the progress returns to 0 in the same
+frame; resume a saved level with two corked vials and assert those two slots
+render at progress 1 with no animation.
+
 ---
 
 ## 13. Sound (synthesised at edit time)
@@ -2414,6 +2451,8 @@ for shadows and glows.
   intro plays; winning it gives 170 coins.
 - Resume: play 3 moves of a level, reload the scene, "Continue level N", same
   board.
+- Easel: the three painting checks in §12.7 (reveal on cork, instant reset on
+  undo, corked colours already painted on resume).
 
 ---
 
@@ -2425,7 +2464,7 @@ for shadows and glows.
 | M2 | Texture and audio generators | Appendix A PNGs and §13.5 WAVs regenerate byte-identically; AudioSynth tests pass; audition every sound in the editor |
 | M3 | Static board: layout, vial meshes, liquid shader, symbols, cork | Levels 1, 13, 20 and 60 render in light and dark themes; hidden layers show hatched primer with '?' |
 | M4 | Input, pour animation, stream, particles, glug sounds, haptics | Paint stays level while tipping; stream lands on the rising surface; pitch rises as the target fills; concurrent pours work |
-| M5 | Level flow: corking, painting reveal, win sequence, save and resume | Win flow and Resume PlayMode tests pass; paintings match the web for levels 1, 5 and 20 |
+| M5 | Level flow: corking, the easel painting filling in as colours are sorted (§12.7), win sequence, save and resume | Win flow, Resume and Easel PlayMode tests pass; paintings match the web for levels 1, 5 and 20 |
 | M6 | Boosters, buy sheet, dead-end watcher, hint, tutorial, hard intro, hidden-paint tip | Stuck bar appears on a proven dead end within ~0.5 s; hints never spent on dead boards |
 | M7 | Lobby, level road, hub, settings, theme switching, erase progress | Road matches §15.4; Auto theme follows the OS |
 | M8 | Performance and device pass | 60 fps on a mid-range Android with 15 vials; generation never blocks the main thread; probe run for levels 1–120 recorded |
