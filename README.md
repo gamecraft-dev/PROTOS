@@ -5,13 +5,14 @@ can open in a browser — no build step, no dependencies, no assets.
 
 | Prototype | What it is | Status |
 | --- | --- | --- |
-| **[playbox](playbox/)** | A multi-game app: one home shelf, shared saving, settings and sound, with games plugged in as separate files. First game: **Paint Sort**, pour paint between vials until each holds one colour, with levels generated on the device on a sawtooth difficulty curve. | Current |
-| **[backfire](backfire/)** | Bouncing-ball breaker where blocks you cut loose fall, flip, and slam back up into the ceiling. | Current |
+| **[playbox](playbox/)** | A multi-game app: a home screen of game boards with shared saving, settings and sound. Plays **Paint Sort** (pour paint between vials until each holds one colour, levels generated on a sawtooth difficulty curve); **Hex Tile Sort** and **Car Loop** have boards and are coming soon. | Current |
+| **[roundabout](roundabout/)** | Roundabout Rush: tap to merge your cars into a busy roundabout before the clock runs out. Full publishing shell: boosters, garage economy, mocked ads and store, Unity asset list. | Current |
+| **[backfire](backfire/)** | Bouncing-ball breaker where blocks you cut loose fall, flip, and slam back up into the ceiling. | Playable |
 | **[blockcharge](blockcharge/)** | Block puzzle where clearing lines earns powers you pick and bank. | Playable |
 | **[sparkweave](sparkweave/)** | Beam-routing roguelite on a 5×5 loom. Deep systems, but too much to explain for a casual audience. | Shelved — see note |
 
 Each folder has a `DESIGN.md` with the market rationale, the balance numbers, and
-the risks.
+the risks. Roundabout also has an `ASSETS.md` listing what a Unity build needs.
 
 ### Shared shape
 
@@ -21,7 +22,7 @@ DOM plus synthesised WebAudio. Each has its source in artifact-host format (no
 standalone `index.html`. Playbox splits its source into a shell plus one file per
 game; its `build.sh` inlines the games back into a single page.
 
-Two patterns are worth reusing:
+Three patterns are worth reusing:
 
 - **Deterministic simulation, separate playback.** Sparkweave's `simulate()`
   emits an event log that the renderer animates. Balance can be measured without
@@ -33,6 +34,11 @@ Two patterns are worth reusing:
   Playbox's Paint Sort goes one step further: its level generator is pure JS
   between two markers, and `tools/probe.mjs` runs it in Node to print the
   difficulty of every level, measured by simulated players.
+- **Levels proven by bots that play like people.** Roundabout generates every
+  level from a seed, then only ships it if a frame-perfect bot, a reference
+  player and a cautious player can all clear it; the clock comes from the
+  reference player's time. A clock based on the frame-perfect bot alone made
+  every level from 7 onward unwinnable for human-like play.
 
 ### Note on sparkweave
 
