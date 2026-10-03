@@ -1,0 +1,111 @@
+<style>
+/* ---------- Hex Tile Sort: board only for now; the game isn't linked yet ---------- */
+:root{
+  --hx-a:#FFF6E3; --hx-b:#F8D28C;
+  --hx-slot:rgba(150,92,16,.16); --hx-slot-edge:rgba(150,92,16,.30); --hx-trail:rgba(120,70,0,.45);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --hx-a:#3B2C14; --hx-b:#1A130A;
+    --hx-slot:rgba(255,206,130,.08); --hx-slot-edge:rgba(255,206,130,.20); --hx-trail:rgba(255,220,160,.5);
+  }
+  :root:not([data-theme="light"]) .board[data-game="hex-tile-sort"]{
+    --b-accent:#FFB547; --b-deep:#A8690A; --b-soft:#3A2A10; --b-ink:#2A1900; --b-text:#FFC870;
+  }
+}
+:root[data-theme="dark"]{
+  --hx-a:#3B2C14; --hx-b:#1A130A;
+  --hx-slot:rgba(255,206,130,.08); --hx-slot-edge:rgba(255,206,130,.20); --hx-trail:rgba(255,220,160,.5);
+}
+.board[data-game="hex-tile-sort"]{--b-accent:#F5A524; --b-deep:#C27806; --b-soft:#FFF0D2; --b-ink:#3A2400; --b-text:#8A5200}
+:root[data-theme="dark"] .board[data-game="hex-tile-sort"]{
+  --b-accent:#FFB547; --b-deep:#A8690A; --b-soft:#3A2A10; --b-ink:#2A1900; --b-text:#FFC870;
+}
+</style>
+<script>
+/* Hex Tile Sort board. Draws stacks of hexagonal tiles on a seven-cell board,
+   with one tile flipping across between two stacks of the same colour. */
+(function(){
+'use strict';
+// [top face, side face]
+const TILES = [['#F25C8E', '#BE3A68'], ['#1DB7A6', '#118579'], ['#F7C844', '#C39418'],
+               ['#7C5CE0', '#5638AE'], ['#FF7A45', '#CC5127'], ['#3BA8F0', '#1E7DBD']];
+const R = 36, SQ = .6, T = 7, GAP = 1.07;           // hex radius, vertical squash, tile thickness
+// axial cell -> stack, bottom to top
+const STACKS = [
+  [0, -1, [4, 4, 1]], [1, -1, [1, 1, 1, 1]], [-1, 0, [5, 0, 0]], [0, 0, [3, 3, 3, 0]],
+  [1, 0, [2, 4, 4]], [-1, 1, []], [0, 1, [5, 5, 2, 2, 2]]
+];
+
+function hex(ctx, cx, cy, r, sq){
+  ctx.beginPath();
+  for(let k = 0; k < 6; k++){
+    const a = Math.PI / 3 * k, x = cx + r * Math.cos(a), y = cy + r * Math.sin(a) * sq;
+    k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.closePath();
+}
+function cellXY(q, r){ return [1.5 * R * q * GAP, Math.sqrt(3) * R * (r + q / 2) * GAP * SQ]; }
+
+function draw(box){
+  const cv = document.createElement('canvas');
+  box.append(cv);
+  requestAnimationFrame(() => {
+    const W = box.clientWidth, H = box.clientHeight;
+    if(!W || !H) return;
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const css = getComputedStyle(document.documentElement), tok = n => css.getPropertyValue(n).trim();
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, tok('--hx-a')); bg.addColorStop(1, tok('--hx-b'));
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // the drawing is laid out in a 270 x 230 box, centred and scaled to fit
+    const u = Math.min(W / 270, H / 230);
+    ctx.translate(W / 2 - 4 * u, H / 2 + 30 * u); ctx.scale(u, u);
+
+    const tops = {};
+    const cells = STACKS.map(([q, r, s]) => ({ q, r, s, xy: cellXY(q, r) })).sort((a, b) => a.xy[1] - b.xy[1]);
+    for(const c of cells){
+      const [x, y] = c.xy;
+      hex(ctx, x, y + 3, R * .98, SQ);
+      ctx.fillStyle = tok('--hx-slot'); ctx.fill();
+      ctx.strokeStyle = tok('--hx-slot-edge'); ctx.lineWidth = 1.5; ctx.stroke();
+      c.s.forEach((t, i) => {
+        const yb = y - i * T, [top, side] = TILES[t];
+        hex(ctx, x, yb, R * .9, SQ); ctx.fillStyle = side; ctx.fill();
+        hex(ctx, x, yb - T, R * .9, SQ); ctx.fillStyle = top; ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 1; ctx.stroke();
+      });
+      if(c.s.length){
+        const yt = y - c.s.length * T;
+        hex(ctx, x, yt, R * .62, SQ); ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 2; ctx.stroke();
+      }
+      tops[`${c.q},${c.r}`] = [x, y - c.s.length * T];
+    }
+
+    // a pink tile mid-flip from the centre stack onto its pink neighbour
+    const [ax, ay] = tops['0,0'], [bx, by] = tops['-1,0'];
+    const mx = (ax + bx) / 2, my = Math.min(ay, by) - 44;
+    ctx.setLineDash([3, 5]); ctx.strokeStyle = tok('--hx-trail'); ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(ax + 6, ay - 4); ctx.quadraticCurveTo(ax + 4, my - 6, mx + 16, my - 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.save(); ctx.translate(mx, my); ctx.rotate(-.42);
+    hex(ctx, 0, 0, R * .9, .26); ctx.fillStyle = TILES[0][1]; ctx.fill();
+    hex(ctx, 0, -5, R * .9, .26); ctx.fillStyle = TILES[0][0]; ctx.fill();
+    ctx.restore();
+  });
+}
+
+window.Playbox.register({
+  id: 'hex-tile-sort',
+  title: 'Hex Tile Sort',
+  tagline: 'Stack hex tiles and flip matching colours to clear them.',
+  order: 2,
+  soon: true,
+  card: draw
+});
+})();
+</script>

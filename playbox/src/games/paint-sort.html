@@ -1927,7 +1927,9 @@ window.Playbox.register({
   id: 'paint-sort',
   title: 'Paint Sort',
   tagline: 'Pour paint between vials until each one holds a single colour.',
+  order: 1,
   status: s => s.level > 1 ? `Level ${s.level} · ${s.coins} coins` : 'New · 120 coins to start',
+  cta: s => s.level > 1 || s.cur ? 'Continue' : 'Play',
   card: drawCard,
   mount
 });

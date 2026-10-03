@@ -3,11 +3,17 @@
 One app, a shelf of small games. The shell handles the home screen, settings,
 saving and sound. Each game is a separate file that plugs into it.
 
-**Games on the shelf**
+**Games on the home screen**
 
-| Game | What it is |
-| --- | --- |
-| **Paint Sort** | Pour paint between glass vials until every vial holds one colour. Levels are generated on the device with a sawtooth difficulty curve: the 5th and 10th level of every ten are hard. |
+Each game is a board on the home screen. The game you last played (or the first
+playable one) gets the big board at the top; the rest sit in a two-column grid
+below it.
+
+| Game | What it is | Status |
+| --- | --- | --- |
+| **Paint Sort** | Pour paint between glass vials until every vial holds one colour. Levels are generated on the device with a sawtooth difficulty curve: the 5th and 10th level of every ten are hard. | Playable |
+| **Hex Tile Sort** | Board only: artwork, colours and a "Coming soon" state. | Not linked yet |
+| **Car Loop** | Board only: artwork, colours and a "Coming soon" state. | Not linked yet |
 
 **Play it:** open `index.html` in any browser. No build step, no dependencies.
 Best on a phone, portrait. `index.html#paint-sort` opens straight into the game.
@@ -62,6 +68,8 @@ saved on the device after every pour.
 index.html               the app, built; open this
 src/shell.html           the hub: home, settings, save, audio, sheets, game registry
 src/games/paint-sort.html  Paint Sort: styles + script, registers itself with the shell
+src/games/hex-tile-sort.html  Hex Tile Sort's board (artwork + colours); no game yet
+src/games/car-loop.html  Car Loop's board (artwork + colours); no game yet
 build.sh                 inlines every src/games/*.html into the shell -> index.html
 tools/probe.mjs          prints the difficulty of each generated level (node tools/probe.mjs 1 60)
 DESIGN.md                why Paint Sort works the way it does, with numbers
@@ -74,16 +82,18 @@ their own.
 ## Adding a game
 
 Drop a file in `src/games/` containing a `<style>` and a `<script>` that calls
-`Playbox.register`, then rebuild. The shell gives each game a card on the home
-shelf, its own save object, and a full-screen stage.
+`Playbox.register`, then rebuild. The shell gives each game a board on the home
+screen, its own save object, and a full-screen stage.
 
 ```js
 Playbox.register({
   id: 'my-game',                       // also the #hash that opens it directly
   title: 'My Game',
-  tagline: 'One line for the home card.',
-  status: save => `Level ${save.level || 1}`,   // chip on the home card
-  card(el, save) { /* draw the card's artwork into el */ },
+  tagline: 'One short line for the board (keep it under ~55 characters).',
+  order: 4,                            // position on the home screen
+  status: save => `Level ${save.level || 1}`,   // chip on the board
+  cta: save => save.level > 1 ? 'Continue' : 'Play',   // button label on the big board
+  card(el, save, { featured }) { /* draw the board's artwork into el (fills it) */ },
   mount(stage, api) {
     // api.save        this game's saved object; mutate it, then api.persist()
     // api.persist(now) write to localStorage (debounced unless now is true)
@@ -99,6 +109,18 @@ Playbox.register({
 
 Colours come from the shell's CSS tokens (`--bg`, `--surface`, `--ink`, `--accent`,
 `--hard`, `--super`, …), which already switch for dark mode.
+
+**The board's own colours.** In the game's `<style>`, set `--b-accent` (button),
+`--b-deep` (the slab under the board and the button's edge), `--b-soft` (chip
+background), `--b-text` (chip text) and `--b-ink` (button text) on
+`.board[data-game="my-game"]`, with dark-mode values in the same three blocks
+the rest of the CSS uses. Without them a board uses Playbox blue.
+
+**A board before its game exists.** Register with `soon: true` and no `mount`:
+the board shows its artwork with a lock, a "Coming soon" chip, and a toast when
+tapped, and its `#hash` won't open anything. `hex-tile-sort.html` and
+`car-loop.html` work this way. To link a real game later, replace that file
+with the game (keeping the same `id`) and drop `soon`.
 
 ## Tuning Paint Sort
 

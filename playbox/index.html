@@ -162,22 +162,55 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;paddin
 .home-hello{display:flex;flex-direction:column;gap:4px}
 .home-hello h1{font-family:var(--f-disp);font-weight:400;font-size:clamp(28px,8.4vw,36px);line-height:1.02;margin:0;text-wrap:balance}
 .home-hello p{margin:0;color:var(--muted);font-size:15px;max-width:40ch}
-.shelf-label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--dim)}
-.shelf{display:grid;gap:14px}
-.game-card{display:flex;flex-direction:column;border-radius:26px;overflow:hidden;background:var(--surface);
-  box-shadow:var(--shadow),0 0 0 1px var(--line);text-align:left;transition:transform .14s}
-.game-card:active{transform:scale(.985)}
-.game-card .gc-art{position:relative;height:190px;overflow:hidden}
-.game-card .gc-body{display:flex;align-items:center;gap:14px;padding:16px 18px 18px}
-.game-card .gc-text{flex:1;min-width:0}
-.game-card .gc-title{font-family:var(--f-disp);font-size:26px;line-height:1.05}
-.game-card .gc-tag{color:var(--muted);font-size:14px;margin-top:3px;line-height:1.35}
-.game-card .gc-status{display:inline-flex;align-items:center;gap:6px;margin-top:9px;font-size:12.5px;font-weight:800;
-  color:var(--accent);background:var(--accent-soft);padding:5px 10px;border-radius:999px;font-variant-numeric:tabular-nums}
-.game-card .gc-go{width:54px;height:54px;border-radius:18px;background:var(--accent);color:var(--accent-ink);
-  display:grid;place-items:center;flex:0 0 auto;box-shadow:0 4px 0 var(--accent-deep)}
-.game-card .gc-go svg{width:26px;height:26px}
-.home-note{font-size:13.5px;color:var(--dim);text-align:center;margin:0 auto;max-width:34ch;line-height:1.5}
+.home-section{display:flex;flex-direction:column;gap:12px}
+.home-section[hidden]{display:none}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.section-label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--dim)}
+.section-count{font-size:12.5px;font-weight:700;color:var(--dim);font-variant-numeric:tabular-nums}
+
+/* boards: each game is a chunky slab standing on a base in its own colour.
+   A game sets --b-* on .board[data-game="its-id"]; the defaults are Playbox blue. */
+.board{--b-accent:var(--accent);--b-deep:var(--accent-deep);--b-soft:var(--accent-soft);--b-ink:var(--accent-ink);--b-text:var(--accent);
+  position:relative;display:flex;flex-direction:column;min-width:0;border-radius:24px;background:var(--surface);
+  text-align:left;box-shadow:0 6px 0 var(--b-deep),0 20px 32px -22px rgba(10,16,40,.55);
+  transition:transform .12s,box-shadow .12s;animation:boardIn .5s cubic-bezier(.2,.9,.25,1) backwards;
+  animation-delay:calc(var(--i,0) * 70ms)}
+.board:active{transform:translateY(4px);box-shadow:0 2px 0 var(--b-deep),0 10px 20px -16px rgba(10,16,40,.5)}
+@keyframes boardIn{from{transform:translateY(18px) scale(.97)}to{transform:none}}
+.board-art{position:relative;overflow:hidden;border-radius:24px 24px 0 0;aspect-ratio:1/.86;background:var(--b-soft)}
+.board-art canvas{position:absolute;inset:0;width:100%;height:100%}
+.board-body{display:flex;flex-direction:column;gap:5px;padding:12px 13px 14px;min-width:0;flex:1}
+.board-title{font-family:var(--f-disp);font-size:20px;line-height:1.05;text-wrap:balance}
+.board-tag{color:var(--muted);font-size:12.5px;line-height:1.35}
+.board-foot{display:flex;align-items:center;gap:10px;margin-top:auto;padding-top:5px;min-width:0}
+.board-chip{display:inline-flex;align-items:center;min-width:0;font-size:12px;font-weight:800;color:var(--b-text);background:var(--b-soft);
+  padding:5px 10px;border-radius:999px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.board-cta{display:inline-flex;align-items:center;justify-content:center;gap:7px;margin-left:auto;flex:0 0 auto;
+  width:36px;height:36px;border-radius:12px;background:var(--b-accent);color:var(--b-ink);box-shadow:0 3px 0 var(--b-deep)}
+.board-cta svg{width:18px;height:18px}
+.board-cta .lbl{display:none}
+.board-lock{position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(16,22,40,.72);color:#fff}
+.board-lock svg{width:16px;height:16px}
+.board.soon .board-chip{color:var(--muted);background:var(--surface-2)}
+.board.nope{animation:boardNope .4s ease}
+@keyframes boardNope{20%{transform:translateX(-6px) rotate(-1deg)}45%{transform:translateX(5px) rotate(.8deg)}70%{transform:translateX(-3px)}100%{transform:none}}
+
+/* the board you're playing gets the big slot */
+.board-feature{border-radius:28px}
+.board-feature .board-art{aspect-ratio:auto;height:clamp(180px,30dvh,230px);border-radius:28px 28px 0 0}
+.board-feature .board-body{gap:6px;padding:16px 18px 18px}
+.board-feature .board-title{font-size:30px}
+.board-feature .board-tag{font-size:14.5px}
+.board-feature .board-chip{font-size:12.5px;padding:6px 11px}
+.board-feature .board-cta{width:auto;height:auto;padding:12px 18px 12px 15px;border-radius:15px;box-shadow:0 4px 0 var(--b-deep);
+  font-family:var(--f-disp);font-size:18px;line-height:1}
+.board-feature .board-cta .lbl{display:inline}
+
+.board-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 14px}
+.board-grid .board.wide{grid-column:1/-1}
+.board-grid .board.wide .board-art{aspect-ratio:2.1/1}
+.home-note{font-size:13.5px;color:var(--dim);text-align:center;margin:4px auto 0;max-width:34ch;line-height:1.5}
 
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.06s!important}
@@ -198,9 +231,15 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;paddin
       <h1 id="homeTitle">Pick a game</h1>
       <p id="homeSub">Short puzzles that remember where you left off.</p>
     </div>
-    <div class="shelf-label">Games</div>
-    <div class="shelf" id="shelf"></div>
-    <p class="home-note">More games will land on this shelf. Your progress in each one is saved on this device.</p>
+    <section class="home-section" id="featureSection" aria-labelledby="featureLabel">
+      <div class="section-head"><span class="section-label" id="featureLabel">Start here</span></div>
+      <div id="featureSlot"></div>
+    </section>
+    <section class="home-section" id="moreSection" aria-labelledby="moreLabel">
+      <div class="section-head"><span class="section-label" id="moreLabel">More games</span><span class="section-count" id="moreCount"></span></div>
+      <div class="board-grid" id="boardGrid"></div>
+    </section>
+    <p class="home-note">Your progress in each game is saved on this device.</p>
   </section>
   <section id="stage" class="view" hidden></section>
   <div id="layer">
@@ -430,32 +469,62 @@ const games = [];
 let current = null;                              // { def, handle }
 const home = $('#home'), stage = $('#stage');
 
+/* A game definition: { id, title, tagline, order, card(el, save), status(save), cta(save), mount(stage, api) }.
+   Set soon: true (and leave out mount) for a game that only has a board so far. */
 function register(def){ games.push(def); if(booted) renderHome(); }
+const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
+const LOCK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2.5" fill="currentColor" stroke="none"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+function boardFor(g, featured, i){
+  const save = g.soon ? {} : store.game(g.id);
+  const art = h('div', { class: 'board-art', 'aria-hidden': 'true' });
+  try{ g.card && g.card(art, save, { featured }); }catch(e){ console.error(e); }
+  if(g.soon) art.append(h('span', { class: 'board-lock', html: LOCK_ICON }));
+  const status = g.soon ? 'Coming soon' : g.status ? g.status(save) : '';
+  const cta = g.soon ? null : h('span', { class: 'board-cta' },
+    h('span', { html: PLAY_ICON, style: 'display:contents' }), h('span', { class: 'lbl' }, g.cta ? g.cta(save) : 'Play'));
+  const el = h('button', {
+    class: 'board' + (featured ? ' board-feature' : '') + (g.soon ? ' soon' : ''),
+    'data-game': g.id, style: `--i:${i}`,
+    'aria-label': g.soon ? `${g.title}, coming soon` : `Play ${g.title}`
+  },
+    art,
+    h('div', { class: 'board-body' },
+      h('div', { class: 'board-title' }, g.title),
+      h('div', { class: 'board-tag' }, g.tagline),
+      h('div', { class: 'board-foot' }, status ? h('span', { class: 'board-chip' }, status) : null, cta)));
+  el.addEventListener('click', () => {
+    click();
+    if(!g.soon){ openGame(g.id); return; }
+    el.classList.remove('nope'); void el.offsetWidth; el.classList.add('nope');
+    buzz(12); toast(`${g.title} is coming soon`);
+  });
+  return el;
+}
 function renderHome(){
-  const shelf = $('#shelf'); shelf.replaceChildren();
-  for(const g of games){
-    const save = store.game(g.id);
-    const art = h('div', { class: 'gc-art', 'aria-hidden': 'true' });
-    try{ g.card && g.card(art, save); }catch(e){ console.error(e); }
-    const status = g.status ? g.status(save) : '';
-    const card = h('button', { class: 'game-card', 'aria-label': 'Play ' + g.title },
-      art,
-      h('div', { class: 'gc-body' },
-        h('div', { class: 'gc-text' },
-          h('div', { class: 'gc-title' }, g.title),
-          h('div', { class: 'gc-tag' }, g.tagline),
-          status ? h('div', { class: 'gc-status' }, status) : null),
-        h('span', { class: 'gc-go', html: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>' })));
-    card.addEventListener('click', () => { click(); openGame(g.id); });
-    shelf.append(card);
-  }
-  const played = data.last && games.find(g => g.id === data.last);
+  const list = games.slice().sort((a, b) => (a.order == null ? 99 : a.order) - (b.order == null ? 99 : b.order));
+  const ready = list.filter(g => !g.soon);
+  const played = data.last && ready.find(g => g.id === data.last);
+  const feature = played || ready[0] || null;
+  const rest = list.filter(g => g !== feature);
+
+  $('#featureSection').hidden = !feature;
+  $('#featureLabel').textContent = played ? 'Jump back in' : 'Start here';
+  $('#featureSlot').replaceChildren(...(feature ? [boardFor(feature, true, 0)] : []));
+
+  const grid = $('#boardGrid');
+  grid.replaceChildren(...rest.map((g, k) => boardFor(g, false, k + 1)));
+  if(rest.length % 2) grid.lastChild.classList.add('wide');     // never leave a board alone in a row
+  $('#moreSection').hidden = !rest.length;
+  $('#moreLabel').textContent = feature ? 'More games' : 'Games';
+  const soon = list.length - ready.length;
+  $('#moreCount').textContent = soon ? `${soon} coming soon` : `${rest.length}`;
+
   $('#homeTitle').textContent = played ? 'Welcome back' : 'Pick a game';
   $('#homeSub').textContent = played ? `${played.title} is right where you left it.` : 'Short puzzles that remember where you left off.';
 }
 function openGame(id, opts){
   const def = games.find(g => g.id === id);
-  if(!def) return;
+  if(!def || def.soon) return;
   audio.ensure();
   if(current) closeGame(true);
   data.last = id; store.save();
@@ -501,6 +570,234 @@ function boot(){
 window.Playbox = { register, store, audio, buzz, on, emit, ui: { sheet, closeSheet, toast, h }, boot, openGame };
 })();
 </script>
+<style>
+/* ---------- Car Loop: board only for now; the game isn't linked yet ---------- */
+:root{
+  --cl-a:#CDEFD6; --cl-b:#92D5A5; --cl-road:#4A5264; --cl-island:#7BC690; --cl-tree:#2F8F5B;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --cl-a:#1B4A31; --cl-b:#0C2618; --cl-road:#2A303C; --cl-island:#1F5A39; --cl-tree:#2C7A4E;
+  }
+  :root:not([data-theme="light"]) .board[data-game="car-loop"]{
+    --b-accent:#3DD68C; --b-deep:#1D8A57; --b-soft:#14301F; --b-ink:#04210F; --b-text:#6FE3A9;
+  }
+}
+:root[data-theme="dark"]{
+  --cl-a:#1B4A31; --cl-b:#0C2618; --cl-road:#2A303C; --cl-island:#1F5A39; --cl-tree:#2C7A4E;
+}
+.board[data-game="car-loop"]{--b-accent:#12935A; --b-deep:#0B6B41; --b-soft:#DDF5E8; --b-ink:#FFFFFF; --b-text:#0B6B41}
+:root[data-theme="dark"] .board[data-game="car-loop"]{
+  --b-accent:#3DD68C; --b-deep:#1D8A57; --b-soft:#14301F; --b-ink:#04210F; --b-text:#6FE3A9;
+}
+</style>
+<script>
+/* Car Loop board. A roundabout seen from above: cars circling the ring and
+   one waiting at the stop line for its gap. */
+(function(){
+'use strict';
+const RING_R = 80, RING_r = 44, LANE = 62;
+// angle on the ring (radians, clockwise from the right) and colour
+const CARS = [[-.38 * Math.PI, '#EF4444'], [-.92 * Math.PI, '#3B82F6'], [.12 * Math.PI, '#F5B82E'], [.78 * Math.PI, '#8B5CF6']];
+
+function car(ctx, x, y, rot, color){
+  const L = 25, Wd = 13.5;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  ctx.fillStyle = 'rgba(0,0,0,.25)';
+  ctx.beginPath(); ctx.roundRect(-L / 2 + 1.5, -Wd / 2 + 2, L, Wd, 4); ctx.fill();
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.roundRect(-L / 2, -Wd / 2, L, Wd, 4); ctx.fill();
+  ctx.fillStyle = 'rgba(18,26,44,.78)';
+  ctx.beginPath(); ctx.roundRect(L / 2 - 9.5, -Wd / 2 + 2, 5, Wd - 4, 1.5); ctx.fill();      // windscreen
+  ctx.beginPath(); ctx.roundRect(-L / 2 + 3, -Wd / 2 + 2.5, 3, Wd - 5, 1); ctx.fill();         // rear window
+  ctx.fillStyle = 'rgba(255,255,255,.28)';
+  ctx.beginPath(); ctx.roundRect(-L / 2 + 7, -Wd / 2 + 2.5, 8, Wd - 5, 2); ctx.fill();         // roof shine
+  ctx.restore();
+}
+
+function draw(box){
+  const cv = document.createElement('canvas');
+  box.append(cv);
+  requestAnimationFrame(() => {
+    const W = box.clientWidth, H = box.clientHeight;
+    if(!W || !H) return;
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const css = getComputedStyle(document.documentElement), tok = n => css.getPropertyValue(n).trim();
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, tok('--cl-a')); bg.addColorStop(1, tok('--cl-b'));
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // laid out in a 250 x 236 box; the entry road runs off the bottom edge
+    const u = Math.min(W / 250, H / 236);
+    ctx.translate(W / 2, H / 2 - 6 * u); ctx.scale(u, u);
+    const road = tok('--cl-road');
+
+    // entry road, stop line, waiting car
+    const bottom = (H / 2 + 6 * u) / u + 4;
+    ctx.fillStyle = road; ctx.fillRect(-18, RING_R - 8, 36, bottom - RING_R + 8);
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fillRect(-16, RING_R + 4, 32, 3.5);
+    car(ctx, 0, RING_R + 22, -Math.PI / 2, '#F4F4F5');
+
+    // the ring
+    ctx.beginPath(); ctx.arc(0, 0, RING_R, 0, Math.PI * 2); ctx.arc(0, 0, RING_r, 0, Math.PI * 2, true);
+    ctx.fillStyle = road; ctx.fill('evenodd');
+    ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, RING_R - 3.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, RING_r + 3.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([9, 9]); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(0, 0, LANE, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+
+    // the island, with a tree and some flowers
+    ctx.fillStyle = tok('--cl-island');
+    ctx.beginPath(); ctx.arc(0, 0, RING_r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = tok('--cl-tree');
+    for(const [x, y, r] of [[-6, -4, 15], [9, 2, 12], [-1, 9, 11]]){ ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = 'rgba(255,255,255,.18)';
+    ctx.beginPath(); ctx.arc(-10, -9, 6, 0, Math.PI * 2); ctx.fill();
+    for(const [x, y, c] of [[-26, 14, '#F7C844'], [24, -18, '#F25C8E'], [20, 24, '#FFFFFF'], [-22, -22, '#F25C8E']]){
+      ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, 2.6, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // cars going round clockwise, the first with speed lines behind it
+    CARS.forEach(([a, color], k) => {
+      const x = Math.cos(a) * LANE, y = Math.sin(a) * LANE;
+      if(k === 0){
+        ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+        for(const dr of [-4, 4]){
+          ctx.beginPath(); ctx.arc(0, 0, LANE + dr, a - .52, a - .3); ctx.stroke();
+        }
+      }
+      car(ctx, x, y, a + Math.PI / 2, color);
+    });
+  });
+}
+
+window.Playbox.register({
+  id: 'car-loop',
+  title: 'Car Loop',
+  tagline: 'Keep every car moving round the loop, crash-free.',
+  order: 3,
+  soon: true,
+  card: draw
+});
+})();
+</script>
+
+<style>
+/* ---------- Hex Tile Sort: board only for now; the game isn't linked yet ---------- */
+:root{
+  --hx-a:#FFF6E3; --hx-b:#F8D28C;
+  --hx-slot:rgba(150,92,16,.16); --hx-slot-edge:rgba(150,92,16,.30); --hx-trail:rgba(120,70,0,.45);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --hx-a:#3B2C14; --hx-b:#1A130A;
+    --hx-slot:rgba(255,206,130,.08); --hx-slot-edge:rgba(255,206,130,.20); --hx-trail:rgba(255,220,160,.5);
+  }
+  :root:not([data-theme="light"]) .board[data-game="hex-tile-sort"]{
+    --b-accent:#FFB547; --b-deep:#A8690A; --b-soft:#3A2A10; --b-ink:#2A1900; --b-text:#FFC870;
+  }
+}
+:root[data-theme="dark"]{
+  --hx-a:#3B2C14; --hx-b:#1A130A;
+  --hx-slot:rgba(255,206,130,.08); --hx-slot-edge:rgba(255,206,130,.20); --hx-trail:rgba(255,220,160,.5);
+}
+.board[data-game="hex-tile-sort"]{--b-accent:#F5A524; --b-deep:#C27806; --b-soft:#FFF0D2; --b-ink:#3A2400; --b-text:#8A5200}
+:root[data-theme="dark"] .board[data-game="hex-tile-sort"]{
+  --b-accent:#FFB547; --b-deep:#A8690A; --b-soft:#3A2A10; --b-ink:#2A1900; --b-text:#FFC870;
+}
+</style>
+<script>
+/* Hex Tile Sort board. Draws stacks of hexagonal tiles on a seven-cell board,
+   with one tile flipping across between two stacks of the same colour. */
+(function(){
+'use strict';
+// [top face, side face]
+const TILES = [['#F25C8E', '#BE3A68'], ['#1DB7A6', '#118579'], ['#F7C844', '#C39418'],
+               ['#7C5CE0', '#5638AE'], ['#FF7A45', '#CC5127'], ['#3BA8F0', '#1E7DBD']];
+const R = 36, SQ = .6, T = 7, GAP = 1.07;           // hex radius, vertical squash, tile thickness
+// axial cell -> stack, bottom to top
+const STACKS = [
+  [0, -1, [4, 4, 1]], [1, -1, [1, 1, 1, 1]], [-1, 0, [5, 0, 0]], [0, 0, [3, 3, 3, 0]],
+  [1, 0, [2, 4, 4]], [-1, 1, []], [0, 1, [5, 5, 2, 2, 2]]
+];
+
+function hex(ctx, cx, cy, r, sq){
+  ctx.beginPath();
+  for(let k = 0; k < 6; k++){
+    const a = Math.PI / 3 * k, x = cx + r * Math.cos(a), y = cy + r * Math.sin(a) * sq;
+    k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.closePath();
+}
+function cellXY(q, r){ return [1.5 * R * q * GAP, Math.sqrt(3) * R * (r + q / 2) * GAP * SQ]; }
+
+function draw(box){
+  const cv = document.createElement('canvas');
+  box.append(cv);
+  requestAnimationFrame(() => {
+    const W = box.clientWidth, H = box.clientHeight;
+    if(!W || !H) return;
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const css = getComputedStyle(document.documentElement), tok = n => css.getPropertyValue(n).trim();
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, tok('--hx-a')); bg.addColorStop(1, tok('--hx-b'));
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // the drawing is laid out in a 270 x 230 box, centred and scaled to fit
+    const u = Math.min(W / 270, H / 230);
+    ctx.translate(W / 2 - 4 * u, H / 2 + 30 * u); ctx.scale(u, u);
+
+    const tops = {};
+    const cells = STACKS.map(([q, r, s]) => ({ q, r, s, xy: cellXY(q, r) })).sort((a, b) => a.xy[1] - b.xy[1]);
+    for(const c of cells){
+      const [x, y] = c.xy;
+      hex(ctx, x, y + 3, R * .98, SQ);
+      ctx.fillStyle = tok('--hx-slot'); ctx.fill();
+      ctx.strokeStyle = tok('--hx-slot-edge'); ctx.lineWidth = 1.5; ctx.stroke();
+      c.s.forEach((t, i) => {
+        const yb = y - i * T, [top, side] = TILES[t];
+        hex(ctx, x, yb, R * .9, SQ); ctx.fillStyle = side; ctx.fill();
+        hex(ctx, x, yb - T, R * .9, SQ); ctx.fillStyle = top; ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,.12)'; ctx.lineWidth = 1; ctx.stroke();
+      });
+      if(c.s.length){
+        const yt = y - c.s.length * T;
+        hex(ctx, x, yt, R * .62, SQ); ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 2; ctx.stroke();
+      }
+      tops[`${c.q},${c.r}`] = [x, y - c.s.length * T];
+    }
+
+    // a pink tile mid-flip from the centre stack onto its pink neighbour
+    const [ax, ay] = tops['0,0'], [bx, by] = tops['-1,0'];
+    const mx = (ax + bx) / 2, my = Math.min(ay, by) - 44;
+    ctx.setLineDash([3, 5]); ctx.strokeStyle = tok('--hx-trail'); ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(ax + 6, ay - 4); ctx.quadraticCurveTo(ax + 4, my - 6, mx + 16, my - 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.save(); ctx.translate(mx, my); ctx.rotate(-.42);
+    hex(ctx, 0, 0, R * .9, .26); ctx.fillStyle = TILES[0][1]; ctx.fill();
+    hex(ctx, 0, -5, R * .9, .26); ctx.fillStyle = TILES[0][0]; ctx.fill();
+    ctx.restore();
+  });
+}
+
+window.Playbox.register({
+  id: 'hex-tile-sort',
+  title: 'Hex Tile Sort',
+  tagline: 'Stack hex tiles and flip matching colours to clear them.',
+  order: 2,
+  soon: true,
+  card: draw
+});
+})();
+</script>
+
 <style>
 /* ---------- Paint Sort: a painter's studio wall, glass vials, a small framed canvas ---------- */
 :root{
@@ -2430,7 +2727,9 @@ window.Playbox.register({
   id: 'paint-sort',
   title: 'Paint Sort',
   tagline: 'Pour paint between vials until each one holds a single colour.',
+  order: 1,
   status: s => s.level > 1 ? `Level ${s.level} · ${s.coins} coins` : 'New · 120 coins to start',
+  cta: s => s.level > 1 || s.cur ? 'Continue' : 'Play',
   card: drawCard,
   mount
 });

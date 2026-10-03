@@ -152,22 +152,55 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;paddin
 .home-hello{display:flex;flex-direction:column;gap:4px}
 .home-hello h1{font-family:var(--f-disp);font-weight:400;font-size:clamp(28px,8.4vw,36px);line-height:1.02;margin:0;text-wrap:balance}
 .home-hello p{margin:0;color:var(--muted);font-size:15px;max-width:40ch}
-.shelf-label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--dim)}
-.shelf{display:grid;gap:14px}
-.game-card{display:flex;flex-direction:column;border-radius:26px;overflow:hidden;background:var(--surface);
-  box-shadow:var(--shadow),0 0 0 1px var(--line);text-align:left;transition:transform .14s}
-.game-card:active{transform:scale(.985)}
-.game-card .gc-art{position:relative;height:190px;overflow:hidden}
-.game-card .gc-body{display:flex;align-items:center;gap:14px;padding:16px 18px 18px}
-.game-card .gc-text{flex:1;min-width:0}
-.game-card .gc-title{font-family:var(--f-disp);font-size:26px;line-height:1.05}
-.game-card .gc-tag{color:var(--muted);font-size:14px;margin-top:3px;line-height:1.35}
-.game-card .gc-status{display:inline-flex;align-items:center;gap:6px;margin-top:9px;font-size:12.5px;font-weight:800;
-  color:var(--accent);background:var(--accent-soft);padding:5px 10px;border-radius:999px;font-variant-numeric:tabular-nums}
-.game-card .gc-go{width:54px;height:54px;border-radius:18px;background:var(--accent);color:var(--accent-ink);
-  display:grid;place-items:center;flex:0 0 auto;box-shadow:0 4px 0 var(--accent-deep)}
-.game-card .gc-go svg{width:26px;height:26px}
-.home-note{font-size:13.5px;color:var(--dim);text-align:center;margin:0 auto;max-width:34ch;line-height:1.5}
+.home-section{display:flex;flex-direction:column;gap:12px}
+.home-section[hidden]{display:none}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.section-label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:800;color:var(--dim)}
+.section-count{font-size:12.5px;font-weight:700;color:var(--dim);font-variant-numeric:tabular-nums}
+
+/* boards: each game is a chunky slab standing on a base in its own colour.
+   A game sets --b-* on .board[data-game="its-id"]; the defaults are Playbox blue. */
+.board{--b-accent:var(--accent);--b-deep:var(--accent-deep);--b-soft:var(--accent-soft);--b-ink:var(--accent-ink);--b-text:var(--accent);
+  position:relative;display:flex;flex-direction:column;min-width:0;border-radius:24px;background:var(--surface);
+  text-align:left;box-shadow:0 6px 0 var(--b-deep),0 20px 32px -22px rgba(10,16,40,.55);
+  transition:transform .12s,box-shadow .12s;animation:boardIn .5s cubic-bezier(.2,.9,.25,1) backwards;
+  animation-delay:calc(var(--i,0) * 70ms)}
+.board:active{transform:translateY(4px);box-shadow:0 2px 0 var(--b-deep),0 10px 20px -16px rgba(10,16,40,.5)}
+@keyframes boardIn{from{transform:translateY(18px) scale(.97)}to{transform:none}}
+.board-art{position:relative;overflow:hidden;border-radius:24px 24px 0 0;aspect-ratio:1/.86;background:var(--b-soft)}
+.board-art canvas{position:absolute;inset:0;width:100%;height:100%}
+.board-body{display:flex;flex-direction:column;gap:5px;padding:12px 13px 14px;min-width:0;flex:1}
+.board-title{font-family:var(--f-disp);font-size:20px;line-height:1.05;text-wrap:balance}
+.board-tag{color:var(--muted);font-size:12.5px;line-height:1.35}
+.board-foot{display:flex;align-items:center;gap:10px;margin-top:auto;padding-top:5px;min-width:0}
+.board-chip{display:inline-flex;align-items:center;min-width:0;font-size:12px;font-weight:800;color:var(--b-text);background:var(--b-soft);
+  padding:5px 10px;border-radius:999px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.board-cta{display:inline-flex;align-items:center;justify-content:center;gap:7px;margin-left:auto;flex:0 0 auto;
+  width:36px;height:36px;border-radius:12px;background:var(--b-accent);color:var(--b-ink);box-shadow:0 3px 0 var(--b-deep)}
+.board-cta svg{width:18px;height:18px}
+.board-cta .lbl{display:none}
+.board-lock{position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(16,22,40,.72);color:#fff}
+.board-lock svg{width:16px;height:16px}
+.board.soon .board-chip{color:var(--muted);background:var(--surface-2)}
+.board.nope{animation:boardNope .4s ease}
+@keyframes boardNope{20%{transform:translateX(-6px) rotate(-1deg)}45%{transform:translateX(5px) rotate(.8deg)}70%{transform:translateX(-3px)}100%{transform:none}}
+
+/* the board you're playing gets the big slot */
+.board-feature{border-radius:28px}
+.board-feature .board-art{aspect-ratio:auto;height:clamp(180px,30dvh,230px);border-radius:28px 28px 0 0}
+.board-feature .board-body{gap:6px;padding:16px 18px 18px}
+.board-feature .board-title{font-size:30px}
+.board-feature .board-tag{font-size:14.5px}
+.board-feature .board-chip{font-size:12.5px;padding:6px 11px}
+.board-feature .board-cta{width:auto;height:auto;padding:12px 18px 12px 15px;border-radius:15px;box-shadow:0 4px 0 var(--b-deep);
+  font-family:var(--f-disp);font-size:18px;line-height:1}
+.board-feature .board-cta .lbl{display:inline}
+
+.board-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 14px}
+.board-grid .board.wide{grid-column:1/-1}
+.board-grid .board.wide .board-art{aspect-ratio:2.1/1}
+.home-note{font-size:13.5px;color:var(--dim);text-align:center;margin:4px auto 0;max-width:34ch;line-height:1.5}
 
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.06s!important}
@@ -186,9 +219,15 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;paddin
       <h1 id="homeTitle">Pick a game</h1>
       <p id="homeSub">Short puzzles that remember where you left off.</p>
     </div>
-    <div class="shelf-label">Games</div>
-    <div class="shelf" id="shelf"></div>
-    <p class="home-note">More games will land on this shelf. Your progress in each one is saved on this device.</p>
+    <section class="home-section" id="featureSection" aria-labelledby="featureLabel">
+      <div class="section-head"><span class="section-label" id="featureLabel">Start here</span></div>
+      <div id="featureSlot"></div>
+    </section>
+    <section class="home-section" id="moreSection" aria-labelledby="moreLabel">
+      <div class="section-head"><span class="section-label" id="moreLabel">More games</span><span class="section-count" id="moreCount"></span></div>
+      <div class="board-grid" id="boardGrid"></div>
+    </section>
+    <p class="home-note">Your progress in each game is saved on this device.</p>
   </section>
   <section id="stage" class="view" hidden></section>
   <div id="layer">
@@ -418,32 +457,62 @@ const games = [];
 let current = null;                              // { def, handle }
 const home = $('#home'), stage = $('#stage');
 
+/* A game definition: { id, title, tagline, order, card(el, save), status(save), cta(save), mount(stage, api) }.
+   Set soon: true (and leave out mount) for a game that only has a board so far. */
 function register(def){ games.push(def); if(booted) renderHome(); }
+const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
+const LOCK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2.5" fill="currentColor" stroke="none"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+function boardFor(g, featured, i){
+  const save = g.soon ? {} : store.game(g.id);
+  const art = h('div', { class: 'board-art', 'aria-hidden': 'true' });
+  try{ g.card && g.card(art, save, { featured }); }catch(e){ console.error(e); }
+  if(g.soon) art.append(h('span', { class: 'board-lock', html: LOCK_ICON }));
+  const status = g.soon ? 'Coming soon' : g.status ? g.status(save) : '';
+  const cta = g.soon ? null : h('span', { class: 'board-cta' },
+    h('span', { html: PLAY_ICON, style: 'display:contents' }), h('span', { class: 'lbl' }, g.cta ? g.cta(save) : 'Play'));
+  const el = h('button', {
+    class: 'board' + (featured ? ' board-feature' : '') + (g.soon ? ' soon' : ''),
+    'data-game': g.id, style: `--i:${i}`,
+    'aria-label': g.soon ? `${g.title}, coming soon` : `Play ${g.title}`
+  },
+    art,
+    h('div', { class: 'board-body' },
+      h('div', { class: 'board-title' }, g.title),
+      h('div', { class: 'board-tag' }, g.tagline),
+      h('div', { class: 'board-foot' }, status ? h('span', { class: 'board-chip' }, status) : null, cta)));
+  el.addEventListener('click', () => {
+    click();
+    if(!g.soon){ openGame(g.id); return; }
+    el.classList.remove('nope'); void el.offsetWidth; el.classList.add('nope');
+    buzz(12); toast(`${g.title} is coming soon`);
+  });
+  return el;
+}
 function renderHome(){
-  const shelf = $('#shelf'); shelf.replaceChildren();
-  for(const g of games){
-    const save = store.game(g.id);
-    const art = h('div', { class: 'gc-art', 'aria-hidden': 'true' });
-    try{ g.card && g.card(art, save); }catch(e){ console.error(e); }
-    const status = g.status ? g.status(save) : '';
-    const card = h('button', { class: 'game-card', 'aria-label': 'Play ' + g.title },
-      art,
-      h('div', { class: 'gc-body' },
-        h('div', { class: 'gc-text' },
-          h('div', { class: 'gc-title' }, g.title),
-          h('div', { class: 'gc-tag' }, g.tagline),
-          status ? h('div', { class: 'gc-status' }, status) : null),
-        h('span', { class: 'gc-go', html: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>' })));
-    card.addEventListener('click', () => { click(); openGame(g.id); });
-    shelf.append(card);
-  }
-  const played = data.last && games.find(g => g.id === data.last);
+  const list = games.slice().sort((a, b) => (a.order == null ? 99 : a.order) - (b.order == null ? 99 : b.order));
+  const ready = list.filter(g => !g.soon);
+  const played = data.last && ready.find(g => g.id === data.last);
+  const feature = played || ready[0] || null;
+  const rest = list.filter(g => g !== feature);
+
+  $('#featureSection').hidden = !feature;
+  $('#featureLabel').textContent = played ? 'Jump back in' : 'Start here';
+  $('#featureSlot').replaceChildren(...(feature ? [boardFor(feature, true, 0)] : []));
+
+  const grid = $('#boardGrid');
+  grid.replaceChildren(...rest.map((g, k) => boardFor(g, false, k + 1)));
+  if(rest.length % 2) grid.lastChild.classList.add('wide');     // never leave a board alone in a row
+  $('#moreSection').hidden = !rest.length;
+  $('#moreLabel').textContent = feature ? 'More games' : 'Games';
+  const soon = list.length - ready.length;
+  $('#moreCount').textContent = soon ? `${soon} coming soon` : `${rest.length}`;
+
   $('#homeTitle').textContent = played ? 'Welcome back' : 'Pick a game';
   $('#homeSub').textContent = played ? `${played.title} is right where you left it.` : 'Short puzzles that remember where you left off.';
 }
 function openGame(id, opts){
   const def = games.find(g => g.id === id);
-  if(!def) return;
+  if(!def || def.soon) return;
   audio.ensure();
   if(current) closeGame(true);
   data.last = id; store.save();

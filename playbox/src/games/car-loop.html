@@ -1,0 +1,115 @@
+<style>
+/* ---------- Car Loop: board only for now; the game isn't linked yet ---------- */
+:root{
+  --cl-a:#CDEFD6; --cl-b:#92D5A5; --cl-road:#4A5264; --cl-island:#7BC690; --cl-tree:#2F8F5B;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --cl-a:#1B4A31; --cl-b:#0C2618; --cl-road:#2A303C; --cl-island:#1F5A39; --cl-tree:#2C7A4E;
+  }
+  :root:not([data-theme="light"]) .board[data-game="car-loop"]{
+    --b-accent:#3DD68C; --b-deep:#1D8A57; --b-soft:#14301F; --b-ink:#04210F; --b-text:#6FE3A9;
+  }
+}
+:root[data-theme="dark"]{
+  --cl-a:#1B4A31; --cl-b:#0C2618; --cl-road:#2A303C; --cl-island:#1F5A39; --cl-tree:#2C7A4E;
+}
+.board[data-game="car-loop"]{--b-accent:#12935A; --b-deep:#0B6B41; --b-soft:#DDF5E8; --b-ink:#FFFFFF; --b-text:#0B6B41}
+:root[data-theme="dark"] .board[data-game="car-loop"]{
+  --b-accent:#3DD68C; --b-deep:#1D8A57; --b-soft:#14301F; --b-ink:#04210F; --b-text:#6FE3A9;
+}
+</style>
+<script>
+/* Car Loop board. A roundabout seen from above: cars circling the ring and
+   one waiting at the stop line for its gap. */
+(function(){
+'use strict';
+const RING_R = 80, RING_r = 44, LANE = 62;
+// angle on the ring (radians, clockwise from the right) and colour
+const CARS = [[-.38 * Math.PI, '#EF4444'], [-.92 * Math.PI, '#3B82F6'], [.12 * Math.PI, '#F5B82E'], [.78 * Math.PI, '#8B5CF6']];
+
+function car(ctx, x, y, rot, color){
+  const L = 25, Wd = 13.5;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  ctx.fillStyle = 'rgba(0,0,0,.25)';
+  ctx.beginPath(); ctx.roundRect(-L / 2 + 1.5, -Wd / 2 + 2, L, Wd, 4); ctx.fill();
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.roundRect(-L / 2, -Wd / 2, L, Wd, 4); ctx.fill();
+  ctx.fillStyle = 'rgba(18,26,44,.78)';
+  ctx.beginPath(); ctx.roundRect(L / 2 - 9.5, -Wd / 2 + 2, 5, Wd - 4, 1.5); ctx.fill();      // windscreen
+  ctx.beginPath(); ctx.roundRect(-L / 2 + 3, -Wd / 2 + 2.5, 3, Wd - 5, 1); ctx.fill();         // rear window
+  ctx.fillStyle = 'rgba(255,255,255,.28)';
+  ctx.beginPath(); ctx.roundRect(-L / 2 + 7, -Wd / 2 + 2.5, 8, Wd - 5, 2); ctx.fill();         // roof shine
+  ctx.restore();
+}
+
+function draw(box){
+  const cv = document.createElement('canvas');
+  box.append(cv);
+  requestAnimationFrame(() => {
+    const W = box.clientWidth, H = box.clientHeight;
+    if(!W || !H) return;
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const css = getComputedStyle(document.documentElement), tok = n => css.getPropertyValue(n).trim();
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, tok('--cl-a')); bg.addColorStop(1, tok('--cl-b'));
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+    // laid out in a 250 x 236 box; the entry road runs off the bottom edge
+    const u = Math.min(W / 250, H / 236);
+    ctx.translate(W / 2, H / 2 - 6 * u); ctx.scale(u, u);
+    const road = tok('--cl-road');
+
+    // entry road, stop line, waiting car
+    const bottom = (H / 2 + 6 * u) / u + 4;
+    ctx.fillStyle = road; ctx.fillRect(-18, RING_R - 8, 36, bottom - RING_R + 8);
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fillRect(-16, RING_R + 4, 32, 3.5);
+    car(ctx, 0, RING_R + 22, -Math.PI / 2, '#F4F4F5');
+
+    // the ring
+    ctx.beginPath(); ctx.arc(0, 0, RING_R, 0, Math.PI * 2); ctx.arc(0, 0, RING_r, 0, Math.PI * 2, true);
+    ctx.fillStyle = road; ctx.fill('evenodd');
+    ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, RING_R - 3.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, RING_r + 3.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([9, 9]); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(0, 0, LANE, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+
+    // the island, with a tree and some flowers
+    ctx.fillStyle = tok('--cl-island');
+    ctx.beginPath(); ctx.arc(0, 0, RING_r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = tok('--cl-tree');
+    for(const [x, y, r] of [[-6, -4, 15], [9, 2, 12], [-1, 9, 11]]){ ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = 'rgba(255,255,255,.18)';
+    ctx.beginPath(); ctx.arc(-10, -9, 6, 0, Math.PI * 2); ctx.fill();
+    for(const [x, y, c] of [[-26, 14, '#F7C844'], [24, -18, '#F25C8E'], [20, 24, '#FFFFFF'], [-22, -22, '#F25C8E']]){
+      ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, 2.6, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // cars going round clockwise, the first with speed lines behind it
+    CARS.forEach(([a, color], k) => {
+      const x = Math.cos(a) * LANE, y = Math.sin(a) * LANE;
+      if(k === 0){
+        ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+        for(const dr of [-4, 4]){
+          ctx.beginPath(); ctx.arc(0, 0, LANE + dr, a - .52, a - .3); ctx.stroke();
+        }
+      }
+      car(ctx, x, y, a + Math.PI / 2, color);
+    });
+  });
+}
+
+window.Playbox.register({
+  id: 'car-loop',
+  title: 'Car Loop',
+  tagline: 'Keep every car moving round the loop, crash-free.',
+  order: 3,
+  soon: true,
+  card: draw
+});
+})();
+</script>
