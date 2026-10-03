@@ -12,11 +12,25 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 python3 - <<'PY'
-import glob, os
+import base64, glob, os, re
 shell = open('src/shell.html', encoding='utf-8').read()
 games = sorted(glob.glob('src/games/*.html'))
 assert '<!-- @games -->' in shell, 'games marker not found in shell'
-body = shell.replace('<!-- @games -->', '\n'.join(open(g, encoding='utf-8').read() for g in games), 1)
+
+# A game file can carry a whole other page (a game built elsewhere in the repo)
+# by writing /*@embed-base64:path/from/playbox*/null; the build swaps in that
+# file as a base64 string. Base64 keeps the page's own </script> tags from
+# closing ours.
+def embed(m):
+    path = m.group(1).strip()
+    assert os.path.isfile(path), f'embed source not found: {path}'
+    data = open(path, 'rb').read()
+    print(f'embedded {path} ({len(data)} bytes)')
+    return '"' + base64.b64encode(data).decode('ascii') + '"'
+def load(g):
+    return re.sub(r'/\*@embed-base64:([^*]+)\*/null', embed, open(g, encoding='utf-8').read())
+
+body = shell.replace('<!-- @games -->', '\n'.join(load(g) for g in games), 1)
 
 out = os.environ.get('ARTIFACT_OUT')
 if out:

@@ -1,27 +1,26 @@
 <style>
-/* ---------- Car Loop: board only for now; the game isn't linked yet ---------- */
-:root{
-  --cl-a:#CDEFD6; --cl-b:#92D5A5; --cl-road:#4A5264; --cl-island:#7BC690; --cl-tree:#2F8F5B;
-}
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){
-    --cl-a:#1B4A31; --cl-b:#0C2618; --cl-road:#2A303C; --cl-island:#1F5A39; --cl-tree:#2C7A4E;
-  }
-  :root:not([data-theme="light"]) .board[data-game="car-loop"]{
-    --b-accent:#3DD68C; --b-deep:#1D8A57; --b-soft:#14301F; --b-ink:#04210F; --b-text:#6FE3A9;
-  }
-}
-:root[data-theme="dark"]{
-  --cl-a:#1B4A31; --cl-b:#0C2618; --cl-road:#2A303C; --cl-island:#1F5A39; --cl-tree:#2C7A4E;
-}
+/* ---------- Car Loop: Roundabout Rush (../roundabout) running inside Playbox ---------- */
+/* The game is a night scene, so the board's art uses its palette in both
+   themes; the board's chrome follows Playbox's light/dark tokens. */
 .board[data-game="car-loop"]{--b-accent:#12935A; --b-deep:#0B6B41; --b-soft:#DDF5E8; --b-ink:#FFFFFF; --b-text:#0B6B41}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .board[data-game="car-loop"]{
+    --b-accent:#34C771; --b-deep:#1D8A57; --b-soft:#14301F; --b-ink:#04210F; --b-text:#6FE3A9;
+  }
+}
 :root[data-theme="dark"] .board[data-game="car-loop"]{
-  --b-accent:#3DD68C; --b-deep:#1D8A57; --b-soft:#14301F; --b-ink:#04210F; --b-text:#6FE3A9;
+  --b-accent:#34C771; --b-deep:#1D8A57; --b-soft:#14301F; --b-ink:#04210F; --b-text:#6FE3A9;
 }
 </style>
 <script>
-/* Car Loop board. A roundabout seen from above: cars circling the ring and
-   one waiting at the stop line for its gap. */
+/* Car Loop is Roundabout Rush, the standalone game in /roundabout. The build
+   embeds its finished page (roundabout/index.html) here, and mount() runs it in
+   a same-origin frame filling the Playbox stage (Playbox.framedGame). The game
+   keeps its own screens and its own save ("roundabout-rush-v1" in localStorage);
+   Playbox adds a back button to the game's home screen and reads the save for
+   the board's chip.
+   The board art is a roundabout seen from above: cars circling the ring and one
+   waiting at the stop line for its gap. */
 (function(){
 'use strict';
 const RING_R = 80, RING_r = 44, LANE = 62;
@@ -53,15 +52,14 @@ function draw(box){
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     const ctx = cv.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const css = getComputedStyle(document.documentElement), tok = n => css.getPropertyValue(n).trim();
     const bg = ctx.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, tok('--cl-a')); bg.addColorStop(1, tok('--cl-b'));
+    bg.addColorStop(0, '#16244A'); bg.addColorStop(1, '#0B1222');
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
     // laid out in a 250 x 236 box; the entry road runs off the bottom edge
     const u = Math.min(W / 250, H / 236);
     ctx.translate(W / 2, H / 2 - 6 * u); ctx.scale(u, u);
-    const road = tok('--cl-road');
+    const road = '#323E66';
 
     // entry road, stop line, waiting car
     const bottom = (H / 2 + 6 * u) / u + 4;
@@ -78,16 +76,24 @@ function draw(box){
     ctx.setLineDash([9, 9]); ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.arc(0, 0, LANE, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
 
-    // the island, with a tree and some flowers
-    ctx.fillStyle = tok('--cl-island');
+    // the island at night, with a dark tree
+    ctx.fillStyle = '#0D1830';
     ctx.beginPath(); ctx.arc(0, 0, RING_r, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = tok('--cl-tree');
+    ctx.fillStyle = '#1D4A37';
     for(const [x, y, r] of [[-6, -4, 15], [9, 2, 12], [-1, 9, 11]]){ ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
-    ctx.fillStyle = 'rgba(255,255,255,.18)';
+    ctx.fillStyle = 'rgba(255,255,255,.12)';
     ctx.beginPath(); ctx.arc(-10, -9, 6, 0, Math.PI * 2); ctx.fill();
-    for(const [x, y, c] of [[-26, 14, '#F7C844'], [24, -18, '#F25C8E'], [20, 24, '#FFFFFF'], [-22, -22, '#F25C8E']]){
-      ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, 2.6, 0, Math.PI * 2); ctx.fill();
+
+    // street lamps around the ring, and a few trees on the verge
+    for(const a of [-2.4, -.75, .75, 2.4]){
+      const x = Math.cos(a) * (RING_R + 14), y = Math.sin(a) * (RING_R + 14);
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, 26);
+      glow.addColorStop(0, 'rgba(255,226,150,.30)'); glow.addColorStop(1, 'rgba(255,226,150,0)');
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, 26, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#FFE7A3'; ctx.beginPath(); ctx.arc(x, y, 2.4, 0, Math.PI * 2); ctx.fill();
     }
+    ctx.fillStyle = '#1D4A37';
+    for(const [x, y, r] of [[-108, -62, 9], [112, -30, 11], [-116, 40, 10], [104, 70, 8]]){ ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
 
     // cars going round clockwise, the first with speed lines behind it
     CARS.forEach(([a, color], k) => {
@@ -103,13 +109,26 @@ function draw(box){
   });
 }
 
+// replaced by the build with roundabout/index.html, base64-encoded
+const GAME_PAGE = /*@embed-base64:../roundabout/index.html*/null;
+const SAVE_KEY = 'roundabout-rush-v1';
+function progress(){
+  try{ return JSON.parse(localStorage.getItem(SAVE_KEY)) || null; }catch(e){ return null; }
+}
+
 window.Playbox.register({
   id: 'car-loop',
   title: 'Car Loop',
-  tagline: 'Keep every car moving round the loop, crash-free.',
+  tagline: 'Merge every car into a busy roundabout without a crash.',
   order: 3,
-  soon: true,
-  card: draw
+  status: () => { const s = progress(); return s && s.unlocked > 1 ? `Level ${s.unlocked} · ${s.coins} coins` : 'New'; },
+  cta: () => { const s = progress(); return s && s.unlocked > 1 ? 'Continue' : 'Play'; },
+  card: draw,
+  // the back button goes first in the game's home-screen top row, in its own button style
+  mount: window.Playbox.framedGame({
+    page: GAME_PAGE, title: 'Car Loop', background: '#0B1222',
+    body: window.Playbox.exitButton({ into: '#home .topL', className: 'rbtn', size: 24 })
+  })
 });
 })();
 </script>

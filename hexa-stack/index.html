@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Hexa Stack — endless</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0B0722;
+    --deep:#150C36;
+    --plum:#241354;
+    --panel:rgba(255,255,255,.07);
+    --panel-line:rgba(255,255,255,.14);
+    --text:#F3EEFF;
+    --dim:#A79CD0;
+    --gold:#FFC94A;
+    --display:'Baloo 2', ui-rounded, 'Segoe UI', system-ui, sans-serif;
+    --body:'Inter', system-ui, -apple-system, sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;overflow:hidden;}
+  body{
+    background:
+      radial-gradient(120% 80% at 50% -10%, #3A1B6E 0%, transparent 60%),
+      radial-gradient(90% 60% at 50% 108%, #2B1160 0%, transparent 62%),
+      linear-gradient(180deg, var(--deep) 0%, var(--ink) 100%);
+    color:var(--text);
+    font-family:var(--body);
+    user-select:none; touch-action:none;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #app{
+    position:relative; width:100%; height:100%;
+    max-width:520px; max-height:960px;
+    display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+
+  /* ---------- HUD ---------- */
+  header{
+    flex:0 0 auto;
+    padding:calc(env(safe-area-inset-top) + 12px) 14px 6px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .stat{
+    background:var(--panel); border:1px solid var(--panel-line);
+    border-radius:14px; padding:6px 12px 7px; min-width:88px;
+    backdrop-filter:blur(8px);
+  }
+  .stat .k{font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); font-weight:700;}
+  .stat .v{font-family:var(--display); font-weight:800; font-size:22px; line-height:1.05; letter-spacing:.01em;}
+  .stat.best .v{color:var(--gold); font-size:18px; padding-top:2px;}
+  .spacer{flex:1}
+  .iconbtn{
+    width:38px;height:38px;border-radius:12px;
+    background:var(--panel); border:1px solid var(--panel-line); color:var(--text);
+    display:grid; place-items:center; cursor:pointer; font-size:16px;
+    transition:transform .12s ease, background .12s ease;
+  }
+  .iconbtn:hover{background:rgba(255,255,255,.12)}
+  .iconbtn:active{transform:scale(.92)}
+  .iconbtn:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+
+  /* level ribbon */
+  .ribbon{
+    flex:0 0 auto; margin:6px 16px 0;
+    display:flex; align-items:center; gap:10px;
+  }
+  .ribbon .lv{
+    font-family:var(--display); font-weight:700; font-size:12px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--dim); white-space:nowrap;
+  }
+  .bar{flex:1; height:6px; border-radius:99px; background:rgba(255,255,255,.09); overflow:hidden}
+  .bar i{display:block; height:100%; width:0%; border-radius:99px;
+    background:linear-gradient(90deg,#8B5CF6,#22D3EE); transition:width .45s cubic-bezier(.2,.9,.2,1)}
+
+  canvas{flex:1 1 auto; display:block; width:100%; touch-action:none;}
+
+  .bottombar{
+    position:absolute; left:0; right:0;
+    bottom:calc(env(safe-area-inset-bottom) + 6px);
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:0 14px; pointer-events:none;
+  }
+  .rotbtn{
+    pointer-events:auto; flex:0 0 auto;
+    width:42px; height:42px; border-radius:14px; cursor:pointer;
+    background:var(--panel); border:1px solid var(--panel-line); color:var(--text);
+    font-size:19px; line-height:1; display:grid; place-items:center;
+    backdrop-filter:blur(8px);
+    transition:transform .12s ease, background .12s ease;
+  }
+  .rotbtn:hover{background:rgba(255,255,255,.13)}
+  .rotbtn:active{transform:scale(.9)}
+  .rotbtn:focus-visible{outline:2px solid var(--gold); outline-offset:2px}
+  .hint{
+    flex:1 1 auto; text-align:center;
+    font-size:12px; color:var(--dim); letter-spacing:.02em;
+    transition:opacity .5s ease;
+  }
+
+  /* ---------- overlay ---------- */
+  .veil{
+    position:absolute; inset:0; display:grid; place-items:center;
+    background:radial-gradient(60% 50% at 50% 45%, rgba(36,19,84,.72), rgba(11,7,34,.92));
+    backdrop-filter:blur(6px);
+    opacity:0; pointer-events:none; transition:opacity .28s ease;
+    z-index:5;
+  }
+  .veil.on{opacity:1; pointer-events:auto}
+  .card{
+    width:min(84%,340px); padding:26px 22px 20px; text-align:center;
+    background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.045));
+    border:1px solid var(--panel-line); border-radius:24px;
+    transform:translateY(14px) scale(.96); transition:transform .32s cubic-bezier(.2,1.2,.3,1);
+  }
+  .veil.on .card{transform:none}
+  .card h2{font-family:var(--display); font-weight:800; font-size:30px; margin:0 0 2px; letter-spacing:.01em}
+  .card p{margin:0 0 16px; color:var(--dim); font-size:13px; line-height:1.55}
+  .bigscore{font-family:var(--display); font-weight:800; font-size:52px; line-height:1; margin:10px 0 2px}
+  .sub{font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--dim); font-weight:700}
+  .btn{
+    margin-top:18px; width:100%; padding:13px 18px; border:0; cursor:pointer;
+    border-radius:16px; font-family:var(--display); font-weight:800; font-size:17px; letter-spacing:.02em;
+    color:#1A0B3B; background:linear-gradient(180deg,#FFD971,#FFB020);
+    box-shadow:0 6px 0 #C57C0A, 0 12px 22px rgba(255,176,32,.28);
+    transition:transform .1s ease, box-shadow .1s ease;
+  }
+  .btn:active{transform:translateY(4px); box-shadow:0 2px 0 #C57C0A, 0 6px 14px rgba(255,176,32,.24)}
+  .btn:focus-visible{outline:2px solid #fff; outline-offset:3px}
+  .legend{display:flex; gap:6px; justify-content:center; margin:14px 0 2px}
+  .legend i{width:16px;height:18px;border-radius:4px;display:block}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition-duration:.01ms !important}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="stat">
+      <div class="k">Score</div>
+      <div class="v" id="score">0</div>
+    </div>
+    <div class="stat best">
+      <div class="k">Best</div>
+      <div class="v" id="best">0</div>
+    </div>
+    <div class="spacer"></div>
+    <button class="iconbtn" id="sound" title="Sound" aria-label="Toggle sound">🔊</button>
+    <button class="iconbtn" id="restart" title="Restart" aria-label="Restart run">↻</button>
+  </header>
+
+  <div class="ribbon">
+    <div class="lv" id="lv">Tier 1 · 4 colours</div>
+    <div class="bar"><i id="bar"></i></div>
+  </div>
+
+  <canvas id="c"></canvas>
+  <div class="bottombar">
+    <button class="rotbtn" id="rotL" title="Rotate board left" aria-label="Rotate board left">↺</button>
+    <span class="hint" id="hint">Drag a stack onto an empty cell</span>
+    <button class="rotbtn" id="rotR" title="Rotate board right" aria-label="Rotate board right">↻</button>
+  </div>
+
+  <div class="veil" id="veil">
+    <div class="card">
+      <h2 id="ovTitle">Board full</h2>
+      <p id="ovBody">No empty cells left. Clear stacks earlier to keep the board breathing.</p>
+      <div class="bigscore" id="ovScore">0</div>
+      <div class="sub" id="ovSub">final score</div>
+      <div class="legend" id="ovLegend"></div>
+      <button class="btn" id="again">Play again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =======================================================================
+   HEXA STACK — endless
+   Core loop (unchanged, as proven): drag a stack of coloured hex tiles onto
+   an empty cell. Any neighbouring stack whose TOP colour matches sends its
+   top run over. Merges cascade. A run of 10 of one colour clears.
+   Board fills up -> run ends. Score is endless.
+   ======================================================================= */
+
+/* ----------------------------- config ----------------------------- */
+const CLEAR_AT      = 10;   // tiles of one colour needed to clear
+const CLEAR_GRACE   = 500;  // ms a full stack holds; RESETS each time it's fed
+const COMBO_CAP     = 10;   // chains can now run long — cap the score multiplier
+const BOARD_RADIUS  = 2;    // 19-cell flower
+const TRAY_SLOTS    = 3;
+const START_COLOURS = 4;
+const CLEARS_PER_TIER = 7;  // clears needed to unlock the next colour
+const SEED_STACKS   = 6;
+const DEPTH_K       = 0.45;  // how much a tile's height pulls it toward the camera
+
+const COLOURS = [
+  { face:'#FF5C63', name:'coral'  },
+  { face:'#FFB522', name:'amber'  },
+  { face:'#37D07A', name:'lime'   },
+  { face:'#26C0F2', name:'cyan'   },
+  { face:'#A466FF', name:'violet' },
+  { face:'#FF63B4', name:'pink'   },
+  { face:'#4A6BFF', name:'blue'   },
+];
+const MAX_COLOURS = COLOURS.length;
+
+/* ----------------------------- utils ----------------------------- */
+const clamp = (v,a,b)=> v<a?a:v>b?b:v;
+const lerp  = (a,b,t)=> a+(b-a)*t;
+const rnd   = (n)=> Math.floor(Math.random()*n);
+const easeOutCubic = t=> 1-Math.pow(1-t,3);
+const easeOutBack  = t=>{const c=1.9; return 1+ (c+1)*Math.pow(t-1,3) + c*Math.pow(t-1,2);};
+const easeInQuad   = t=> t*t;
+const easeOutQuad  = t=> 1-(1-t)*(1-t);
+const smooth       = t=> t*t*(3-2*t);   // hinge ease: topples, swings, settles
+
+function hexToRgb(h){ return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]; }
+function shade(hex, amt){ // amt<0 darken, >0 lighten — returns hex so it can be re-shaded
+  const [r,g,b]=hexToRgb(hex);
+  const f = c => clamp(Math.round(amt<0 ? c*(1+amt) : c+(255-c)*amt),0,255);
+  const h2 = n => n.toString(16).padStart(2,'0');
+  return '#'+h2(f(r))+h2(f(g))+h2(f(b));
+}
+function rgba(hex,a){ const [r,g,b]=hexToRgb(hex); return `rgba(${r},${g},${b},${a})`; }
+
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ----------------------------- audio ----------------------------- */
+const Sound = (()=>{
+  let ctx=null, on=true;
+  function ensure(){ if(!ctx){ try{ ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ on=false; } } }
+  function tone(freq, dur=0.09, type='triangle', vol=0.05, slide=0){
+    if(!on) return; ensure(); if(!ctx) return;
+    const t=ctx.currentTime;
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(freq,t);
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(40,freq+slide), t+dur);
+    g.gain.setValueAtTime(0,t);
+    g.gain.linearRampToValueAtTime(vol, t+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g).connect(ctx.destination); o.start(t); o.stop(t+dur+0.02);
+  }
+  return {
+    ensure,
+    toggle(){ on=!on; if(on) ensure(); return on; },
+    get on(){ return on; },
+    place(){ tone(190,0.10,'square',0.035,-40); },
+    merge(i){ tone(330*Math.pow(1.06,Math.min(i,10)),0.10,'triangle',0.045); },
+    clear(combo){
+      const base=440*Math.pow(1.12,Math.min(combo-1,7));
+      [0,4,7,12].forEach((s,k)=> setTimeout(()=>tone(base*Math.pow(2,s/12),0.16,'triangle',0.05), k*55));
+    },
+    pick(){ tone(520,0.05,'sine',0.03); },
+    prime(){ tone(660,0.10,'sine',0.045); setTimeout(()=>tone(880,0.16,'sine',0.045),90); },
+    bad(){ tone(150,0.16,'sawtooth',0.03,-70); },
+    over(){ [0,-3,-7,-12].forEach((s,k)=> setTimeout(()=>tone(392*Math.pow(2,s/12),0.28,'triangle',0.05), k*130)); }
+  };
+})();
+
+/* ----------------------------- hex maths ----------------------------- */
+const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+const key = (q,r)=> q+','+r;
+
+function hexCorner(cx,cy,s,i){
+  const a = Math.PI/180*(60*i-90);
+  return [cx+s*Math.cos(a), cy+s*Math.sin(a)];
+}
+function hexPath(g,cx,cy,s){
+  g.beginPath();
+  for(let i=0;i<6;i++){ const [x,y]=hexCorner(cx,cy,s,i); i?g.lineTo(x,y):g.moveTo(x,y); }
+  g.closePath();
+}
+
+/* ----------------------------- state ----------------------------- */
+const G = {
+  cells:[], map:new Map(),
+  tray:new Array(TRAY_SLOTS).fill(null),
+  score:0, best:0, clears:0, colours:START_COLOURS,
+  over:false, rotating:false, rot:0,
+  chain:0, dirty:false, lastPlaced:null,
+  held:null, selected:-1,
+  hoverCell:null,
+};
+
+const FX = { flyers:[], pops:[], parts:[], floats:[], shake:0, banner:null, clock:0 };
+const anims = [];
+
+function tween(dur, onUpdate, ease){
+  if(reduceMotion) dur = Math.min(dur, 60);
+  return new Promise(res=>{
+    if(dur<=0){ onUpdate&&onUpdate(1,1); res(); return; }
+    anims.push({t:0,dur,onUpdate,ease:ease||easeOutCubic,res});
+  });
+}
+const wait = ms => tween(ms, null);
+
+function stepAnims(dt){
+  for(let i=anims.length-1;i>=0;i--){
+    const a=anims[i]; a.t+=dt;
+    const p=clamp(a.t/a.dur,0,1);
+    if(a.onUpdate) a.onUpdate(a.ease(p),p);
+    if(p>=1){ anims.splice(i,1); a.res(); }
+  }
+}
+
+/* ----------------------------- board ----------------------------- */
+function buildBoard(){
+  G.cells.length=0; G.map.clear();
+  for(let q=-BOARD_RADIUS;q<=BOARD_RADIUS;q++){
+    for(let r=-BOARD_RADIUS;r<=BOARD_RADIUS;r++){
+      const s=-q-r;
+      if(Math.abs(s)>BOARD_RADIUS) continue;
+      const cell={q,r,x:0,y:0,bx:0,by:0,stack:[],offY:0,sqz:0,glow:0,ring:0,
+                  hideBadge:false,primed:false,primeT:0,locked:false,dropping:false};
+      G.cells.push(cell); G.map.set(key(q,r),cell);
+    }
+  }
+}
+const neighbours = c => DIRS.map(d=>G.map.get(key(c.q+d[0], c.r+d[1]))).filter(Boolean);
+const topColour  = c => c.stack.length ? c.stack[c.stack.length-1] : -1;
+function topRunLen(c){
+  const n=c.stack.length; if(!n) return 0;
+  const col=c.stack[n-1]; let i=n-1;
+  while(i>0 && c.stack[i-1]===col) i--;
+  return n-i;
+}
+function takeTopRun(c){
+  const len=topRunLen(c);
+  return c.stack.splice(c.stack.length-len, len);
+}
+
+/* ----------------------------- layout ----------------------------- */
+const cvs = document.getElementById('c');
+const ctx = cvs.getContext('2d');
+const L = { w:0,h:0,dpr:1, s:40, th:9, cx:0, cy:0, trayY:0, slotX:[], trayScale:.76, sprites:null, socket:null };
+
+function layout(){
+  const rect = cvs.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio||1, 2.5);
+  L.w=rect.width; L.h=rect.height; L.dpr=dpr;
+  cvs.width=Math.round(rect.width*dpr); cvs.height=Math.round(rect.height*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+
+  const trayH = clamp(L.h*0.21, 108, 168);
+  const boardH = L.h - trayH;
+  const padX = 14;
+  // 8.95 rather than 5*sqrt(3)=8.66: it is the flower's circumcircle that has
+  // to fit, so nothing clips while the board is part-way through a rotation.
+  const sW = (L.w-padX*2)/8.95;
+  const sH = boardH/9.1;
+  L.s = Math.max(16, Math.min(sW, sH));
+  L.th = L.s*0.225;
+
+  L.cx = L.w/2;
+  const boardPix = 8*L.s;                      // flat height of the flower
+  L.cy = (boardH - boardPix)*0.62 + boardPix/2 + L.s*0.35;
+
+  for(const c of G.cells){                     // unrotated offsets from centre
+    c.bx = L.s*Math.sqrt(3)*(c.q + c.r/2);
+    c.by = L.s*1.5*c.r;
+  }
+  applyRotation();
+
+  L.trayY = L.h - trayH*0.42 - 16;
+  L.slotX = [];
+  const gap = L.w/(TRAY_SLOTS+1);
+  for(let i=0;i<TRAY_SLOTS;i++) L.slotX.push(gap*(i+1));
+  L.trayScale = clamp((trayH*0.42)/(L.s*2.2), .55, .82);
+
+  buildSprites();
+}
+
+/* Screen position = board centre + cell offset spun by G.rot. Tiles stay
+   upright; only the grid turns, so the front/back relationship changes and a
+   stack hidden behind a tall one can be brought forward. */
+function applyRotation(){
+  const cos=Math.cos(G.rot), sin=Math.sin(G.rot);
+  for(const c of G.cells){
+    c.x = L.cx + c.bx*cos - c.by*sin;
+    c.y = L.cy + c.bx*sin + c.by*cos;
+  }
+}
+
+async function rotateBoard(dir){
+  if(resolving || G.rotating || G.over) return;
+  G.rotating=true; G.selected=-1; G.held=null;
+  for(const c of G.cells) c.glow=0;
+  Sound.pick();
+  const from=G.rot, to=from + dir*Math.PI/3;   // 60° steps map the flower onto itself
+  await tween(360, p=>{ G.rot = lerp(from,to,p); }, easeOutCubic);
+  G.rot = to;
+  G.rotating=false;
+}
+
+/* ----------------------------- sprites ----------------------------- */
+function makeTileSprite(colIdx, s, th, dpr, dimAmt){
+  const w = Math.ceil(Math.sqrt(3)*s)+8, h = Math.ceil(2*s+th)+8;
+  const cn = document.createElement('canvas');
+  cn.width=Math.ceil(w*dpr); cn.height=Math.ceil(h*dpr);
+  const g = cn.getContext('2d'); g.scale(dpr,dpr);
+  const cx=w/2, cy=s+4;
+  const base = dimAmt ? shade(COLOURS[colIdx].face, -dimAmt) : COLOURS[colIdx].face;
+
+  // --- side wall (three lower edges) ---
+  const c2=hexCorner(cx,cy,s,2), c3=hexCorner(cx,cy,s,3), c4=hexCorner(cx,cy,s,4);
+  g.beginPath();
+  g.moveTo(c2[0],c2[1]); g.lineTo(c3[0],c3[1]); g.lineTo(c4[0],c4[1]);
+  g.lineTo(c4[0],c4[1]+th); g.lineTo(c3[0],c3[1]+th); g.lineTo(c2[0],c2[1]+th);
+  g.closePath();
+  const wg=g.createLinearGradient(0,cy,0,cy+s+th);
+  wg.addColorStop(0, shade(base,-0.30));
+  wg.addColorStop(1, shade(base,-0.55));
+  g.fillStyle=wg; g.fill();
+
+  // --- top face ---
+  hexPath(g,cx,cy,s);
+  const fg=g.createLinearGradient(cx-s*0.7,cy-s,cx+s*0.6,cy+s);
+  fg.addColorStop(0, shade(base, 0.26));
+  fg.addColorStop(0.48, base);
+  fg.addColorStop(1, shade(base,-0.14));
+  g.fillStyle=fg; g.fill();
+
+  // rim
+  g.lineWidth=Math.max(1,s*0.055); g.strokeStyle=shade(base,-0.34); g.stroke();
+
+  // gloss on the upper-left facets
+  g.save(); hexPath(g,cx,cy,s); g.clip();
+  g.beginPath();
+  const g1=hexCorner(cx,cy,s,5), g2=hexCorner(cx,cy,s,0), g3=hexCorner(cx,cy,s,1);
+  g.moveTo(g1[0],g1[1]); g.lineTo(g2[0],g2[1]); g.lineTo(g3[0],g3[1]);
+  g.lineTo(g3[0]-s*0.16, g3[1]+s*0.30); g.lineTo(g1[0]+s*0.16, g1[1]+s*0.30);
+  g.closePath();
+  g.fillStyle='rgba(255,255,255,.20)'; g.fill();
+  g.restore();
+
+  return {cn,w,h,ox:cx,oy:cy};
+}
+function makeSocketSprite(s,dpr){
+  const w=Math.ceil(Math.sqrt(3)*s)+10, h=Math.ceil(2*s)+12;
+  const cn=document.createElement('canvas');
+  cn.width=Math.ceil(w*dpr); cn.height=Math.ceil(h*dpr);
+  const g=cn.getContext('2d'); g.scale(dpr,dpr);
+  const cx=w/2, cy=s+5;
+  hexPath(g,cx,cy,s*0.985);
+  const bg=g.createLinearGradient(0,cy-s,0,cy+s);
+  bg.addColorStop(0,'rgba(9,5,28,.72)'); bg.addColorStop(1,'rgba(28,16,66,.52)');
+  g.fillStyle=bg; g.fill();
+  g.lineWidth=Math.max(1,s*0.05); g.strokeStyle='rgba(255,255,255,.10)'; g.stroke();
+  // inner top shadow
+  g.save(); hexPath(g,cx,cy,s*0.985); g.clip();
+  g.beginPath(); hexPath(g,cx,cy-s*0.12,s*0.985);
+  g.lineWidth=s*0.16; g.strokeStyle='rgba(0,0,0,.35)'; g.stroke();
+  g.restore();
+  return {cn,w,h,ox:cx,oy:cy};
+}
+function buildSprites(){
+  L.sprites = { board:[], tray:[], dim:[] };
+  for(let i=0;i<COLOURS.length;i++){
+    L.sprites.board.push(makeTileSprite(i, L.s, L.th, L.dpr));
+    L.sprites.tray.push(makeTileSprite(i, L.s*L.trayScale, L.th*L.trayScale, L.dpr));
+    L.sprites.dim.push(makeTileSprite(i, L.s, L.th, L.dpr, 0.58));
+  }
+  L.socket = makeSocketSprite(L.s, L.dpr);
+}
+
+/* ----------------------------- drawing ----------------------------- */
+function drawSprite(sp,x,y,alpha){
+  if(alpha!==undefined && alpha<1){ ctx.globalAlpha=alpha; }
+  ctx.drawImage(sp.cn, x-sp.ox, y-sp.oy, sp.w, sp.h);
+  if(alpha!==undefined && alpha<1){ ctx.globalAlpha=1; }
+}
+
+function drawContactShadow(x, y, s, alpha){
+  ctx.save();
+  ctx.globalAlpha = 0.34*(alpha===undefined?1:alpha);
+  ctx.fillStyle='#05021A';
+  ctx.beginPath();
+  ctx.ellipse(x, y, s*0.82, s*0.34, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawBadge(stack, x, y, s, alpha){
+  const n = stack.length; if(!n) return;
+  let col=stack[n-1], i=n-1;
+  while(i>0 && stack[i-1]===col) i--;
+  const run = n-i;
+  if(run<2) return;
+  ctx.save();
+  ctx.globalAlpha = alpha===undefined?1:alpha;
+  ctx.font = `800 ${Math.round(s*0.80)}px 'Baloo 2', ui-rounded, system-ui, sans-serif`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.lineWidth=Math.max(2,s*0.13); ctx.lineJoin='round';
+  ctx.strokeStyle=shade(COLOURS[col].face,-0.52);
+  ctx.strokeText(run, x, y+s*0.04);
+  ctx.fillStyle = run>=CLEAR_AT-2 ? '#FFF3C4' : '#FFFFFF';
+  ctx.fillText(run, x, y+s*0.04);
+  ctx.restore();
+}
+
+// Whole-stack draw. Used for the tray and the held stack only — board tiles go
+// through the depth-sorted pass in draw() so they can interleave with flips.
+function drawStack(stack, x, y, scale, opt){
+  opt = opt||{};
+  const set = scale===1 ? L.sprites.board : L.sprites.tray;
+  const s = L.s*scale, th = L.th*scale;
+  const alpha = opt.alpha===undefined?1:opt.alpha;
+  ctx.save();
+  ctx.translate(x,y);
+  drawContactShadow(0, th*0.9, s, alpha);
+  for(let i=0;i<stack.length;i++) drawSprite(set[stack[i]], 0, -i*th, alpha);
+  drawBadge(stack, 0, -(stack.length-1)*th, s, alpha);
+  ctx.restore();
+}
+
+/* Pose of a toppling tile at time `now`: where its hinge swing has carried it,
+   split into the ground point it is over and its height above that point —
+   the two things the depth sort needs. */
+function flyerPose(f, now){
+  const q   = clamp((now-f.start)/f.dur, 0, 1);
+  const ang = Math.PI*smooth(q);
+  const ca  = Math.cos(ang), sa = Math.sin(ang);
+  const h   = f.h0*ca + f.z0*sa;     // offset along u from the hinge
+  const z   = -f.h0*sa + f.z0*ca;    // height above the hinge
+  const gx  = f.mx + f.ux*h, gy = f.my + f.uy*h;
+  const height = f.zp + z;
+  const after  = now - (f.start + f.dur);
+  return { x:gx, y:gy-height, gy, height, ca, sa,
+           bump: after>0 ? Math.max(0, 1-after/120) : 0 };
+}
+
+function drawFlipTile(f, po){
+  ctx.save();
+  ctx.translate(po.x, po.y);
+  if(po.bump>0) ctx.scale(1+0.16*po.bump, 1-0.22*po.bump);  // impact squash
+  // foreshorten along the travel axis as the face tilts away from camera
+  const k  = Math.max(0.15, Math.abs(po.ca));
+  const a1 = f.ux*f.ux*k + f.uy*f.uy;
+  const b1 = f.ux*f.uy*(k-1);
+  const d1 = f.uy*f.uy*k + f.ux*f.ux;
+  ctx.transform(a1,b1,b1,d1,0,0);
+  const gs = 1 + 0.07*po.sa;
+  ctx.scale(gs,gs);
+  drawSprite(L.sprites.board[f.c],0,0,1);
+  const dim = po.sa*0.62;            // rim/underside shading through the swing
+  if(dim>0.02) drawSprite(L.sprites.dim[f.c],0,0,dim);
+  ctx.restore();
+}
+
+function drawPopTile(p, out){
+  const up = Math.min(1,p.p*3);
+  const sc = 1 + 0.34*easeOutBack(up) + 0.5*out;
+  ctx.save();
+  ctx.translate(p.x, p.y - out*L.s*0.7);
+  ctx.scale(sc,sc);
+  drawSprite(L.sprites.board[p.c],0,0,1-out);
+  if(out<0.6){
+    ctx.globalAlpha=(1-out/0.6)*0.75;
+    hexPath(ctx,0,0,L.s*0.99);
+    ctx.fillStyle='#fff'; ctx.fill();
+    ctx.globalAlpha=1;
+  }
+  ctx.restore();
+}
+
+function draw(){
+  const t = performance.now()/1000;
+  applyRotation();
+  ctx.clearRect(0,0,L.w,L.h);
+
+  ctx.save();
+  if(FX.shake>0){
+    const m=FX.shake;
+    ctx.translate((Math.random()-.5)*m, (Math.random()-.5)*m);
+  }
+
+  // ---- board sockets (back to front) ----
+  const ordered = G.cells.slice().sort((a,b)=> a.y-b.y);
+  for(const c of ordered) drawSprite(L.socket, c.x, c.y, 1);
+
+  // ---- merge-preview / drop rings ----
+  for(const c of ordered){
+    if(c.glow>0.01){
+      ctx.save();
+      const pulse = 0.55+0.45*Math.sin(t*7);
+      ctx.globalAlpha = c.glow*pulse;
+      const topY = c.y - Math.max(0,c.stack.length-1)*L.th;
+      hexPath(ctx, c.x, topY, L.s*1.02);
+      ctx.lineWidth = L.s*0.10; ctx.strokeStyle='#FFF7D6';
+      ctx.shadowColor='#FFD86B'; ctx.shadowBlur=L.s*0.5;
+      ctx.stroke();
+      ctx.restore();
+    }
+    if(c.ring>0.01){
+      ctx.save();
+      ctx.globalAlpha=c.ring*0.9;
+      hexPath(ctx, c.x, c.y, L.s*(0.98+0.10*(1-c.ring)));
+      ctx.lineWidth=L.s*0.09; ctx.strokeStyle='#B8FFEA'; ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // ---- depth-sorted tile pass -------------------------------------------
+  // Settled tiles, toppling tiles and popping tiles all go into ONE painter's
+  // list keyed by  depth = groundY + height * DEPTH_K.  Drawing whole stacks
+  // one after another is what made a tile mid-flip sit on top of a stack it
+  // should have passed behind.
+  const items = [];
+
+  for(const c of ordered){
+    const n = c.stack.length; if(!n) continue;
+    const sy = 1-0.22*c.sqz;
+    drawContactShadow(c.x, c.y + c.offY + L.th*0.9, L.s, 1);
+    for(let i=0;i<n;i++){
+      items.push({ k:0, d: c.y + (i*L.th*sy - c.offY)*DEPTH_K, c, i, top:i===n-1 });
+    }
+  }
+  for(const f of FX.flyers){
+    const po = flyerPose(f, FX.clock);
+    items.push({ k:1, d: po.gy + po.height*DEPTH_K, f, po });
+  }
+  for(const p of FX.pops){
+    if(p.p<=0) continue;
+    const out = clamp((p.p-0.34)/0.66,0,1);
+    items.push({ k:2, d: p.gy + (p.hh + out*L.s*0.7)*DEPTH_K, p, out });
+  }
+  items.sort((a,b)=> a.d-b.d);
+
+  for(const it of items){
+    if(it.k===0){
+      const c = it.c;
+      ctx.save();
+      ctx.translate(c.x, c.y + c.offY);
+      if(c.sqz) ctx.scale(1+0.16*c.sqz, 1-0.22*c.sqz);
+      drawSprite(L.sprites.board[c.stack[it.i]], 0, -it.i*L.th, 1);
+      if(it.top && !c.hideBadge) drawBadge(c.stack, 0, -it.i*L.th, L.s, 1);
+      ctx.restore();
+    } else if(it.k===1){
+      drawFlipTile(it.f, it.po);
+    } else {
+      drawPopTile(it.p, it.out);
+    }
+  }
+
+  // ---- primed stacks: full, holding briefly in case they get fed again ----
+  // No countdown is drawn. The gold rim says "this is ready"; how long is left
+  // is not something the player should be made to watch.
+  for(const c of ordered){
+    if(!c.primed) continue;
+    const topY = c.y - (c.stack.length-1)*L.th;
+    const puls = 0.6+0.4*Math.sin(t*11);
+    ctx.save();
+    hexPath(ctx, c.x, topY, L.s*1.05);
+    ctx.lineWidth=L.s*0.11; ctx.strokeStyle='#FFE9A3';
+    ctx.shadowColor='#FFC94A'; ctx.shadowBlur=L.s*0.85*puls;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---- particles ----
+  for(const q of FX.parts){
+    ctx.save();
+    ctx.globalAlpha=clamp(q.life,0,1);
+    ctx.translate(q.x,q.y); ctx.rotate(q.rot);
+    ctx.fillStyle=q.col;
+    const r=q.r;
+    ctx.beginPath();
+    ctx.moveTo(-r,-r*0.6); ctx.lineTo(r,-r*0.6); ctx.lineTo(r,r*0.6); ctx.lineTo(-r,r*0.6);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  // ---- score floats ----
+  for(const f of FX.floats){
+    ctx.save();
+    ctx.globalAlpha=clamp(f.life,0,1);
+    ctx.translate(f.x, f.y);
+    ctx.font=`800 ${Math.round(L.s*(f.big?1.05:0.82))}px 'Baloo 2', ui-rounded, system-ui, sans-serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.lineWidth=Math.max(3,L.s*0.16); ctx.lineJoin='round'; ctx.strokeStyle='rgba(10,5,30,.85)';
+    ctx.strokeText(f.txt,0,0);
+    ctx.fillStyle=f.col; ctx.fillText(f.txt,0,0);
+    ctx.restore();
+  }
+
+  // ---- combo banner ----
+  if(FX.banner && FX.banner.life>0){
+    const b=FX.banner;
+    ctx.save();
+    ctx.globalAlpha=clamp(b.life,0,1);
+    ctx.translate(L.cx, L.cy - L.s*3.6);
+    const pop = 1+0.22*Math.max(0, 1-(1-b.life)*4);
+    ctx.scale(pop,pop);
+    ctx.font=`800 ${Math.round(L.s*0.95)}px 'Baloo 2', ui-rounded, system-ui, sans-serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.lineWidth=L.s*0.22; ctx.lineJoin='round'; ctx.strokeStyle='rgba(10,5,30,.9)';
+    ctx.strokeText(b.txt,0,0);
+    const gr=ctx.createLinearGradient(0,-L.s*0.5,0,L.s*0.5);
+    gr.addColorStop(0,'#FFF0B0'); gr.addColorStop(1,'#FFB020');
+    ctx.fillStyle=gr; ctx.fillText(b.txt,0,0);
+    ctx.restore();
+  }
+
+  ctx.restore(); // shake
+
+  // ---- tray ----
+  drawTray(t);
+
+  // ---- held stack ----
+  if(G.held){
+    const h=G.held;
+    ctx.save();
+    ctx.globalAlpha=0.30; ctx.fillStyle='#04021A';
+    ctx.beginPath(); ctx.ellipse(h.x, h.y+L.th*1.6, L.s*0.95, L.s*0.36,0,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    drawStack(h.stack, h.x, h.y - L.s*0.15, 1, {});
+  }
+}
+
+function drawTray(t){
+  const baseY = L.trayY;
+  for(let i=0;i<TRAY_SLOTS;i++){
+    const st = G.tray[i];
+    const x = L.slotX[i];
+    const slotY = baseY + (st && st.slide!==undefined ? (1-st.slide)*90 : 0);
+
+    // pedestal
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    const rw=L.s*1.25, rh=L.s*0.42;
+    ctx.ellipse(x, baseY+L.th*1.2, rw, rh, 0,0,Math.PI*2);
+    const pg=ctx.createRadialGradient(x,baseY,0,x,baseY,rw);
+    pg.addColorStop(0,'rgba(255,255,255,.10)');
+    pg.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=pg; ctx.fill();
+    ctx.restore();
+
+    if(!st) continue;
+    if(G.held && G.held.slot===i) continue;
+
+    const selected = G.selected===i;
+    const bob = selected ? Math.sin(t*6)*L.s*0.10 : 0;
+    ctx.save();
+    if(selected){
+      ctx.globalAlpha=0.55;
+      hexPath(ctx, x, slotY, L.s*L.trayScale*1.25);
+      ctx.lineWidth=L.s*0.08; ctx.strokeStyle='#FFD86B'; ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+    ctx.restore();
+    drawStack(st.tiles, x, slotY - bob, L.trayScale, {alpha: st.alpha===undefined?1:st.alpha});
+  }
+}
+
+/* ----------------------------- fx step ----------------------------- */
+function stepFX(dt){
+  const d=dt/1000;
+  FX.shake = Math.max(0, FX.shake - d*90);
+  for(let i=FX.parts.length-1;i>=0;i--){
+    const q=FX.parts[i];
+    q.vy += 1500*d; q.x+=q.vx*d; q.y+=q.vy*d; q.rot+=q.vr*d; q.life-=d*1.5;
+    if(q.life<=0) FX.parts.splice(i,1);
+  }
+  for(let i=FX.floats.length-1;i>=0;i--){
+    const f=FX.floats[i];
+    f.y += f.vy*d; f.vy*=0.94; f.life-=d*1.05;
+    if(f.life<=0) FX.floats.splice(i,1);
+  }
+  if(FX.banner){ FX.banner.life-=d*0.85; if(FX.banner.life<=0) FX.banner=null; }
+  for(const c of G.cells){
+    if(c.glow>0) c.glow=Math.max(0,c.glow-d*4.5);
+    if(c.ring>0) c.ring=Math.max(0,c.ring-d*2.4);
+    if(c.primed && c.primeT>0) c.primeT=Math.max(0, c.primeT-dt);
+  }
+}
+
+/* ----------------------------- generation ----------------------------- */
+function boardTopColours(){
+  const pool=[];
+  for(const c of G.cells){
+    if(!c.stack.length) continue;
+    const col=topColour(c);
+    if(col>=G.colours) continue;
+    const w = 1 + Math.min(topRunLen(c),8);   // favour colours already piling up
+    for(let i=0;i<w;i++) pool.push(col);
+  }
+  return pool;
+}
+function pickColour(exclude){
+  const pool = boardTopColours().filter(c=>c!==exclude);
+  if(pool.length && Math.random()<0.62) return pool[rnd(pool.length)];
+  let c, guard=0;
+  do{ c=rnd(G.colours); }while(c===exclude && ++guard<12);
+  return c;
+}
+function stackHeight(){
+  const late = G.clears>18;
+  const r=Math.random();
+  if(late) return r<0.22?1 : r<0.58?2 : r<0.88?3 : 4;
+  return r<0.30?1 : r<0.70?2 : r<0.95?3 : 4;
+}
+function genStack(){
+  let left = stackHeight();
+  const tiles=[];
+  let last=-1;
+  while(left>0){
+    const runMax = Math.min(left, 3);
+    const run = 1+rnd(runMax);
+    const col = pickColour(last);
+    for(let i=0;i<run;i++) tiles.push(col);
+    last=col; left-=run;
+  }
+  return tiles;
+}
+async function refillTray(){
+  const news=[];
+  for(let i=0;i<TRAY_SLOTS;i++){
+    G.tray[i]={tiles:genStack(), slide:0};
+    news.push(G.tray[i]);
+  }
+  await tween(260, p=>{ news.forEach((s,i)=> s.slide = clamp(p*1.35 - i*0.14, 0, 1)); }, easeOutBack);
+  news.forEach(s=> s.slide=1);
+}
+
+/* ----------------------------- placement + resolve ----------------------------- */
+const boardFull = ()=> G.cells.every(c=>c.stack.length);
+const anyPrimed = ()=> G.cells.some(c=>c.primed);
+
+let resolving = false, refilling = false;
+
+function checkTier(){
+  const tier = Math.min(MAX_COLOURS-START_COLOURS, Math.floor(G.clears/CLEARS_PER_TIER));
+  const want = START_COLOURS + tier;
+  if(want>G.colours){
+    G.colours=want;
+    FX.banner={txt:`NEW COLOUR`, life:1.25};
+  }
+}
+
+async function maybeRefill(){
+  if(refilling || !G.tray.every(s=>!s)) return;
+  refilling=true;
+  await refillTray();
+  refilling=false;
+}
+
+// The board is only really full once nothing is still landing or counting down.
+function maybeGameOver(){
+  if(G.over || resolving || refilling) return;
+  if(G.cells.some(c=>c.dropping)) return;
+  if(anyPrimed() || !boardFull()) return;
+  gameOver();
+}
+
+/* Placement never locks input. It drops the stack in, flags the board dirty and
+   returns; the resolver picks the new stack up on its next pass. A player who
+   keeps feeding matching stacks keeps ONE chain alive rather than being made to
+   wait out each cascade. */
+async function place(cell, tiles, slot){
+  hideHint();
+  G.selected=-1;
+  cell.stack = tiles.slice();
+  cell.offY = -L.s*1.8;
+  cell.dropping = true;
+  G.lastPlaced = cell;
+  G.tray[slot]=null;
+  Sound.place();
+
+  await tween(170, p=>{ cell.offY = lerp(-L.s*1.8, 0, p); }, easeOutQuad);
+  cell.offY=0;
+  cell.dropping=false;
+  cell.ring=1;
+  squash(cell, 0.9, 150);          // deliberately not awaited — nothing waits on it
+  G.dirty=true;
+  maybeRefill();
+}
+
+// Runs every frame. Starts the resolver whenever there is something to do.
+function pump(){
+  if(G.over || resolving) return;
+  if(G.dirty || G.cells.some(c=> c.primed && c.primeT<=0)){
+    G.dirty=false;
+    pumpResolver();
+  }
+}
+
+async function squash(cell, amount, dur){
+  await tween(dur||140, p=>{ cell.sqz = Math.sin(Math.PI*p)*(amount||0.8); }, t=>t);
+  cell.sqz=0;
+}
+
+/* ---------------------------------------------------------------------
+   Choosing the merge.
+
+   The proven loop is untouched: matching tops merge, ten of a colour clears.
+   What changed is DIRECTION. A pair of neighbours with the same top colour can
+   resolve either way, and the naive rule — everything flows into the stack you
+   just placed — throws away the follow-up merge that removing a run would have
+   uncovered. So every legal merge on the board is scored and the best one runs.
+
+   A receiver R takes the top runs of all its matching neighbours at once.
+   Score rewards: reaching ten, a bigger resulting run, freeing a cell, and —
+   the point of the exercise — a giver whose newly exposed colour lines up with
+   one of ITS neighbours.
+   --------------------------------------------------------------------- */
+function scoreMerge(R, givers){
+  let gained = 0;
+  for(const g of givers) gained += topRunLen(g);
+  const total = topRunLen(R) + gained;
+
+  let score = total >= CLEAR_AT ? 1400 + total*6 : total*22;
+  if(R.primed) score += 300;                    // topping up a full stack is great
+
+  for(const g of givers){
+    const run  = topRunLen(g);
+    const rest = g.stack.length - run;
+    if(rest === 0){ score += 70; continue; }    // giver empties, freeing a cell
+    const exposed = g.stack[rest-1];
+    let bestRun = 0;
+    for(const n of neighbours(g)){
+      if(n===R || !n.stack.length) continue;
+      if(topColour(n)===exposed) bestRun = Math.max(bestRun, topRunLen(n));
+    }
+    if(bestRun) score += 90 + bestRun*12;       // uncovers a follow-up merge
+  }
+  return score;
+}
+
+function bestMerge(){
+  let best=null;
+  for(const R of G.cells){
+    if(!R.stack.length || R.dropping) continue;
+    const col = topColour(R);
+    // a primed stack is on a countdown — it may receive, never give.
+    // a dropping stack is still in the air.
+    const givers = neighbours(R).filter(n=>
+      n.stack.length && !n.primed && !n.dropping && topColour(n)===col);
+    if(!givers.length) continue;
+    let score = scoreMerge(R, givers);
+    if(R===G.lastPlaced) score += 10;           // gentle tiebreak, nothing more
+    if(!best || score>best.score) best={R,givers,score};
+  }
+  return best;
+}
+
+/* One resolver for the whole game, re-entrancy guarded. It keeps running while
+   there is work, and the work queue is just "the current board" — so a stack
+   placed mid-cascade is folded into the same pass, and G.chain keeps climbing
+   instead of restarting. */
+async function pumpResolver(){
+  if(resolving) return;
+  resolving = true;
+  let guard = 0;
+  try{
+    while(guard++ < 2000){
+      const m = bestMerge();
+      if(m){
+        const groups = m.givers.map(n=>({n, run: takeTopRun(n)}));
+        groups.forEach(g=>{ g.n.hideBadge=true; g.n.locked=true; });
+        await flipIn(groups, m.R, G.chain);
+        groups.forEach(g=>{ g.n.hideBadge=false; g.n.locked=false; });
+        for(const g of groups) m.R.stack.push(...g.run);
+        if(m.R.primed) m.R.primeT = CLEAR_GRACE;  // fed again — window restarts
+        await squash(m.R, 0.62, 120);
+        for(const g of groups) g.n.ring=0.8;
+        continue;
+      }
+
+      const due = G.cells.filter(c=> c.primed && c.primeT<=0);
+      if(due.length){
+        for(const c of due){
+          c.primed=false; c.primeT=0;
+          if(topRunLen(c) < CLEAR_AT) continue;   // no longer eligible
+          G.chain++;
+          await popRun(c, Math.min(G.chain, COMBO_CAP));
+        }
+        continue;
+      }
+
+      let lit=false;
+      for(const c of G.cells){
+        if(c.dropping || c.primed) continue;
+        if(topRunLen(c) >= CLEAR_AT){ c.primed=true; c.primeT=CLEAR_GRACE; lit=true; }
+      }
+      if(lit) Sound.prime();
+
+      // Only end the chain once nothing is left counting down.
+      if(!anyPrimed()){
+        if(G.chain>=2) FX.banner={txt:`COMBO ×${G.chain}`, life:1.3};
+        G.chain=0;
+      }
+      break;
+    }
+  } finally { resolving=false; }
+}
+
+/* Tiles hinge over the shared hex edge and land face-up on the target stack.
+   The hinge sits at the ground-plane midpoint of the two hex centres — which
+   IS the midpoint of the shared edge — at the mean of the departure and
+   landing heights, so a clean 180° swing lands exactly on the stack top.
+   (Unity equivalent: parent the tile to an empty pivot at that edge midpoint,
+   local X along the edge, and rotate the pivot 180° on X.) */
+async function flipIn(groups, target, combo){
+  const FLIP = 250, GAP = 76, SIDE_OFF = 44;
+  const list = [];
+
+  groups.forEach((g,gi)=>{
+    const m = g.run.length;
+    for(let j=m-1;j>=0;j--){                 // top tile of the run topples first
+      list.push({
+        c: g.run[j], n: g.n,
+        zs: (g.n.stack.length + j)*L.th,     // height it leaves from
+        start: gi*SIDE_OFF + (m-1-j)*GAP,
+        dur: FLIP
+      });
+    }
+  });
+  list.sort((a,b)=> a.start-b.start);         // landing order == departure order
+
+  let idx = target.stack.length;
+  for(const o of list){
+    const ze = (idx++)*L.th;                  // height it lands at
+    const gx = target.x-o.n.x, gy = target.y-o.n.y;
+    const D  = Math.hypot(gx,gy) || 1;
+    o.ux = gx/D; o.uy = gy/D;
+    o.mx = o.n.x + o.ux*D/2;  o.my = o.n.y + o.uy*D/2;   // hinge, ground plane
+    o.zp = (o.zs+ze)/2;                                   // hinge height
+    o.h0 = -D/2;  o.z0 = o.zs-o.zp;                       // start, hinge-local
+  }
+  FX.flyers = list;
+
+  const total = FLIP + (list.length ? list[list.length-1].start : 0) + 100;
+  let landed = 0;
+  FX.clock = 0;
+  await tween(total, (_,raw)=>{
+    FX.clock = raw*total;
+    let done = 0;
+    for(const f of list) if(FX.clock >= f.start+f.dur) done++;
+    while(landed<done){
+      Sound.merge(combo*2+landed);
+      FX.shake = Math.max(FX.shake, 2.2);     // each landing gets a small thunk
+      landed++;
+    }
+  }, t=>t);
+  FX.flyers = [];
+}
+
+async function popRun(cell, combo){
+  const run = topRunLen(cell);
+  const colIdx = topColour(cell);
+  const base = cell.stack.length - run;
+  const col = COLOURS[colIdx].face;
+
+  const pops=[];
+  for(let i=0;i<run;i++){
+    pops.push({c:colIdx, x:cell.x, y:cell.y-(base+i)*L.th,
+               gy:cell.y, hh:(base+i)*L.th, p:0, delay:i*16});
+  }
+  cell.stack.length = base;
+  FX.pops.push(...pops);
+
+  // particles
+  for(let i=0;i<18;i++){
+    const a=Math.random()*Math.PI*2, sp=90+Math.random()*300;
+    FX.parts.push({
+      x:cell.x+(Math.random()-.5)*L.s, y:cell.y-run*L.th*0.5,
+      vx:Math.cos(a)*sp, vy:Math.sin(a)*sp-180,
+      r:L.s*(0.10+Math.random()*0.10), rot:Math.random()*6, vr:(Math.random()-.5)*14,
+      col: i%3===0 ? '#FFFFFF' : shade(col, (Math.random()-.4)*0.4), life:1
+    });
+  }
+
+  const bonus = run>CLEAR_AT ? (run-CLEAR_AT)*30 : 0;
+  const pts = run*10*combo + bonus;
+  G.score += pts;
+  G.clears++;
+  FX.floats.push({txt:'+'+pts, x:cell.x, y:cell.y-run*L.th-L.s*0.4, vy:-70, life:1.25, col:'#FFE38A', big:combo>1});
+  FX.shake = Math.min(9, 4+combo*1.6);
+  Sound.clear(combo);
+  checkTier();
+  syncHUD();
+
+  await tween(330, (_,raw)=>{
+    const ms=raw*330;
+    for(const p of pops) p.p = clamp((ms-p.delay)/260,0,1);
+  }, t=>t);
+  for(const p of pops){ const i=FX.pops.indexOf(p); if(i>=0) FX.pops.splice(i,1); }
+}
+
+/* ----------------------------- input ----------------------------- */
+function cellUnder(x,y){
+  let best=null, bd=Infinity;
+  for(const c of G.cells){
+    // locked = currently giving tiles away, so it is empty in data but not on
+    // screen. dropping = a stack is already in the air toward it.
+    if(c.stack.length || c.locked || c.dropping) continue;
+    const d=(c.x-x)**2+(c.y-y)**2;
+    if(d<bd){ bd=d; best=c; }
+  }
+  return (best && bd < (L.s*1.35)**2) ? best : null;
+}
+function slotUnder(x,y){
+  if(y < L.trayY - L.s*1.9) return -1;
+  for(let i=0;i<TRAY_SLOTS;i++){
+    if(!G.tray[i]) continue;
+    if(Math.abs(x-L.slotX[i]) < L.s*1.25) return i;
+  }
+  return -1;
+}
+function previewGlow(cell, tiles){
+  for(const c of G.cells) c.glow=0;
+  if(!cell) return;
+  const col = tiles[tiles.length-1];
+  for(const n of neighbours(cell)){
+    if(n.stack.length && topColour(n)===col) n.glow=1;
+  }
+}
+
+let pointerId=null, downPos=null, moved=false;
+
+function toLocal(e){
+  const r=cvs.getBoundingClientRect();
+  return {x:e.clientX-r.left, y:e.clientY-r.top};
+}
+
+cvs.addEventListener('pointerdown', e=>{
+  if(G.over||G.rotating) return;
+  Sound.ensure();
+  const p=toLocal(e);
+  pointerId=e.pointerId; downPos=p; moved=false;
+  cvs.setPointerCapture(e.pointerId);
+
+  const slot=slotUnder(p.x,p.y);
+  if(slot>=0){
+    G.held={slot, stack:G.tray[slot].tiles, x:p.x, y:p.y-L.s*1.1};
+    G.selected=slot;
+    Sound.pick();
+    previewGlow(cellUnder(G.held.x,G.held.y), G.held.stack);
+    return;
+  }
+  // tap-to-place with a selected tray stack
+  if(G.selected>=0 && G.tray[G.selected]){
+    const cell=cellUnder(p.x,p.y);
+    if(cell){ const s=G.selected; G.selected=-1; place(cell, G.tray[s].tiles, s); }
+    else { G.selected=-1; }
+  }
+});
+
+cvs.addEventListener('pointermove', e=>{
+  if(e.pointerId!==pointerId) return;
+  const p=toLocal(e);
+  if(downPos && (Math.abs(p.x-downPos.x)>6 || Math.abs(p.y-downPos.y)>6)) moved=true;
+  if(G.held){
+    G.held.x=p.x; G.held.y=p.y-L.s*1.1;
+    const cell=cellUnder(G.held.x,G.held.y);
+    if(cell!==G.hoverCell){ G.hoverCell=cell; previewGlow(cell,G.held.stack); if(cell) cell.ring=0.55; }
+    if(cell) cell.ring=Math.max(cell.ring,0.5);
+  }
+});
+
+function endPointer(e){
+  if(e.pointerId!==pointerId) return;
+  pointerId=null;
+  if(!G.held){ downPos=null; return; }
+  const h=G.held;
+  const cell=cellUnder(h.x,h.y);
+  G.held=null; G.hoverCell=null;
+  for(const c of G.cells) c.glow=0;
+
+  if(cell){ G.selected=-1; place(cell, h.stack, h.slot); }
+  else if(!moved){ G.selected=h.slot; }        // sticky selection for tap-tap play
+  else { G.selected=-1; Sound.bad(); }
+  downPos=null;
+}
+cvs.addEventListener('pointerup', endPointer);
+cvs.addEventListener('pointercancel', e=>{ if(e.pointerId===pointerId){ pointerId=null; G.held=null; G.selected=-1; for(const c of G.cells) c.glow=0; }});
+
+/* ----------------------------- HUD ----------------------------- */
+const el = id=>document.getElementById(id);
+let shownScore=0;
+
+function syncHUD(){
+  if(G.score>G.best){ G.best=G.score; saveBest(G.best); el('best').textContent=G.best.toLocaleString(); }
+  const tierIdx = Math.min(MAX_COLOURS-START_COLOURS, Math.floor(G.clears/CLEARS_PER_TIER));
+  el('lv').textContent = `Tier ${tierIdx+1} · ${G.colours} colours`;
+  const into = G.colours>=MAX_COLOURS ? 1 : (G.clears % CLEARS_PER_TIER)/CLEARS_PER_TIER;
+  el('bar').style.width = (into*100).toFixed(1)+'%';
+}
+function tickScore(){
+  if(shownScore!==G.score){
+    const diff=G.score-shownScore;
+    shownScore += Math.sign(diff)*Math.max(1, Math.ceil(Math.abs(diff)*0.24));
+    if(Math.abs(G.score-shownScore)<2) shownScore=G.score;
+    el('score').textContent = shownScore.toLocaleString();
+  }
+}
+function hideHint(){ const h=el('hint'); if(h.style.opacity!=='0') h.style.opacity='0'; }
+
+/* best score (guarded — falls back to memory-only) */
+async function loadBest(){
+  try{
+    if(window.storage){
+      const r = await window.storage.get('hexastack:best');
+      if(r && r.value) G.best = parseInt(r.value,10)||0;
+    }
+  }catch(e){}
+  el('best').textContent = G.best.toLocaleString();
+}
+async function saveBest(v){
+  try{ if(window.storage) await window.storage.set('hexastack:best', String(v)); }catch(e){}
+}
+
+/* ----------------------------- game over ----------------------------- */
+async function gameOver(){
+  G.over=true;
+  Sound.over();
+  await wait(220);
+  el('ovScore').textContent = G.score.toLocaleString();
+  el('ovSub').textContent = G.score>=G.best && G.score>0 ? 'new best' : 'final score';
+  el('ovTitle').textContent = 'Board full';
+  el('ovBody').textContent  = `${G.clears} stack${G.clears===1?'':'s'} cleared. Keep a free cell in the middle — that's where merges reach furthest.`;
+  const lg=el('ovLegend'); lg.innerHTML='';
+  for(let i=0;i<G.colours;i++){
+    const s=document.createElement('i');
+    s.style.background=`linear-gradient(180deg, ${shade(COLOURS[i].face,.2)}, ${shade(COLOURS[i].face,-.25)})`;
+    lg.appendChild(s);
+  }
+  el('veil').classList.add('on');
+}
+
+async function newGame(){
+  el('veil').classList.remove('on');
+  anims.length=0;
+  FX.flyers.length=0; FX.pops.length=0; FX.parts.length=0; FX.floats.length=0; FX.banner=null; FX.shake=0;
+  G.score=0; shownScore=0; el('score').textContent='0';
+  G.clears=0; G.colours=START_COLOURS; G.over=false; G.selected=-1; G.held=null;
+  G.rot=0; G.rotating=false;
+  G.chain=0; G.dirty=false; G.lastPlaced=null;
+  resolving=false; refilling=false;
+  buildBoard(); layout();
+
+  // Seed a few stacks so the first placements have something to bite on.
+  // Never give two neighbours the same top colour — the board should start
+  // settled, not mid-cascade.
+  const pool=G.cells.slice();
+  for(let i=0;i<SEED_STACKS;i++){
+    const c=pool.splice(rnd(pool.length),1)[0];
+    const taken=new Set(neighbours(c).filter(n=>n.stack.length).map(n=>topColour(n)));
+    const open=[];
+    for(let k=0;k<G.colours;k++) if(!taken.has(k)) open.push(k);
+    const col = open.length ? open[rnd(open.length)] : rnd(G.colours);
+    c.stack=new Array(1+rnd(3)).fill(col);
+  }
+  syncHUD();
+  el('hint').style.opacity='1';
+  refilling=true;
+  await refillTray();
+  refilling=false;
+}
+
+/* ----------------------------- loop ----------------------------- */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(50, now-last); last=now;
+  stepAnims(dt);
+  stepFX(dt);
+  pump();
+  maybeGameOver();
+  tickScore();
+  draw();
+  requestAnimationFrame(frame);
+}
+
+/* ----------------------------- boot ----------------------------- */
+el('restart').addEventListener('click', ()=>{ Sound.ensure(); newGame(); });
+el('again').addEventListener('click', ()=>{ Sound.ensure(); newGame(); });
+el('sound').addEventListener('click', e=>{ const on=Sound.toggle(); e.currentTarget.textContent = on?'🔊':'🔇'; });
+el('rotL').addEventListener('click', ()=>{ Sound.ensure(); rotateBoard(-1); });
+el('rotR').addEventListener('click', ()=>{ Sound.ensure(); rotateBoard(1); });
+window.addEventListener('keydown', e=>{
+  if(e.key==='ArrowLeft'){ e.preventDefault(); rotateBoard(-1); }
+  if(e.key==='ArrowRight'){ e.preventDefault(); rotateBoard(1); }
+});
+window.addEventListener('resize', ()=>{ layout(); });
+new ResizeObserver(()=>layout()).observe(cvs);
+
+buildBoard();
+layout();
+loadBest();
+newGame();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

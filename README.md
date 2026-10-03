@@ -5,8 +5,9 @@ can open in a browser — no build step, no dependencies, no assets.
 
 | Prototype | What it is | Status |
 | --- | --- | --- |
-| **[playbox](playbox/)** | A multi-game app: a home screen of game boards with shared saving, settings and sound. Plays **Paint Sort** (pour paint between vials until each holds one colour, levels generated on a sawtooth difficulty curve); **Hex Tile Sort** and **Car Loop** have boards and are coming soon. | Current |
-| **[roundabout](roundabout/)** | Roundabout Rush: tap to merge your cars into a busy roundabout before the clock runs out. Full publishing shell: boosters, garage economy, mocked ads and store, Unity asset list. | Current |
+| **[playbox](playbox/)** | A multi-game app: a home screen of game boards with shared saving, settings and sound. Plays **Paint Sort** (pour paint between vials until each holds one colour, levels generated on a sawtooth difficulty curve), **Hex Tile Sort** (Hexa Stack) and **Car Loop** (Roundabout Rush), the last two running inside the app from their own folders below. | Current |
+| **[roundabout](roundabout/)** | Roundabout Rush: tap to merge your cars into a busy roundabout before the clock runs out. Full publishing shell: boosters, garage economy, mocked ads and store, Unity asset list. Appears in Playbox as Car Loop. | Current |
+| **[hexa-stack](hexa-stack/)** | Hexa Stack: endless hex-tile stacking. Drop stacks so matching colours flip across; ten of a colour clear. Appears in Playbox as Hex Tile Sort. | Playable |
 | **[backfire](backfire/)** | Bouncing-ball breaker where blocks you cut loose fall, flip, and slam back up into the ceiling. | Playable |
 | **[blockcharge](blockcharge/)** | Block puzzle where clearing lines earns powers you pick and bank. | Playable |
 | **[sparkweave](sparkweave/)** | Beam-routing roguelite on a 5×5 loom. Deep systems, but too much to explain for a casual audience. | Shelved — see note |
@@ -20,7 +21,9 @@ All of them build to one file, vanilla JS, no libraries and no art assets — ca
 DOM plus synthesised WebAudio. Each has its source in artifact-host format (no
 `<html>`/`<head>`/`<body>`) under `src/` and a `build.sh` that produces a
 standalone `index.html`. Playbox splits its source into a shell plus one file per
-game; its `build.sh` inlines the games back into a single page.
+game; its `build.sh` inlines the games back into a single page, including
+copies of `hexa-stack/index.html` and `roundabout/index.html`. Hexa Stack is a
+single hand-written `index.html` with no build step.
 
 Three patterns are worth reusing:
 

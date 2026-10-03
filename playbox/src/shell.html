@@ -201,6 +201,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;paddin
 .board-grid .board.wide{grid-column:1/-1}
 .board-grid .board.wide .board-art{aspect-ratio:2.1/1}
 .home-note{font-size:13.5px;color:var(--dim);text-align:center;margin:4px auto 0;max-width:34ch;line-height:1.5}
+.pb-frame{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
 
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.06s!important}
@@ -467,7 +468,9 @@ function boardFor(g, featured, i){
   const art = h('div', { class: 'board-art', 'aria-hidden': 'true' });
   try{ g.card && g.card(art, save, { featured }); }catch(e){ console.error(e); }
   if(g.soon) art.append(h('span', { class: 'board-lock', html: LOCK_ICON }));
-  const status = g.soon ? 'Coming soon' : g.status ? g.status(save) : '';
+  // small boards show only the first part of a status ("Level 4 · 120 coins" -> "Level 4")
+  let status = g.soon ? 'Coming soon' : g.status ? g.status(save) : '';
+  if(!featured) status = status.split(' · ')[0];
   const cta = g.soon ? null : h('span', { class: 'board-cta' },
     h('span', { html: PLAY_ICON, style: 'display:contents' }), h('span', { class: 'lbl' }, g.cta ? g.cta(save) : 'Play'));
   const el = h('button', {
@@ -510,6 +513,48 @@ function renderHome(){
   $('#homeTitle').textContent = played ? 'Welcome back' : 'Pick a game';
   $('#homeSub').textContent = played ? `${played.title} is right where you left it.` : 'Short puzzles that remember where you left off.';
 }
+/* ---------- games built elsewhere, run in a frame ----------
+   A game that already exists as its own page (elsewhere in the repo) doesn't
+   need porting: the build embeds that page as base64 (see build.sh), and
+   framedGame() returns a mount() that runs it in a same-origin frame filling the
+   stage. `head`/`body` are HTML snippets added before </head> and </body>, the
+   place for small bridges into the game. The game leaves by posting
+   {playbox: 'exit'} to its parent; exitButton() builds a script that adds a
+   back button doing that. */
+function decodePage(b64){
+  const bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+function framedGame(o){
+  return function mount(stage, api){
+    let html = o.page ? decodePage(o.page)
+      : `<p style="font:16px system-ui;color:#fff;padding:24px">${o.title} isn’t built into this page. Run playbox/build.sh.</p>`;
+    if(o.head){ const i = html.search(/<\/head>/i); html = i < 0 ? o.head + html : html.slice(0, i) + o.head + html.slice(i); }
+    if(o.body){ const i = html.toLowerCase().lastIndexOf('</body>'); html = i < 0 ? html + o.body : html.slice(0, i) + o.body + html.slice(i); }
+    const frame = h('iframe', { class: 'pb-frame', title: o.title });
+    frame.style.background = o.background || '#000';
+    frame.srcdoc = html;
+    stage.append(frame);
+    const onMessage = e => { if(e.source === frame.contentWindow && e.data && e.data.playbox === 'exit') api.exit(); };
+    window.addEventListener('message', onMessage);
+    frame.addEventListener('load', () => { try{ frame.contentWindow.focus(); }catch(e){} });
+    return { unmount(){ window.removeEventListener('message', onMessage); frame.remove(); } };
+  };
+}
+/* exitButton({ into: CSS selector of the row to put it in, className: the game's own button class, size }) */
+function exitButton(o){
+  const size = o.size || 22;
+  const svg = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>`;
+  return '<script>(function(){function add(){' +
+    'var row=document.querySelector(' + JSON.stringify(o.into) + ');if(!row||document.getElementById("pbBack"))return;' +
+    'var b=document.createElement("button");b.id="pbBack";b.type="button";b.className=' + JSON.stringify(o.className || '') + ';' +
+    'b.setAttribute("aria-label","Back to Playbox");b.title="Back to Playbox";b.innerHTML=' + JSON.stringify(svg) + ';' +
+    'b.addEventListener("click",function(e){e.stopPropagation();parent.postMessage({playbox:"exit"},"*");});' +
+    'row.insertBefore(b,row.firstChild);}' +
+    'if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",add);else add();})();<\/script>';
+}
+
 function openGame(id, opts){
   const def = games.find(g => g.id === id);
   if(!def || def.soon) return;
@@ -555,7 +600,7 @@ function boot(){
   const want = (location.hash || '').slice(1);
   if(want && games.some(g => g.id === want)) openGame(want);
 }
-window.Playbox = { register, store, audio, buzz, on, emit, ui: { sheet, closeSheet, toast, h }, boot, openGame };
+window.Playbox = { register, store, audio, buzz, on, emit, ui: { sheet, closeSheet, toast, h }, boot, openGame, framedGame, exitButton };
 })();
 </script>
 <!-- @games -->
