@@ -18,6 +18,12 @@ levels, 1–4 for boosters, Esc to pause.
 - **[ASSETS.md](ASSETS.md)**: every art, audio and store asset the Unity
   build needs that this prototype draws in code or fakes.
 
+In [Playbox](../playbox/) this game appears as **Car Loop**. Playbox runs this
+page unchanged (it embeds `index.html` when Playbox is built) and adds a back
+button to the home screen's top row; progress stays in this game's own save
+(`roundabout-rush-v1`), which the Car Loop board reads to show your level. After
+changing the game, run `./build.sh` here and then `../playbox/build.sh`.
+
 ---
 
 ## How to play

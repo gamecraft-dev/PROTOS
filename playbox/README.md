@@ -79,6 +79,7 @@ build.sh                 inlines every src/games/*.html into the shell -> index.
                          embedding the two pages above
 tools/probe.mjs          prints the difficulty of each generated level (node tools/probe.mjs 1 60)
 DESIGN.md                why Paint Sort works the way it does, with numbers
+PAINT_SORT_UNITY_PLAN.md the brief for building Paint Sort and this home screen in Unity
 ```
 
 Edit files under `src/`, then run `./build.sh`. After changing Roundabout Rush,

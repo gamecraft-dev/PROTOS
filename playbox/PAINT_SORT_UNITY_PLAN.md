@@ -1,9 +1,13 @@
 # Paint Sort in Unity: implementation plan
 
 This plan is for an AI coding agent building **Paint Sort** (a water/paint sort
-puzzle) in Unity. It covers the architecture, the code hierarchy, the full
-engine port, and every asset the agent must **generate through code**: meshes,
-shaders, textures, paintings, particles, sounds, prefabs, scenes and UI layouts.
+puzzle) in Unity, as the first playable game inside **Playbox**, a multi-game
+app whose home screen shows every game as a board. It covers the architecture,
+the code hierarchy, the full engine port, and every asset the agent must
+**generate through code**: meshes, shaders, textures, paintings, particles,
+sounds, prefabs, scenes and UI layouts. The home screen also carries boards for
+**Hex Tile Sort** and **Car Loop**; those two games are not part of this plan
+and show as "Coming soon" in the Unity build until they are ported (§15.1).
 
 The reference implementation is the web prototype in this repo, and the agent
 gets its source alongside this plan (§0). Where the plan gives code, port it
@@ -18,9 +22,10 @@ exactly; where it gives numbers, use them as written.
 | File | What it is |
 | --- | --- |
 | `playbox/src/games/paint-sort.html` | The whole game: CSS, engine, painting, vial drawing, sounds, game logic, lobby. **The main reference.** |
-| `playbox/src/shell.html` | The hub: save store, the Web Audio synth (`tone`, `noise`, `bell`, compressor), sheets, toasts, settings, home screen. |
+| `playbox/src/shell.html` | The hub: save store, the Web Audio synth (`tone`, `noise`, `bell`, compressor), sheets, toasts, settings, the home screen of game boards. |
+| `playbox/src/games/hex-tile-sort.html`, `playbox/src/games/car-loop.html` | Only for their **boards**: the board artwork (`draw`), colours and text. The games they launch on the web are separate pages and are not part of this plan. |
 | `playbox/tools/probe.mjs` | Runs the engine in Node and prints the difficulty table. Use it to produce extra golden fixtures. |
-| `playbox/index.html` | Built output of the two sources in one file. Open it in a browser to see and hear the target; don't read it for code (it duplicates the sources). |
+| `playbox/index.html` | Built output of the sources in one file. Open it in a browser to see and hear the target; don't read it for code (it duplicates the sources). |
 
 ### 0.2 Which one wins
 
@@ -57,7 +62,8 @@ name; line numbers will drift.
 | §12 Paintings | `tooth`, `brushIn`, `drawArt`, `paintCanvas` |
 | §13 Sound | `makeSfx` (every game sound); `shell`: the `audio` object (`tone`, `noise`, `bell`, compressor settings) |
 | §15 UI | `TEMPLATE` (markup), the `<style>` block (sizes, colours, animations), `renderLobby`, `renderRoad`, `showWin`, `intro`, `menu`, `howTo`, `updateHud`; `shell`: `sheet`, `toast`, `openSettings`, `renderHome` |
-| §15.1 Card art | `drawCard` |
+| §15.1 Home screen and boards | `shell`: `renderHome`, `boardFor`, and the `.board*` rules in its `<style>` |
+| §15.1 Board art | Paint Sort: `drawCard`; Hex Tile Sort: `draw` in `hex-tile-sort.html`; Car Loop: `draw` in `car-loop.html` |
 | §16 Theme and pigments | CSS custom properties at the top of both files; `PIGMENTS`, `mix`, `glyph` |
 | §17 Save | `persist`, `hydrate`; `shell`: `store` |
 
@@ -73,8 +79,10 @@ name; line numbers will drift.
   recipes in §13.4 are `makeSfx` translated.
 - **Don't port the web-only parts:** Google Fonts links, `localStorage`,
   `history.replaceState` and the `#hash` deep link, `window.claude.hot`,
-  `ResizeObserver`, DOM building, and the `window.__ps` debug hooks (the Unity
-  equivalents are the tests and the probe CLI).
+  `ResizeObserver`, DOM building, the `window.__ps` debug hooks (the Unity
+  equivalents are the tests and the probe CLI), and `framedGame`/`exitButton`
+  plus the build's `@embed-base64` step (the web runs Hex Tile Sort and Car Loop
+  by embedding their finished pages; in Unity they are "Coming soon" boards).
 
 ### 0.5 Making more golden fixtures
 
@@ -151,9 +159,10 @@ CLI (§19.3) must print the same numbers.
 
 | Setting | Value |
 | --- | --- |
-| Unity | 6 LTS (6000.0.x) |
-| Render pipeline | URP, 2D Renderer |
-| Colour space | **Gamma** (alpha blending then matches the browser exactly; all hex colours in this doc are sRGB and are passed to shaders unconverted) |
+| Unity | 6 LTS (6000.0.x), created from the **Universal 3D** template |
+| Render pipeline | URP with the **Universal Renderer** (Forward). Not the 2D Renderer: Paint Sort uses no 2D lights, and later games in the same project (a 3D Hex Tile Sort, for one) need the 3D renderer |
+| Colour space | **Linear** (required for lit 3D games sharing this project; see "Colour rules" below) |
+| HDR | Off in the URP asset for now (Paint Sort is unlit); a later 3D game may turn it on |
 | Anti-aliasing | URP asset MSAA 4x |
 | Orientation | Portrait only |
 | Target frame rate | `Application.targetFrameRate = 60` |
@@ -166,6 +175,33 @@ Canvas Scaler on every UI canvas: *Scale With Screen Size*, reference
 **390 × 844**, match **0.5**. One canvas unit is then one "dp", the same as one
 CSS pixel in the web prototype, so every UI size in this document can be used
 directly.
+
+**One project, many games.** Each game is its own scene with its own camera
+(orthographic for Paint Sort; a future 3D game uses a perspective camera) and its
+own assembly, sharing the Core services (§4). Sprites, sorting layers, sorting
+groups and uGUI all work with the Universal Renderer.
+
+**Colour rules (Linear colour space).** Every colour in this document is an
+sRGB hex value, as on the web. In Linear space:
+
+- `Material.SetColor` / `MaterialPropertyBlock.SetColor` and uGUI `Graphic.color`
+  convert sRGB to linear automatically. Use them wherever possible.
+- `SetVector`, `SetVectorArray`, vertex colours and colours computed by hand are
+  **not** converted: pass `color.linear`, except to the two shaders below.
+- `Liquid.shader` and `Gradient.shader` take **sRGB** values and do their
+  blending maths in sRGB (gloss, seams, meniscus, hatch, gradient stops), then
+  convert with `SRGBToLinear` on output, so the paint and the backdrop match the
+  browser exactly (§8.4).
+- Colour textures (cork, frame, board art) import with sRGB on; masks and
+  white-only shapes (symbols, particles, tooth, stripes) can stay sRGB on too,
+  since only their alpha matters.
+- Hardware alpha blending now happens in linear space, so see-through layers
+  (glass, edge, highlights, scrims) look slightly stronger than on the web.
+  Compare against web screenshots at M3 and adjust those alpha values in
+  `ThemePalette` until they match; record the final values in `ThemePalette`
+  rather than in shader code.
+- RenderTextures that are shown in UI (painting, board art) use an sRGB format
+  (`RenderTextureReadWrite.sRGB`).
 
 ---
 
@@ -196,9 +232,9 @@ Assets/_Project/
 │  ├─ Core/                                   asmdef Playbox.Core
 │  │  ├─ Boot/Bootstrap.cs                    creates Services, loads save, opens Hub scene
 │  │  ├─ Boot/Services.cs                     DontDestroyOnLoad holder; static access to the services below
-│  │  ├─ Games/GameDefinition.cs              ScriptableObject: id, title, tagline, sceneName, card art prefab
-│  │  ├─ Games/GameRegistry.cs                ScriptableObject: list of GameDefinition
-│  │  ├─ Games/IGameStatus.cs                 string Status(JObject save) for the home card chip
+│  │  ├─ Games/GameDefinition.cs              ScriptableObject: id, title, tagline, order, soon, sceneName, board colours, board art, status provider (§15.1)
+│  │  ├─ Games/GameRegistry.cs                ScriptableObject: the three GameDefinitions
+│  │  ├─ Games/IGameStatus.cs                 Status(save) for the board chip, Cta(save) for the big board's button
 │  │  ├─ Save/SaveService.cs                  load/save playbox.json, debounced, atomic
 │  │  ├─ Save/SaveData.cs                     root DTO (settings, last game, per-game JObject)
 │  │  ├─ Settings/SettingsService.cs          sound, haptics, theme; raises Changed
@@ -218,8 +254,9 @@ Assets/_Project/
 │  │  ├─ UI/UiSwitch.cs, UI/SegmentedControl.cs, UI/PressFeedback.cs, UI/SafeAreaFitter.cs
 │  │  ├─ UI/ThemedGraphic.cs                  binds a Graphic colour to a theme token
 │  │  ├─ UI/UiSkin.cs                         ScriptableObject of sprite slots; unassigned slots use the generated primitives
-│  │  ├─ Hub/HubScreen.cs                     home shelf
-│  │  ├─ Hub/GameCardView.cs                  card: art RT, title, tagline, status chip, play button
+│  │  ├─ Hub/HubScreen.cs                     home screen: greeting, featured board, board grid (§15.1)
+│  │  ├─ Hub/BoardView.cs                     one board: art, title, tagline, chip, play button; featured/small/wide; soon state; press, entrance and shake
+│  │  ├─ Hub/BoardArt.cs                      shows a board's art (RenderTexture or texture) with envelope fit
 │  │  ├─ Util/Easing.cs                       all easing functions in §9.2
 │  │  ├─ Util/MainThread.cs                   queue for results from worker threads
 │  │  ├─ Util/RibbonBuilder.cs                polyline -> triangle ribbon mesh (joins, caps, dashes)
@@ -260,7 +297,7 @@ Assets/_Project/
 │  │  │  ├─ BoardInput.cs                     taps, keyboard (§6.4)
 │  │  │  ├─ PaintSortSfx.cs                   game events -> SfxPlayer calls (§13.6)
 │  │  │  ├─ PaintSortHaptics.cs               game events -> haptic patterns (§14)
-│  │  │  └─ PaintSortStatus.cs                IGameStatus for the home card
+│  │  │  └─ PaintSortStatus.cs                IGameStatus for Paint Sort's board
 │  │  └─ UI/                                  asmdef Playbox.PaintSort.UI
 │  │     ├─ LobbyScreen.cs                    wordmark, next painting card, level road, play button
 │  │     ├─ LevelRoadGraphic.cs               custom Graphic drawing the sawtooth road (§15.4)
@@ -303,6 +340,7 @@ Assets/_Project/
 ├─ Scenes/Boot.unity, Hub.unity, PaintSort.unity   written by SceneBuilder (§4.2)
 ├─ Config/
 │  ├─ GameRegistry.asset
+│  ├─ Games/PaintSort.asset, Games/HexTileSort.asset, Games/CarLoop.asset   GameDefinitions (§15.1)
 │  ├─ ThemePalette.asset                      values from §16.1
 │  ├─ Pigments.asset                          values from §16.2
 │  ├─ SfxLibrary.asset                        filled by GenerateAudio
@@ -341,8 +379,8 @@ PaintingRig.prefab          at world (10000, 0); layer Painting
 ├─ Ground                   quad 400×300, UnlitColor #F3F0E8
 ├─ Tooth                    quad 400×300, tex_canvas_tooth tiled 50 × 37.5
 └─ Shapes                   ShapeSlot × 12 (Fill + Streaks + Pencil renderers each)
-CardArtRig.prefab           at world (20000, 0); layer CardArt; camera -> card RenderTexture (§15.1)
-UI prefabs                  Sheet, Toast, GameCard, TopBar, BoosterButton, PigmentDot, StuckBar, HardIntro, FloatLabel
+CardArtRig.prefab           at world (20000, 0); layer CardArt; camera -> Paint Sort's board-art RenderTexture (§15.1)
+UI prefabs                  Sheet, Toast, Board, TopBar, BoosterButton, PigmentDot, StuckBar, HardIntro, FloatLabel
 ```
 
 ### 4.2 Scenes (built by `SceneBuilder`)
@@ -350,12 +388,13 @@ UI prefabs                  Sheet, Toast, GameCard, TopBar, BoosterButton, Pigme
 | Scene | Contents |
 | --- | --- |
 | `Boot` | `Bootstrap` object. Creates `Services` (DontDestroyOnLoad: SaveService, SettingsService, ThemeService, SfxPlayer, Haptics, MainThread), loads the save, loads `Hub`. |
-| `Hub` | UI canvas with `HubScreen`, `CardArtRig`. |
+| `Hub` | UI canvas with `HubScreen` (boards for all games in `GameRegistry`), `CardArtRig`. |
 | `PaintSort` | `BoardRig`, `PaintingRig`, UI canvas (Screen Space - Overlay) with `LobbyScreen` and `PlayScreen` panels, `SheetHost`, `Toast`, and `PaintSortController` wiring it all. |
 
-Navigation: Hub → PaintSort with `SceneManager.LoadSceneAsync(single)`; the
-lobby's back button returns to Hub. `SaveData.last` records the game id so the
-Hub can say "Welcome back".
+Navigation: a board opens its game's `sceneName` with
+`SceneManager.LoadSceneAsync(single)`; the game's back button returns to Hub.
+A "Coming soon" board never loads anything. `SaveData.last` records the game id
+so the Hub can say "Welcome back" and feature that game's board.
 
 ---
 
@@ -1473,7 +1512,11 @@ Shader "PaintSort/Liquid"
             #pragma vertex vert
             #pragma fragment frag
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Color.hlsl"
             #define MAX_BANDS 8
+            // All colours arrive as sRGB (SetVectorArray does not convert). The
+            // blending below happens in sRGB, as in the browser; the result is
+            // converted to linear on output (§2, colour rules).
 
             float  _BandCount;
             float  _BandTop[MAX_BANDS];     // world y of each band's top edge, bottom to top
@@ -1538,6 +1581,7 @@ Shader "PaintSort/Liquid"
                 if (abs((top - p.y) - 1) < _MeniscusW * .5)               // bright meniscus 1 unit under the surface
                     col.rgb = lerp(col.rgb, 1, .42);
 
+                col.rgb = SRGBToLinear(col.rgb);
                 col.a = edge;
                 return col;
             }
@@ -1549,7 +1593,12 @@ Shader "PaintSort/Liquid"
 
 Set the arrays every frame through a `MaterialPropertyBlock` with
 `SetFloatArray`/`SetVectorArray`, **always with length 8** (Unity fixes an
-array's size on first use).
+array's size on first use). Pass `_BandColor` and `_Primer` as **sRGB** values
+(the hex colours as written, not `.linear`); the shader converts.
+
+`Gradient.shader` follows the same rule: its two colours arrive as sRGB vectors,
+it interpolates in sRGB (as a CSS gradient does) and outputs
+`SRGBToLinear(rgb)`.
 
 ### 8.5 Per-frame band upload (`LiquidBands.cs`)
 
@@ -2123,30 +2172,144 @@ style (heavy, rounded); body text the body style. Colours are theme tokens
 take their sprite from `UiSkin`; any empty slot uses the generated primitives
 (`ui_round_24`, `ui_circle`, `ui_soft_shadow`).
 
-### 15.1 Hub
+### 15.1 Home screen: game boards
+
+Every game appears as a **board**: a chunky card standing on a thick base in
+the game's own colour, with artwork, a title, a one-line tagline and a status
+chip. The game you last played gets a big board at the top; the rest sit in a
+two-column grid below it.
 
 ```
-HubScreen (safe area, padding 18, scroll)
-├─ TopRow: Wordmark "Playbox" (34, display) · spacer · Settings icon button (42×42, radius 14, surface)
+HubScreen (safe area, padding 18, vertical scroll, gap 20)
+├─ TopRow: logo mark + Wordmark "Playbox" (34, display) · spacer · Settings icon button (42×42, radius 14, surface)
 ├─ Greeting: title (clamp 28–36, display) + subtitle (15, muted)
-├─ Label "GAMES" (12, letter-spacing .14em, dim)
-├─ Shelf (vertical, gap 14)
-│  └─ GameCard (radius 26, surface, shadow)
-│     ├─ Art (height 190): RawImage of the card RenderTexture
-│     └─ Body (padding 16/18): Title (26 display) · Tagline (14 muted) · Status chip (accent-soft pill) · Play button (54×54, radius 18, accent)
-└─ Note (13.5, dim, centred): "More games will land on this shelf. Your progress in each one is saved on this device."
+├─ FeatureSection (gap 12; hidden when no game is playable)
+│  ├─ Label (12, caps, letter-spacing .14em, dim): "Start here", or "Jump back in" when it's the last game played
+│  └─ Board (featured)
+├─ MoreSection (gap 12; hidden when empty)
+│  ├─ Head: Label "More games" ("Games" when nothing is featured) · spacer · count (12.5, dim): "N coming soon" if any board is soon, else the number of boards
+│  └─ BoardGrid: 2 equal columns, column gap 14, row gap 18; if the count is odd the last board spans both columns ("wide")
+└─ Note (13.5, dim, centred, max 34ch): "Your progress in each game is saved on this device."
 ```
 
-**Card art** (`CardArtRig`, rendered once per theme change into a
-394 × 190 dp RT at device scale). Uses Vial prefabs on the CardArt layer and
-the wall gradient. `w = min(36, W/11)`; mouths at `y = 0.55w + Hgeo·w` above the
-bottom; vials at `x/W` = 0.10 `[Ultramarine, Cadmium Red, Hansa Yellow, Ultramarine]`,
-0.24 `[Hansa Yellow, Quinacridone Rose, Cadmium Red]`,
-0.62 `[Cadmium Red ×2, Hansa Yellow ×1.35]`, 0.78 `[Ultramarine ×4, corked]`,
-0.91 `[Quinacridone Rose ×2, Sap Green]`; a fifth vial tipped 1.18 rad clockwise
+**Which board goes where** (`HubScreen.Render`, re-run on enable and on theme change):
+
+```
+list     = registry games sorted by Order
+ready    = list where !Soon
+played   = ready game whose Id == SaveData.last, or null
+featured = played ?? first of ready ?? null
+grid     = list without featured, in order; if grid.Count is odd, the last one is wide
+title    = played ? "Welcome back" : "Pick a game"
+subtitle = played ? "{played.Title} is right where you left it." : "Short puzzles that remember where you left off."
+```
+
+**Board anatomy** (`Board.prefab`, `BoardView`). Sizes are dp; the featured
+values are in brackets.
+
+| Part | Spec |
+| --- | --- |
+| Base (the slab) | Rounded rect in `b-deep`, same size as the card, offset 6 down, behind it; behind that a soft shadow (`ui_soft_shadow` tinted rgba(10,16,40,.55)) matching CSS `0 20px 32px -22px`: offset 20 down, blur 32, shrunk 22 on every side |
+| Card | `surface` fill, radius 24 [28], clips its children to the rounded shape |
+| Art | Top of the card, top corners rounded. Small: aspect 1 : 0.86. Wide: 2.1 : 1. Featured: height `clamp(180, 30% of screen height, 230)`. Shows the board art (below) with **envelope** fit, so it always fills |
+| Lock badge (soon only) | 32×32 circle, rgba(16,22,40,.72), 10 from the art's top-right corner, white `ui_lock` 16×16 |
+| Body | Padding 12/13/14 [16/18/18], vertical gap 5 [6], fills the rest of the card so the foot sits at the bottom and boards in a row line up |
+| Title | Display 20 [30], ink, wraps (balanced) |
+| Tagline | 12.5 [14.5], muted, line height 1.35, wraps, **never truncated** (keep taglines under ~55 characters) |
+| Foot | Row, gap 10, pinned to the bottom of the body (5 above it at least) |
+| Chip | Pill, 12 [12.5] heavy, padding 5/10 [6/11], tabular figures; text `b-text` on `b-soft`; soon boards: muted on `surface-2`. **Small boards show only the part before the first " · "** ("Level 4 · 120 coins" → "Level 4") |
+| Play button | Not on soon boards. Small: 36×36, radius 12, `b-accent`, `ui_play` 18×18 in `b-ink`, 3 dp `b-deep` drop. Featured: pill at the right, padding 12/18/12/15, radius 15, 4 dp `b-deep` drop, `ui_play` + label (display 18) from `Cta(save)` |
+
+**Motion.**
+- Entrance: each board starts 18 dp lower at scale 0.97 and settles over 500 ms
+  (cubic-bezier .2,.9,.25,1), staggered 70 ms by position (featured first). No
+  fade, so the screen is complete even mid-animation.
+- Press: the card moves down 4 dp and the slab offset shrinks to 2 dp (120 ms),
+  then springs back.
+- Tapping a soon board: shake over 400 ms (x: −6 dp at 20%, +5 at 45%, −3 at
+  70%, 0; rotation −1°, +0.8°, 0), haptic 12, toast "{Title} is coming soon".
+- Tapping a playable board: click sound, then load its scene.
+
+**The three boards** (`GameDefinition` assets):
+
+| Field | Paint Sort | Hex Tile Sort | Car Loop |
+| --- | --- | --- | --- |
+| `Id` | `paint-sort` | `hex-tile-sort` | `car-loop` |
+| `Order` | 1 | 2 | 3 |
+| `Title` | Paint Sort | Hex Tile Sort | Car Loop |
+| `Tagline` | Pour paint between vials until each one holds a single colour. | Drop hex stacks so matching colours flip over and clear. | Merge every car into a busy roundabout without a crash. |
+| `Soon` | false | **true** (until ported to Unity) | **true** (until ported to Unity) |
+| `SceneName` | `PaintSort` | (empty) | (empty) |
+| Status | `PaintSortStatus`: `level > 1 ? "Level L · C coins" : "New · 120 coins to start"` | "Coming soon" | "Coming soon" |
+| Cta | `level > 1 \|\| cur != null ? "Continue" : "Play"` | — | — |
+| Art | `CardArtRig` RenderTexture (below) | `tex_board_hex_tile_sort.png` | `tex_board_car_loop.png` |
+
+Board colours per game are in §16.1. When Hex Tile Sort or Car Loop is ported,
+set `Soon` to false, fill `SceneName`, and give it a status provider (the web
+versions show "Best N" for Hex Tile Sort and "Level N · C coins" for Car Loop).
+
+**Paint Sort's board art** (`CardArtRig`, rendered into an sRGB RenderTexture
+the size of the art area at device scale, again on theme change). Uses Vial
+prefabs on the CardArt layer over the wall gradient. `w = min(36, W/11)`;
+mouths at `y = 0.55w + Hgeo·w` above the bottom; vials at `x/W` = 0.10
+`[Ultramarine, Cadmium Red, Hansa Yellow, Ultramarine]`, 0.24
+`[Hansa Yellow, Quinacridone Rose, Cadmium Red]`, 0.62
+`[Cadmium Red ×2, Hansa Yellow ×1.35]`, 0.78 `[Ultramarine ×4, corked]`, 0.91
+`[Quinacridone Rose ×2, Sap Green]`; a fifth vial tipped 1.18 rad clockwise
 with its lip at `(0.62W − 0.1w, mouth + 0.62w)` holding
 `[Sap Green, Hansa Yellow ×0.7]`, and a Hansa Yellow stream (width 0.2w) from
 that lip into the 0.62 vial's surface with three droplets.
+
+**Hex Tile Sort's and Car Loop's board art** are textures generated by
+`TextureRecipes` (Appendix A), drawn in the web's y-down art space exactly as
+the `draw` functions in `hex-tile-sort.html` and `car-loop.html` do, at
+1600 × 1000 px. The background fills the whole image and the subject is
+centred, so envelope fit can crop the sides (small boards) or the top and bottom
+(wide boards) without losing it. Both use their game's own palette in light and
+dark themes.
+
+*Hex Tile Sort* (the scale `u` puts the 270 × 230 design box at 70% of the
+image height, centred, shifted by `(−4u, +30u)`):
+- Background: vertical gradient #3A1B6E (0) → #1C0E45 (0.55) → #0B0722 (1).
+- Hexes are flat-topped, radius `R = 36`, squashed vertically by 0.6; cell centre
+  for axial `(q, r)`: `x = 1.5·R·q·1.07`, `y = √3·R·(r + q/2)·1.07·0.6`.
+- Cells and stacks (bottom to top), drawn back to front by `y`:
+  `(0,−1) [cyan, cyan, lime]`, `(1,−1) [lime ×4]`, `(−1,0) [pink, coral, coral]`,
+  `(0,0) [violet ×3, coral]`, `(1,0) [amber, cyan, cyan]`, `(−1,1)` empty,
+  `(0,1) [pink, pink, amber ×3]`.
+- Tile colours [top, side]: coral #FF5C63/#B8353B, lime #37D07A/#1F8A4E,
+  amber #FFB522/#B57A0B, violet #A466FF/#6C3BC0, cyan #26C0F2/#147FA6,
+  pink #FF63B4/#B53A7B.
+- Slot under each cell: hex radius 0.98R at `y + 3`, fill rgba(9,5,28,.62),
+  1.5 px edge rgba(255,255,255,.12). Each tile `i` (thickness 7): side hex at
+  `y − 7i`, top hex at `y − 7i − 7`, radius 0.9R, 1 px edge rgba(0,0,0,.18).
+  On each stack's top, a ring at radius 0.62R, 2 px, white α .4.
+- A coral tile mid-flip above the midpoint between the `(0,0)` and `(−1,0)` tops,
+  44 higher than the higher of the two, rotated −0.42 rad, squash 0.26 (side at
+  0, top at −5); a dashed trail (3 on, 5 off, 2 px, rgba(255,233,163,.6)) from
+  the `(0,0)` top along a quadratic curve to it.
+
+*Car Loop* (the 250 × 236 design box at 70% of the image height, centred,
+shifted by `(0, −6u)`; the entry road runs to the bottom edge):
+- Background: vertical gradient #16244A → #0B1222.
+- Entry road #323E66, x −18…18 from y = 72 down to the image's bottom edge;
+  stop line white α .9 at (−16, 84, 32 × 3.5); a white (#F4F4F5) car at (0, 102)
+  pointing up.
+- Ring: annulus radius 80 / 44 in #323E66; edge lines white α .45, 2 px, at
+  radius 76.5 and 47.5; lane line at radius 62, white α .85, 2.5 px, dashes 9/9.
+- Island #0D1830 (radius 44); tree circles #1D4A37 at (−6,−4) r15, (9,2) r12,
+  (−1,9) r11; highlight circle white α .12 at (−10,−9) r6.
+- Street lamps at angles −2.4, −0.75, 0.75, 2.4 rad, radius 94: a radial glow
+  (radius 26, rgba(255,226,150,.30) → 0) and a 2.4 dot #FFE7A3. Verge trees
+  #1D4A37 at (−108,−62) r9, (112,−30) r11, (−116,40) r10, (104,70) r8.
+- Cars on the lane (radius 62), pointing clockwise (rotation = angle + π/2):
+  −0.38π #EF4444, −0.92π #3B82F6, 0.12π #F5B82E, 0.78π #8B5CF6. Behind the
+  first car, two speed-line arcs at radius 58 and 66 from (its angle − 0.52) to
+  (its angle − 0.30), white α .6, 2 px.
+- Car shape (local, facing +x): 25 × 13.5 rounded rect r4 in the car colour,
+  over a shadow offset (1.5, 2) black α .25; windscreen (3, −4.75, 5 × 9.5) r1.5
+  rgba(18,26,44,.78); rear window (−9.5, −4.25, 3 × 8.5) r1, same colour; roof
+  shine (−5.5, −4.25, 8 × 8.5) r2, white α .28.
 
 ### 15.2 Paint Sort lobby
 
@@ -2275,6 +2438,17 @@ Toast: pill at the top (76 dp + safe area), ink background, bg-coloured text,
 
 The board backdrop (`Gradient.shader`) runs from wall-a at the top to wall-b at
 the bottom; hard levels use the hard pair, super hard the super pair.
+
+**Home-screen board colours** (per `GameDefinition`, light / dark). `b-accent`
+is the play button, `b-deep` the slab under the board and the button's drop,
+`b-soft` the chip background, `b-text` the chip text, `b-ink` the play button's
+icon and label.
+
+| Game | b-accent | b-deep | b-soft | b-text | b-ink |
+| --- | --- | --- | --- | --- | --- |
+| Paint Sort | #2B59F0 / #7090FF | #1B3FB8 / #4A63C9 | #E3EAFE / #1F2A52 | #2B59F0 / #7090FF | #FFFFFF / #0B1024 |
+| Hex Tile Sort | #FFC94A / #FFC94A | #C57C0A / #A86A0A | #FFF3D1 / #3A2A10 | #8A5200 / #FFD27A | #1A0B3B / #1A0B3B |
+| Car Loop | #12935A / #34C771 | #0B6B41 / #1D8A57 | #DDF5E8 / #14301F | #0B6B41 / #6FE3A9 | #FFFFFF / #04210F |
 **Auto** theme: Android reads `Configuration.uiMode & UI_MODE_NIGHT_MASK` via
 JNI, iOS calls `_PlayboxIsDarkMode()`; re-check on application focus.
 
@@ -2317,11 +2491,13 @@ Derived per pigment:
 - Toasts: "Nothing to undo yet", "One extra vial per level", "No pour wins from
   here. Undo or restart.", "5 more undos", "Progress erased".
 - Lobby stats line: "X painting(s) finished · Y hard level(s) beaten".
-- Home card status: `level > 1 ? "Level L · C coins" : "New · 120 coins to start"`.
-  Home greeting: after a game has been played "Welcome back" / "Paint Sort is
-  right where you left it."; otherwise "Pick a game" / "Short puzzles that
-  remember where you left off."
-- Game tagline: "Pour paint between vials until each one holds a single colour."
+- Home screen (§15.1): greeting "Welcome back" / "{Title} is right where you
+  left it." after a game has been played, otherwise "Pick a game" / "Short
+  puzzles that remember where you left off."; section labels "Start here",
+  "Jump back in", "More games", "Games"; count "{N} coming soon"; note "Your
+  progress in each game is saved on this device."; soon chip "Coming soon";
+  toast "{Title} is coming soon"; button labels "Play", "Continue".
+- Board titles, taglines and statuses: the table in §15.1.
 
 ---
 
@@ -2394,7 +2570,10 @@ compute the signed distance `d` to the shape in pixels and set coverage
 `clamp(0.5 − d, 0, 1)`. Shapes: circle, ellipse, rounded rect, capsule
 (segment + radius), convex/concave polygon (winding test + edge distance),
 annulus. Composite layers with straight alpha "over". Gaussian blur (separable)
-for shadows and glows.
+for shadows and glows. For the board art (§15.1) it also needs: transforms
+(translate, scale, rotate) applied to shapes, polygon strokes (|d| < width/2),
+linear and radial gradient fills, and dashed strokes along a sampled curve
+(capsules for the "on" segments).
 
 ### 19.2 Builders (`Playbox/Build/...`)
 
@@ -2441,8 +2620,17 @@ for shadows and glows.
 - `AudioSynthTests`: each recipe renders the expected length (± 5 ms), no NaN,
   peak ≤ 1 after normalisation, identical bytes on two runs.
 - `SaveTests`: round trip; corrupt file → defaults; erase keeps settings.
+- `HubTests`: with no save, Paint Sort is featured ("Start here") and the grid
+  is [Hex Tile Sort, Car Loop], both soon; with `last = "car-loop"` (soon) Paint
+  Sort is still featured; with three playable fakes and one featured, the grid has
+  two boards and neither is wide; with four, the last grid board is wide; a status
+  of "Level 4 · 120 coins" shows in full on the featured board and as "Level 4"
+  on a small one; the count reads "2 coming soon".
 
 **PlayMode**
+- Hub: tapping a soon board plays the shake, shows "{Title} is coming soon"
+  and loads no scene; tapping Paint Sort's board loads `PaintSort`, and coming
+  back makes it the featured board with the label "Jump back in".
 - Pour flow: tap source + target → animation completes within
   `tA + tB + tC + 50` ms and the board matches the engine.
 - Win flow: start from a fresh save with `level` set to 4, play the solver's
@@ -2462,11 +2650,11 @@ for shadows and glows.
 | --- | --- | --- |
 | M1 | Project setup, asmdefs, full engine port, probe CLI | All EngineParity, Curve, Solvability and Sawtooth tests pass; CLI output equals Appendix B.2 |
 | M2 | Texture and audio generators | Appendix A PNGs and §13.5 WAVs regenerate byte-identically; AudioSynth tests pass; audition every sound in the editor |
-| M3 | Static board: layout, vial meshes, liquid shader, symbols, cork | Levels 1, 13, 20 and 60 render in light and dark themes; hidden layers show hatched primer with '?' |
+| M3 | Static board: layout, vial meshes, liquid shader, symbols, cork | Levels 1, 13, 20 and 60 render in light and dark themes; hidden layers show hatched primer with '?'; side by side with web screenshots, paint colours match and the glass alphas have been tuned for Linear colour space (§2) |
 | M4 | Input, pour animation, stream, particles, glug sounds, haptics | Paint stays level while tipping; stream lands on the rising surface; pitch rises as the target fills; concurrent pours work |
 | M5 | Level flow: corking, the easel painting filling in as colours are sorted (§12.7), win sequence, save and resume | Win flow, Resume and Easel PlayMode tests pass; paintings match the web for levels 1, 5 and 20 |
 | M6 | Boosters, buy sheet, dead-end watcher, hint, tutorial, hard intro, hidden-paint tip | Stuck bar appears on a proven dead end within ~0.5 s; hints never spent on dead boards |
-| M7 | Lobby, level road, hub, settings, theme switching, erase progress | Road matches §15.4; Auto theme follows the OS |
+| M7 | Lobby, level road, home screen of boards, settings, theme switching, erase progress | Road matches §15.4; boards match §15.1 in both themes (featured board, grid, chips, soon boards with lock, shake and toast); Hub tests pass; Auto theme follows the OS |
 | M8 | Performance and device pass | 60 fps on a mid-range Android with 15 vials; generation never blocks the main thread; probe run for levels 1–120 recorded |
 
 ---
@@ -2491,10 +2679,15 @@ All PNGs are RGBA, straight alpha, written to
 | `ui_round_24.png` | 64×64 | Sprite, 9-slice border 26 | White rounded rect radius 24 |
 | `ui_circle.png` | 128×128 | Sprite | White disc r 63 |
 | `ui_soft_shadow.png` | 128×128 | Sprite, 9-slice border 52 | Black rounded rect 48×48 radius 20, blur σ 14, alpha .45 |
+| `ui_lock.png` | 64×64 | Sprite | White padlock on a 24-unit grid scaled by 64/24: body rounded rect (5,11)–(19,21) radius 2.5; shackle stroke 2.4 with round caps from (8,11) up to (8,8), a half circle of radius 4 centred (12,8) over the top, down to (16,11) |
+| `ui_play.png` | 64×64 | Sprite | White play triangle on the same grid: corners (8,5.5), (8,18.5), (19.9,12), each rounded with radius 1 |
+| `tex_board_hex_tile_sort.png` | 1600×1000 | Sprite, Clamp, sRGB, no mipmaps | Hex Tile Sort's board art, exactly as specified in §15.1 |
+| `tex_board_car_loop.png` | 1600×1000 | Sprite, Clamp, sRGB, no mipmaps | Car Loop's board art, exactly as specified in §15.1 |
 
 Runtime-generated (not files): vial meshes (§8.2), paint stream ribbons (§10),
 hint pointer meshes (§11), painting meshes and RenderTextures (§12), level road
-geometry (§15.4), card art RenderTexture (§15.1), backdrop gradient (§16.1).
+geometry (§15.4), Paint Sort's board-art RenderTexture (§15.1), board slabs and
+chips (uGUI, §15.1), backdrop gradient (§16.1).
 
 Audio files: §13.5.
 
