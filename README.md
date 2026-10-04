@@ -13,7 +13,10 @@ can open in a browser — no build step, no dependencies, no assets.
 | **[sparkweave](sparkweave/)** | Beam-routing roguelite on a 5×5 loom. Deep systems, but too much to explain for a casual audience. | Shelved — see note |
 
 Each folder has a `DESIGN.md` with the market rationale, the balance numbers, and
-the risks. Roundabout also has an `ASSETS.md` listing what a Unity build needs.
+the risks. For Unity, `playbox/PLAYBOX_UNITY_PLAN.md` is one build plan for the
+whole Playbox app with all three of its games, and `playbox/PLAYBOX_ASSETS.md`
+lists, per game, the assets you supply yourself. (Roundabout's own `ASSETS.md`
+predates them and covers that game on its own.)
 
 ### Shared shape
 

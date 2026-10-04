@@ -26,6 +26,19 @@ Best on a phone, portrait. `index.html#paint-sort`, `#hex-tile-sort` and
 Why Paint Sort is built the way it is, and the measured difficulty curve:
 **[DESIGN.md](DESIGN.md)**.
 
+**Building it in Unity.** Two documents cover the whole app:
+
+- **[PLAYBOX_UNITY_PLAN.md](PLAYBOX_UNITY_PLAN.md)**: one brief for an AI agent
+  (or a developer) to build Playbox and all three games in Unity 6 (URP,
+  Universal 3D): the rules of each game, the architecture and code hierarchy,
+  shared services (save, settings, audio, haptics, ads, purchases, analytics),
+  the home screen of boards, every engine as C# to port, the 3D Hex Tile Sort,
+  every asset the agent generates in code, tests, milestones and golden values
+  from the web engines.
+- **[PLAYBOX_ASSETS.md](PLAYBOX_ASSETS.md)**: everything you have to make or
+  supply yourself (app icon, store art, fonts, accounts and ids, optional art
+  and audio upgrades), in one section for the app and one per game.
+
 ---
 
 ## Paint Sort: how to play
@@ -79,7 +92,8 @@ build.sh                 inlines every src/games/*.html into the shell -> index.
                          embedding the two pages above
 tools/probe.mjs          prints the difficulty of each generated level (node tools/probe.mjs 1 60)
 DESIGN.md                why Paint Sort works the way it does, with numbers
-PAINT_SORT_UNITY_PLAN.md the brief for building Paint Sort and this home screen in Unity
+PLAYBOX_UNITY_PLAN.md    the brief for building Playbox and all three games in Unity
+PLAYBOX_ASSETS.md        the assets you supply for the Unity build, per game
 ```
 
 Edit files under `src/`, then run `./build.sh`. After changing Roundabout Rush,

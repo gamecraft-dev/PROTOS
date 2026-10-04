@@ -24,6 +24,12 @@ button to the home screen's top row; progress stays in this game's own save
 (`roundabout-rush-v1`), which the Car Loop board reads to show your level. After
 changing the game, run `./build.sh` here and then `../playbox/build.sh`.
 
+For a Unity build of Car Loop as part of Playbox, use
+[`../playbox/PLAYBOX_UNITY_PLAN.md`](../playbox/PLAYBOX_UNITY_PLAN.md) (Part IV)
+and [`../playbox/PLAYBOX_ASSETS.md`](../playbox/PLAYBOX_ASSETS.md) (section 4).
+They take their rules and numbers from this prototype and from DESIGN.md, and
+bake the shipped levels from this page's own generator.
+
 ---
 
 ## How to play

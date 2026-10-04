@@ -17,6 +17,10 @@ and the `window.storage` the game uses to keep its best score (backed by
 outside Claude, the page has no `window.storage`, so the best score lasts only
 until the page is closed.
 
+For a Unity build (in 3D, as part of Playbox), see
+[`../playbox/PLAYBOX_UNITY_PLAN.md`](../playbox/PLAYBOX_UNITY_PLAN.md) (Part III)
+and [`../playbox/PLAYBOX_ASSETS.md`](../playbox/PLAYBOX_ASSETS.md) (section 3).
+
 ## Files
 
 ```
