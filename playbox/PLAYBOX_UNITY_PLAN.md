@@ -17,9 +17,10 @@ manifest of every generated asset.
 The plan covers the rules of each game, the architecture, the code, and every
 asset the agent **generates through code**: meshes, shaders, textures,
 paintings, car sprites, icons, particles, sounds, music, prefabs, scenes and UI
-layouts. Assets the agent cannot make (app icon, store art, fonts, accounts and
-IDs, optional art upgrades) are listed in **`PLAYBOX_ASSETS.md`**, sectioned per
-game; nothing in this plan waits on them except where §1 says so.
+layouts. The only gameplay assets the agent cannot make are the fonts, listed per
+game in **`PLAYBOX_ASSETS.md`**. Store art, accounts and ad/store ids come from
+whoever publishes the app; nothing in this plan waits on them except where §1
+says so.
 
 The reference implementations are the web prototypes in this repo, and the
 agent gets their source alongside this plan (§0). Where the plan gives code,
@@ -277,7 +278,8 @@ Build a board by filling `G.cells[i].stack`, set `G.lastPlaced`, and call
    written to disk by editor scripts (`Playbox/Generate/...` menu items);
    meshes, paintings, roads and particle geometry are built at runtime. Every
    game must run with nothing else imported. The only outside inputs are the
-   items in `PLAYBOX_ASSETS.md`, and the build works without each of them:
+   fonts (`PLAYBOX_ASSETS.md`), the ad, store and analytics SDKs with their ids,
+   and any optional art added later, and the build works without each of them:
    - **Fonts:** until the TTFs are imported, TextMeshPro uses its default font
      asset through the `FontSet` indirection (§4.8).
    - **Ad, purchase and analytics SDKs:** until they are imported and
@@ -880,7 +882,7 @@ public interface IAdService
 ```
 
 - **`MediationAdService`** wraps the mediation SDK the user picks (AppLovin MAX,
-  Unity LevelPlay or AdMob; see `PLAYBOX_ASSETS.md`), compiled only with the
+  Unity LevelPlay or AdMob), compiled only with the
   `PLAYBOX_ADS` scripting define. Ad unit ids per platform and a test-mode flag
   come from `AdConfig.asset`. Initialise after consent (below), preload one
   rewarded and one interstitial, reload after each show, retry loads with
@@ -902,7 +904,7 @@ public interface IAdService
     creative every 20 s, fading 300 ms; a yellow "AD" corner tag.
 - **Consent** (only with `PLAYBOX_ADS`): at boot, before initialising the SDK,
   run Google UMP (or the CMP the user chose) and, on iOS 14.5+, the App Tracking
-  Transparency prompt with the text from `PLAYBOX_ASSETS.md`. Pass the results to
+  Transparency prompt with the user's `NSUserTrackingUsageDescription` text. Pass the results to
   the SDK. Settings never blocks on consent.
 - **Remove Ads** (`purchases.noads`) disables banners and interstitials in every
   game at once; rewarded ads stay, because the player chooses them.
@@ -991,8 +993,8 @@ to the TMP default font until its asset is assigned.
 | `CarDisplay` | Bungee | Car Loop titles, big numbers, level numbers, float texts |
 | `CarBody` | Fredoka 400–700 | all other Car Loop text |
 
-**Optional art slots** (`UiSkin.asset`). Every piece of user art in
-`PLAYBOX_ASSETS.md` names a slot; an empty slot uses the generated stand-in, a
+**Optional art slots** (`UiSkin.asset`). Any art the user adds later goes in a
+slot; an empty slot uses the generated stand-in, a
 filled one replaces it with no code change. The slot families: app logo and
 splash; Paint Sort wall illustrations (`ps_wall_*`: a full-screen sprite with
 cover fit replaces the `Gradient` backdrop), UI skin (`ps_*`), frame, cork and
@@ -1343,7 +1345,7 @@ from the source named.
 | `cl_sign` | `signSVG()` output in a 100×100 viewBox, rendered at 256×256, full colour (Car Loop's logo mark) |
 
 Generated icons are the stand-ins; any `UiSkin` icon slot the user fills
-replaces its generated icon (`PLAYBOX_ASSETS.md`).
+replaces its generated icon.
 
 ---
 
@@ -5119,7 +5121,7 @@ sports, else 13; corner radius 5 compact, 2.6 van/ambulance, else 4).
 Thumbnails in the garage, the progress bar and the car pips use the same car
 sprites rotated −90° (nose up). The turntable (§43.2) uses them too.
 
-**User car art** (`PLAYBOX_ASSETS.md` 4.2–4.3) is cropped tight to the 24 × 13
+**User car art**, if added later, is cropped tight to the 24 × 13
 footprint at 192 × 104 px (8 px per unit). Import it with PPU 8 and pivot centre
 so it lines up with the generated sprites, and assign it per car in `Cars.asset`
 (body, lights layer drawn additively on top, wreck in place of the burnt
@@ -5550,7 +5552,7 @@ Build in this order (§1). Each row's checks must pass before the next starts.
 | CL2 | Rendering: car sprites, static layer, camera fit, cars moving, attract mode | Levels 1, 8, 16 and 75 match web screenshots (road, island, trees, lamps, markings, cars); the demo ring runs on the Car Loop home |
 | CL3 | Gameplay: tap, collisions, clock, win/lose, effects, HUD, intro, tutorial and tips, sounds and music, haptics | Level 1 and crash PlayMode tests pass; the clock stays frozen until the first tap; close calls pay +3 |
 | CL4 | Boosters, complete and fail panels, revive, after-level chain, garage, daily reward, levels screen, shop | Booster and Economy tests pass; every panel in §43.3 opens from its trigger and matches the web prototype |
-| CL5 | Ads and store: banner slot, interstitial gate, every rewarded placement, Remove Ads across the app, purchases and restore, analytics events | Mock-ads PlayMode tests pass; with the real SDKs and test ids (`PLAYBOX_ASSETS.md`), a rewarded, an interstitial and a banner show on a device, and a sandbox purchase of each product grants correctly |
+| CL5 | Ads and store: banner slot, interstitial gate, every rewarded placement, Remove Ads across the app, purchases and restore, analytics events | Mock-ads PlayMode tests pass; with the real SDKs and the network's test ids, a rewarded, an interstitial and a banner show on a device, and a sandbox purchase of each product grants correctly |
 | R1 | Release pass | All tests green; 60 fps in all three games on a mid-range Android and an older iPhone; no main-thread hitch over 50 ms; consent and ATT flows verified; store assets and legal links in place |
 
 ---

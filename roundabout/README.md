@@ -26,7 +26,7 @@ changing the game, run `./build.sh` here and then `../playbox/build.sh`.
 
 For a Unity build of Car Loop as part of Playbox, use
 [`../playbox/PLAYBOX_UNITY_PLAN.md`](../playbox/PLAYBOX_UNITY_PLAN.md) (Part IV)
-and [`../playbox/PLAYBOX_ASSETS.md`](../playbox/PLAYBOX_ASSETS.md) (section 4).
+and [`../playbox/PLAYBOX_ASSETS.md`](../playbox/PLAYBOX_ASSETS.md).
 They take their rules and numbers from this prototype and from DESIGN.md, and
 bake the shipped levels from this page's own generator.
 

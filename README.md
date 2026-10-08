@@ -15,7 +15,7 @@ can open in a browser — no build step, no dependencies, no assets.
 Each folder has a `DESIGN.md` with the market rationale, the balance numbers, and
 the risks. For Unity, `playbox/PLAYBOX_UNITY_PLAN.md` is one build plan for the
 whole Playbox app with all three of its games, and `playbox/PLAYBOX_ASSETS.md`
-lists, per game, the assets you supply yourself. (Roundabout's own `ASSETS.md`
+lists, per game, the assets you supply yourself (fonts). (Roundabout's own `ASSETS.md`
 predates them and covers that game on its own.)
 
 ### Shared shape

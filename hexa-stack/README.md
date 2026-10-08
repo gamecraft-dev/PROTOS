@@ -19,7 +19,7 @@ until the page is closed.
 
 For a Unity build (in 3D, as part of Playbox), see
 [`../playbox/PLAYBOX_UNITY_PLAN.md`](../playbox/PLAYBOX_UNITY_PLAN.md) (Part III)
-and [`../playbox/PLAYBOX_ASSETS.md`](../playbox/PLAYBOX_ASSETS.md) (section 3).
+and [`../playbox/PLAYBOX_ASSETS.md`](../playbox/PLAYBOX_ASSETS.md).
 
 ## Files
 
