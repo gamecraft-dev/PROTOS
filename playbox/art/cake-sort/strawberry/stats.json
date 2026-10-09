@@ -1,0 +1,178 @@
+{
+ "objects": {
+  "Sponge": 892,
+  "Glaze": 57120,
+  "Whipped cream": 56300,
+  "Strawberry": 12864,
+  "Seeds": 4096,
+  "Leaves": 13248
+ },
+ "tris_render": 144520,
+ "body_angle_range_deg": [
+  0.0,
+  60.0
+ ],
+ "body_max_radius": 1.0,
+ "bounds_min": [
+  -0.0098,
+  -0.0227,
+  0.0
+ ],
+ "bounds_max": [
+  1.0237,
+  0.8817,
+  0.9966
+ ],
+ "pivot": [
+  0.0,
+  0.0,
+  0.0
+ ],
+ "green_share_by_slot": {
+  "hi-res game_cake": [
+   0.07,
+   0.01,
+   0.03,
+   0.18,
+   0.26,
+   0.24
+  ],
+  "game asset lod_game_cake": [
+   0.05,
+   0.02,
+   0.03,
+   0.09,
+   0.15,
+   0.14
+  ]
+ },
+ "overlap_hires": {
+  "+60deg": {
+   "visible_pairs": 0,
+   "buried_pairs": 1667
+  },
+  "-60deg": {
+   "visible_pairs": 0,
+   "buried_pairs": 1649
+  },
+  "+180deg": {
+   "visible_pairs": 0,
+   "buried_pairs": 224
+  }
+ },
+ "backfaces_hires": {
+  "lone slice": {
+   "rays_hitting": 12544,
+   "first_hits_on_back_faces": 0
+  },
+  "whole cake": {
+   "rays_hitting": 75162,
+   "first_hits_on_back_faces": 0
+  }
+ },
+ "overlap_lod": {
+  "+60deg": {
+   "visible_pairs": 0,
+   "buried_pairs": 189
+  },
+  "-60deg": {
+   "visible_pairs": 0,
+   "buried_pairs": 185
+  },
+  "+180deg": {
+   "visible_pairs": 0,
+   "buried_pairs": 35
+  }
+ },
+ "seam_rays": {
+  "rays_hitting_cake": 90794,
+  "rays_hitting_sponge_from_outside": 0
+ },
+ "lod_triangles": 1156,
+ "glb_bytes": 540276,
+ "glb_check": {
+  "meshes": 1,
+  "triangles": 1156,
+  "origin": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "bounds_min": [
+   -0.0197,
+   -0.0228,
+   0.0
+  ],
+  "bounds_max": [
+   1.024,
+   0.8868,
+   0.9905
+  ],
+  "angle_span_above_sponge_deg": [
+   0.0,
+   60.0
+  ],
+  "materials": [
+   "StrawberrySlice.001"
+  ],
+  "uv_layers": 3,
+  "color_attributes": [],
+  "double_sided": [
+   false
+  ],
+  "outline_vs_normal": {
+   "smooth_corners_checked": 900,
+   "dot_over_0.5": 900,
+   "worst_dot": 0.557
+  },
+  "textures": [
+   [
+    "StrawberrySlice_albedo.001",
+    [
+     512,
+     512
+    ]
+   ],
+   [
+    "StrawberrySlice_normal.001",
+    [
+     512,
+     512
+    ]
+   ]
+  ],
+  "bake_check": {
+   "topping_texels_sampled": 2340,
+   "bent_normals_pct": 0.0,
+   "glaze_pink_on_topping": 0
+  }
+ },
+ "unity_decode": {
+  "smooth_vertices_with_shell": 232,
+  "dot_over_0.5": 232,
+  "worst_dot": 1.0,
+  "hard_edge_vertices": 68,
+  "hard_edge_worst_dot": 0.354,
+  "weights_found": {
+   "0.0": 208,
+   "0.25": 703,
+   "0.5": 21,
+   "1.0": 279
+  },
+  "texcoord0_range": [
+   0.01,
+   0.991
+  ],
+  "texcoord0_same_as_texcoord1": 0
+ },
+ "backfaces_lod": {
+  "lone slice": {
+   "rays_hitting": 291975,
+   "first_hits_on_back_faces": 0
+  },
+  "whole cake": {
+   "rays_hitting": 1090752,
+   "first_hits_on_back_faces": 0
+  }
+ }
+}
