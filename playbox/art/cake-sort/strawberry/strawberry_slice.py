@@ -1238,7 +1238,7 @@ texture-coordinate set):
     // counter a plate is about 76 px across at 2x, R about 29 px, so 0.015 R is under half a pixel):
     float4 pos = TransformObjectToHClip(positionOS);
     float3 nWS = TransformObjectToWorldDir(outlineNormal);
-    float2 nCS = normalize(mul((float3x3)UNITY_MATRIX_VP, nWS).xy);
+    float2 nCS = SafeNormalize(float3(mul((float3x3)UNITY_MATRIX_VP, nWS).xy, 0)).xy;   // no NaN facing the camera
     float  px  = _OutlinePx * weight * step(0.5, weight);        // _OutlinePx about 2.5 at 2x, 1.5 at 1x
     pos.xy    += nCS * (2.0 * px / _ScreenParams.xy) * pos.w;
     // (if it must stay in object units, use about 0.09 R at the 76 px plate.) The previews here draw
