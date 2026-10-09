@@ -89,8 +89,10 @@ function report(title, G, players, levels, runs){
 const mode = process.argv[2] || 'model';
 if(mode === 'model'){
   // idealised players: they win heat h with chance Φ((θ − h)/β), θ fixed or growing
-  const G = { cfg: { beta: 1, mu0: 2.5, sd0: 1.8, drift: .2 }, base: n => Math.floor((n - 1) / 10) * .6 + [0, .4, .8, 1.2, 2.4, .5, .9, 1.3, 1.7, 3.4][(n - 1) % 10],
-    range: n => { const b = G.base(n); return [Math.max(0, b - 3), Math.min(10, b + 4.5)]; } };
+  // the same curve and range as Cake Sort's engine (heat 0..10, the typical curve capped after 8 blocks)
+  const RAMP = [0, .4, .8, 1.2, 2.4, .5, .9, 1.3, 1.7, 3.4], blk = n => Math.min(8, Math.floor((n - 1) / 10));
+  const G = { cfg: { beta: 1, mu0: 2.5, sd0: 1.8, drift: .2 }, base: n => blk(n) * .6 + RAMP[(n - 1) % 10],
+    range: n => [Math.max(0, blk(n) * .6 - 2.5), Math.min(10, blk(n) * .6 + RAMP[9] + 4)] };
   const ideal = theta => (n, h, seed) => ({ won: mulberry(seed)() < SK.Phi((theta(n) - h) / G.cfg.beta) });
   report('Model only (idealised players, β = 1)', G, [
     ['weak (θ 1.5)', ideal(() => 1.5)], ['typical (θ 3)', ideal(() => 3)], ['strong (θ 6)', ideal(() => 6)],

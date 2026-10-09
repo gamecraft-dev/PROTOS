@@ -212,10 +212,13 @@ const RAMP = [0, .4, .8, 1.2, 2.4, .5, .9, 1.3, 1.7, 3.4];
 const BLOCK_STEP = .6;
 const HEAT_MAX = 10;
 const STAND_WORTH = .5;                         // heat one cake stand is worth; the other knobs give it back
-const baseHeat = n => { n = Math.max(1, n | 0); return Math.floor((n - 1) / 10) * BLOCK_STEP + RAMP[(n - 1) % 10]; };
-// how far the model may move a level: down to 3 below the typical curve, up
-// to 4 above the hardest level of its block of ten
-function heatRange(n){ const b = baseHeat(n), top = Math.floor((Math.max(1, n | 0) - 1) / 10) * BLOCK_STEP + RAMP[9]; return [Math.max(0, b - 3), Math.min(HEAT_MAX, top + 4)]; }
+const BASE_BLOCKS = 8;                          // the typical curve stops climbing after this many blocks
+const blockOf = n => Math.min(BASE_BLOCKS, Math.floor((Math.max(1, n | 0) - 1) / 10));
+const baseHeat = n => { n = Math.max(1, n | 0); return blockOf(n) * BLOCK_STEP + RAMP[(n - 1) % 10]; };
+// how far the model may move a level: never below 2.5 under the start of its
+// block of ten (so later levels never fall all the way back to the first ones),
+// never above 4 over the block's hardest level
+function heatRange(n){ const start = blockOf(n) * BLOCK_STEP; return [Math.max(0, start - 2.5), Math.min(HEAT_MAX, start + RAMP[9] + 4)]; }
 
 function spec(n, h){
   n = Math.max(1, n | 0);
