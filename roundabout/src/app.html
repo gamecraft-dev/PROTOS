@@ -631,16 +631,109 @@ const IAP={
   starter:{name:'Starter Pack',price:'$1.99',coins:2000},
 };
 
+// ---------- adaptive difficulty ----------
+// The same Bayesian skill model as Playbox (playbox/src/shell.html); keep the copies equal.
+// @skill-start ---------------------------------------------------------------
+/* A Bayesian estimate of how good this player is, used to pick the heat of
+   every level so each slot of the sawtooth is won about as often as it should
+   be, whoever is playing.
+
+   Model. Skill θ lives on the game's own heat scale. A player whose θ equals a
+   level's heat h wins it half the time:      P(win | θ, h) = Φ((θ − h) / β).
+   The belief about θ is a Gaussian N(mu, sd²), starting from a wide prior.
+
+   Learning, after each attempt: assumed-density filtering, i.e. the Gaussian
+   whose mean and variance match prior × probit likelihood exactly (the update
+   TrueSkill uses):
+       c = √(β² + sd²),  t = ±(mu − h)/c   (+ for a win, − for a loss)
+       v = φ(t)/Φ(t),    w = v(v + t)
+       mu ← mu ± v·sd²/c,   sd² ← sd²·(1 − w·sd²/c²)
+   How cleanly a level was won (q, 0..1, 0.5 = "just about") is a second,
+   noisier reading of θ: x = h + β·Φ⁻¹(q), folded in with a Kalman step of
+   noise 1.5β. Skill drifts as people practise, so sd² grows by τ² first.
+
+   Choosing a level. The posterior predictive chance of winning heat h is
+       P(win | h) = Φ((mu − h) / √(β² + sd²)),
+   so the heat that gives a target win rate p is
+       h = mu − Φ⁻¹(p)·√(β² + sd²).
+   The sawtooth is a list of target win rates: high on ordinary levels, about a
+   coin flip on the 5th level of every ten, lower still on the 10th. While the
+   game is unsure (a new player, large sd) the gaps widen on both sides. Every
+   failed try at a level eases its target for the next try (mercy). */
+const SKILL_TARGET = [.9, .86, .82, .78, .5, .88, .84, .8, .76, .36];
+const SKILL_MERCY = .6;            // each failed try keeps this share of the target's miss chance
+function skillPhi(x){              // standard normal CDF (Abramowitz–Stegun 7.1.26 on erf)
+  const z = Math.abs(x) / Math.SQRT2, t = 1 / (1 + .3275911 * z);
+  const e = 1 - t * (.254829592 + t * (-.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.exp(-z * z);
+  return x >= 0 ? .5 * (1 + e) : .5 * (1 - e);
+}
+const skillPdf = x => Math.exp(-x * x / 2) / 2.5066282746310002;
+function skillPhiInv(p){           // inverse normal CDF (Acklam), p clamped to (1e-9, 1 − 1e-9)
+  p = Math.min(1 - 1e-9, Math.max(1e-9, p));
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239];
+  const b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572];
+  const c = [-.007784894002430293, -.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const d = [.007784695709041462, .3224671290700398, 2.445134137142996, 3.754408661907416];
+  if(p < .02425){ const q = Math.sqrt(-2 * Math.log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+  if(p > 1 - .02425){ const q = Math.sqrt(-2 * Math.log(1 - p)); return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+  const q = p - .5, r = q * q;
+  return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+}
+// cfg: { beta, mu0, sd0, drift }
+function skillNew(cfg){ return { mu: cfg.mu0, sd: cfg.sd0, n: 0 }; }
+function skillValid(s){ return !!s && isFinite(s.mu) && isFinite(s.sd) && s.sd > 0; }
+function skillChance(s, h, cfg){ return skillPhi((s.mu - h) / Math.sqrt(cfg.beta * cfg.beta + s.sd * s.sd)); }
+function skillTarget(pos, fails){ return 1 - (1 - SKILL_TARGET[pos]) * Math.pow(SKILL_MERCY, fails || 0); }
+function skillHeat(s, p, cfg){ return s.mu - skillPhiInv(p) * Math.sqrt(cfg.beta * cfg.beta + s.sd * s.sd); }
+function skillObserve(s, h, won, cfg){
+  const b = cfg.beta, v0 = s.sd * s.sd + cfg.drift * cfg.drift;
+  const c = Math.sqrt(b * b + v0), y = won ? 1 : -1, t = y * (s.mu - h) / c;
+  const P = skillPhi(t), v = P > 1e-12 ? skillPdf(t) / P : -t, w = v * (v + t);
+  s.mu += y * v0 / c * v;
+  s.sd = Math.sqrt(v0 * Math.max(.02, 1 - v0 / (c * c) * w));
+  s.n = (s.n | 0) + 1;
+  return s;
+}
+function skillObserveQuality(s, h, q, cfg){
+  const x = h + cfg.beta * skillPhiInv(Math.min(.97, Math.max(.03, q)));
+  // a reading pinned at either end only says "at least" (or "at most") x
+  if((q >= .95 && x < s.mu) || (q <= .05 && x > s.mu)) return s;
+  const nu = 1.5 * cfg.beta, v0 = s.sd * s.sd, K = v0 / (v0 + nu * nu);
+  s.mu += K * (x - s.mu); s.sd = Math.sqrt(v0 * (1 - K));
+  return s;
+}
+// @skill-end -----------------------------------------------------------------
+// Car Loop's heat is an effective level number: the level whose traffic,
+// speed and clock a generated level takes. Levels 1-10 are fixed lessons.
+// beta: going 12 levels harder takes a player who wins half the time down to 16%.
+const SKILL={beta:12,mu0:20,sd0:14,drift:2};
+const HARD_WORTH=10;   // what a hard level's tighter traffic and clock are worth, in levels
+function heatRange(n){return[Math.max(10,n*.3),Math.min(140,n+40)];}
+// win rate the level aims at: Car Loop's own hard levels (every 10th, and every
+// 5th after level 20) take the sawtooth's spike targets; the rest its ramp
+function levelTarget(n,fails){const pos=(n-1)%10,hard=n%10===0?2:(n>20&&n%10===5)?1:0;
+  const p=hard===2?SKILL_TARGET[9]:hard===1?SKILL_TARGET[4]:pos===4?SKILL_TARGET[3]:SKILL_TARGET[pos];
+  return 1-(1-p)*Math.pow(SKILL_MERCY,fails||0);}
+function heatFor(n){if(n<HAND.length)return null;const [lo,hi]=heatRange(n),f=S.tries.n===n?S.tries.fails|0:0;
+  return Math.round(clamp(skillHeat(S.skill,levelTarget(n,f),SKILL),lo,hi)*2)/2;}
+// one reading per try: a crash or time-out is a lost try (a revive doesn't undo
+// it); a clear is a win, and time to spare says it went easily
+function observe(won,q){const g=G;if(!g||g.mode!=='play'||g.observed)return;g.observed=true;const e=g.def.e==null?g.def.n:g.def.e;
+  skillObserve(S.skill,e,won,SKILL);if(won&&q!=null)skillObserveQuality(S.skill,e,q,SKILL);
+  S.tries=won?{n:0,fails:0}:{n:g.def.n,fails:(S.tries.n===g.def.n?S.tries.fails|0:0)+1};save();}
+
 // ---------- save ----------
 const SAVE_KEY='roundabout-rush-v1';
 function defaults(){return{v:1,unlocked:1,stars:{},coins:ECON.startCoins,owned:['zippy'],equipped:'zippy',adUnlock:{},
   boosters:{slow:0,light:0,tow:0,auto:0},introSeen:{},coachDone:{},tips:{},sound:true,music:true,haptics:true,noAds:false,starter:false,
   daily:{last:null,day:0},carProg:0,rated:false,starterSeen:false,freeCoinsAt:0,
-  stats:{played:0,won:0,crashes:0,timeups:0,revives:0,adsWatched:0},sinceInt:0,retries:0,
+  stats:{played:0,won:0,crashes:0,timeups:0,revives:0,adsWatched:0},sinceInt:0,retries:0,skill:null,tries:{n:0,fails:0},
   dev:{adFail:false,shortAds:false}};}
 let S=(()=>{try{const raw=localStorage.getItem(SAVE_KEY);if(raw){const o=JSON.parse(raw),d=defaults();
   return Object.assign(d,o,{boosters:Object.assign(d.boosters,o.boosters),dev:Object.assign(d.dev,o.dev),stats:Object.assign(d.stats,o.stats),
     daily:Object.assign(d.daily,o.daily)});}}catch(e){}return defaults();})();
+if(!skillValid(S.skill))S.skill=skillNew(SKILL);
+if(!S.tries||typeof S.tries!=='object')S.tries={n:0,fails:0};
 function save(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(S));}catch(e){}}
 
 // ---------- audio (all synthesised) ----------
@@ -832,28 +925,33 @@ function trafficPositions(def,L){
   return out;
 }
 const LV={};
-function rawDef(n){
+// e: the effective level the difficulty comes from (the adaptive model's pick).
+// Left out, it is n itself, which is the fixed curve the levels used to follow.
+function rawDef(n,e){
   let d;
   if(n<HAND.length)d=Object.assign({dir:1,tx:0},HAND[n]);
   else{
     const R=mulberry32(n*7919+17),pick=a=>a[Math.floor(R()*a.length)];
     const hard=n%10===0||(n>20&&n%10===5),dual=n>=16&&n%5===1,pulse=n>=12&&n%4===3;
+    // a hard level tightens traffic and clock on top of its effective level, so
+    // with a model it starts HARD_WORTH lower and lands on e overall
+    const x=e==null?n:Math.max(6,e-(hard?HARD_WORTH:0));
     let shape=pick(['circle','squircle','stadiumV','stadiumH','roundRect','tall','tri','hex','pent','bigCircle']);
     if(dual)shape=pick(['stadiumH','roundRect']);
     d={shape,dir:(n>=11&&R()<.38)?-1:1,pattern:pick(['even','pairs','trains','random','random']),hard:hard?1:0,dual:dual?1:0,
       tx:dual?0:pick([0,0,0,-30,30])};
-    d.speed=Math.round(Math.min(185,148+(n-10)*.75)*(n>60?.95+R()*.1:1)+(hard?6:0));
+    d.speed=Math.round(Math.min(185,148+(x-10)*.75)*(n>60?.95+R()*.1:1)+(hard?6:0));
     if(pulse){d.pulse={amp:.15+Math.min(.12,(n-12)*.004),period:3.2+R()*1.6};d.speed=Math.round(d.speed*.92);}
     // How many cars the ring takes: a cautious player needs a gap of about
     // 47 + 0.3·speed units to merge, and gaps split as cars go in, so a ring
     // holds about 2× length/gap. Levels fill from 55% of that to 88% by level 80,
     // rising fastest early on.
     const L=loopLength(d.shape),cap=2*L/(47+.3*d.speed);
-    const fill=lerp(.55,.88,Math.sqrt(clamp((n-10)/70,0,1)))*(hard?1.08:1)*(.92+R()*.16)*(pulse?.9:1);
+    const fill=lerp(.55,.88,Math.sqrt(clamp((x-10)/70,0,1)))*(hard?1.08:1)*(.92+R()*.16)*(pulse?.9:1);
     const total=Math.max(7,Math.round(cap*fill));
     d.player=clamp(Math.round(total*.5+R()*1.2-.6),5,10);d.traffic=Math.max(2,total-d.player);
   }
-  d.n=n;d.seed=n*104729+7;
+  d.n=n;d.e=n<HAND.length||e==null?null:e;d.seed=n*104729+7;
   const sx=SHAPES[d.shape];
   d.feeders=d.dual?(sx.type==='rect'?[-(sx.w-sx.r)*.75,(sx.w-sx.r)*.75]:[-50,50]):[d.tx||0];
   return d;
@@ -868,20 +966,23 @@ function loopLength(shape){if(LOOPLEN[shape])return LOOPLEN[shape];const p=loopP
 // margin) so the ring never packs too tight for careful play. The clock is the
 // reference player's time times a slack that shrinks as levels go on.
 const REF={lead:.35,margin:.12,gap:.25},CAUTIOUS={lead:.45,margin:.15,gap:.35};
-function levelDef(n){
-  if(LV[n])return LV[n];
+function levelDef(n,e){
+  if(n<HAND.length)e=null;
+  const key=e==null?n:n+'@'+e;
+  if(LV[key])return LV[key];
   let d,res,ref,att;
   for(att=0;att<12;att++){
-    d=rawDef(n);
+    d=rawDef(n,e);
     d.traffic=Math.max(0,d.traffic-att);if(att>=4)d.player=Math.max(3,d.player-Math.floor((att-2)/2));
     res=greedySolve(d,3);ref=res.ok&&res.spare>=(n<25?2:1)?refSolve(d,REF,20):{ok:false};
     if(ref.ok&&refSolve(d,CAUTIOUS,60).ok)break;
   }
-  const slack=(n<=3?2.2:lerp(2,1.4,clamp((n-4)/60,0,1)))*(d.hard?.95:1)*(d.dual?1.15:1);
+  const x=e==null?n:Math.max(6,e-(d.hard?HARD_WORTH:0));
+  const slack=(n<=3?2.2:lerp(2,1.4,clamp((x-4)/60,0,1)))*(d.hard?.95:1)*(d.dual?1.15:1);
   d.time=Math.ceil(Math.max(ref.T*slack+2,d.player*1.2+3));
   if(n===1)d.time=30;
   d.greedyT=res.T;d.refT=ref.T;d.spare=res.spare;d.att=att;
-  return LV[n]=d;
+  return LV[key]=d;
 }
 
 // ---------- simulation ----------
@@ -1555,7 +1656,7 @@ function trafficColorsFor(def){
 }
 function startLevel(n){
   Modal.closeAll();pauseWhy.clear();nav.length=0;exitTow();hideCoach();
-  const def=levelDef(n);
+  const def=levelDef(n,heatFor(n));
   G=createScene(def,{colors:trafficColorsFor(def)});
   Object.assign(G,{mode:'play',state:'ready',started:false,time:def.time,parts:[],texts:[],decals:[],glow:null,shake:0,slowT:0,lightT:0,autoN:0,
     towMode:false,closeN:0,boostersUsed:0,revives:0,endT:0,lastSec:99,
@@ -1563,7 +1664,7 @@ function startLevel(n){
   scenePaths(G);show('game');layout();
   $('#lvlName').innerHTML=`LEVEL ${def.n}${def.hard?` <span class="hardChip">${icon('i-flame')}HARD</span>`:''}`;
   renderBoosters();renderCarsLeft();showIntro();
-  S.stats.played++;save();track('level_start',{level:n,time:def.time,traffic:def.traffic,player:def.player});
+  S.stats.played++;save();track('level_start',{level:n,e:def.e,time:def.time,traffic:def.traffic,player:def.player,mu:+S.skill.mu.toFixed(2),sd:+S.skill.sd.toFixed(2)});
   const intro=BOOSTERS.find(b=>def.n>=b.unlock&&!S.introSeen[b.id]);
   if(intro)setTimeout(()=>{if(G&&G.def===def&&G.state==='ready')openBoosterIntro(intro.id,()=>tutorial(def));},700);
   else tutorial(def);
@@ -1639,6 +1740,8 @@ function checkWin(){const g=G;if(!(g.state==='playing'||g.state==='ready'))retur
   if(g.cars.every(c=>c.kind!=='player'||(c.mode==='loop'&&c.tail<=0)))onWin();}
 function onWin(){
   const g=G;g.state='won';g.endT=0;g.glow={c:'go',t:g.t};exitTow();hideCoach();
+  // time to spare: 15% of the clock (the 2-star line) reads as "just about", 40% (3 stars) as easy
+  observe(true,skillPhi((g.time/g.def.time-.15-.1*g.boostersUsed)/.2));
   fxConfetti(g.island.cx,g.island.cy,110);fxRing(g.island.cx,g.island.cy,'#7CF0A8',Math.max(g.island.w,g.island.h)*.5,.8,4);
   AU.fx.win();setTimeout(()=>AU.fx.honk(),380);buzz([20,40,20]);
   track('level_complete',{level:g.def.n,timeLeft:+g.time.toFixed(1),close:g.closeN,boosters:g.boostersUsed,revives:g.revives});
@@ -1648,10 +1751,10 @@ function onCrash(a,b){
   const mx=(a.p.x+b.p.x)/2,my=(a.p.y+b.p.y)/2,cols=[a,b].map(c=>c.kind==='traffic'?c.color:playerColor());
   makeWreck(a,mx,my);makeWreck(b,mx,my);fxCrash(mx,my,cols);g.shake=18;AU.fx.crash();
   if(g.state==='playing'||g.state==='ready'){g.state='crashed';g.endT=0;g.glow={c:'stop',t:g.t,hold:true};buzz([60,40,90]);
-    hideCoach();exitTow();S.stats.crashes++;save();renderCarsLeft();track('level_fail',{level:g.def.n,reason:'crash',in:countIn()});}
+    hideCoach();exitTow();S.stats.crashes++;observe(false);save();renderCarsLeft();track('level_fail',{level:g.def.n,reason:'crash',in:countIn()});}
 }
 function onTimeUp(){const g=G;g.state='timeup';g.endT=0;g.glow={c:'stop',t:g.t,hold:true};exitTow();hideCoach();AU.fx.fail();buzz([40,60,40]);
-  floatText(g.island.cx,g.island.cy,"TIME!",'#FF7884',30);S.stats.timeups++;save();track('level_fail',{level:g.def.n,reason:'time',in:countIn()});}
+  floatText(g.island.cx,g.island.cy,"TIME!",'#FF7884',30);S.stats.timeups++;observe(false);save();track('level_fail',{level:g.def.n,reason:'time',in:countIn()});}
 const countIn=()=>G.cars.filter(c=>c.kind==='player'&&c.mode==='loop').length;
 function tap(f){
   const g=G;if(!g||g.mode!=='play'||g.towMode)return;
@@ -1769,7 +1872,7 @@ function openComplete(){
   const bonus=RARITY[(CAR[S.equipped]||CARS[0]).rarity].bonus;
   const base=Math.round(ECON.levelCoins(def.n)*ECON.starMult[stars]*(def.hard?ECON.hardMult:1)*(1+bonus/100)),closeC=g.closeN*ECON.closeCall;
   const target=nextGiftCar(),prev=S.carProg;if(target)S.carProg=Math.min(1,S.carProg+ECON.carProg(stars));save();
-  if(!LV[def.n+1])setTimeout(()=>levelDef(def.n+1),450); // generate the next level while this panel is up
+  setTimeout(()=>levelDef(def.n+1,heatFor(def.n+1)),450); // generate the next level while this panel is up
   const segs=ECON.multBar.map(x=>`<span>×${x}</span>`).join('');
   const m=Modal.open(`<span class="ribbon go">LEVEL ${def.n}</span><h2 class="ttl go">COMPLETE!</h2>
     <div class="stars">${[0,1,2].map(i=>`<svg class="ico" data-s="${i}"><use href="#star"/></svg>`).join('')}</div>
@@ -2037,7 +2140,7 @@ if(S.noAds)app.classList.add('noads');
 renderCoins();Ads.banner();setInterval(()=>{if(!S.noAds&&!Ads.busy)Ads.banner();},20000);
 layout();requestAnimationFrame(frame);
 (function load(){
-  const jobs=[()=>{for(const c of CARS)sprite('p'+c.id,c);},...[0,1,2].map(i=>()=>levelDef(S.unlocked+i)),()=>document.fonts&&document.fonts.ready];
+  const jobs=[()=>{for(const c of CARS)sprite('p'+c.id,c);},()=>levelDef(S.unlocked,heatFor(S.unlocked)),()=>document.fonts&&document.fonts.ready];
   const hints=['Warming up engines…','Painting the lane lines…','Timing the traffic…','Polishing the hubcaps…'];let i=0;
   const step=()=>{if(i<jobs.length){try{jobs[i]();}catch(e){}i++;$('#sFill').style.width=(i/jobs.length*100)+'%';$('#sHint').textContent=hints[Math.min(hints.length-1,i)];setTimeout(step,170);return;}
     setTimeout(()=>{$('#splash').classList.add('out');setTimeout(()=>$('#splash').remove(),500);show('home');
@@ -2047,7 +2150,8 @@ layout();requestAnimationFrame(frame);
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{if(G)buildStatic();});
 
 // ---------- headless hooks (balance probes + screenshots) ----------
-window.__rr={get G(){return G;},get S(){return S;},levelDef,rawDef,startLevel,tap,useBooster,goHome,show,go,
+window.__rr={get G(){return G;},get S(){return S;},levelDef,rawDef,startLevel,heatFor,skill:()=>Object.assign({tries:S.tries},S.skill),
+  setSkill:(mu,sd)=>{S.skill=Object.assign(skillNew(SKILL),{mu,sd:sd||S.skill.sd});save();},tap,useBooster,goHome,show,go,
   safe:(f=0)=>safeAt(G,f,0),light:(f=0)=>lightState(G,f),turbo:k=>{turbo=k;},step:dt=>update(dt),log:LOG,
   plan:(f,lead,e)=>planTap(G,f,lead,e),dist:()=>G.dist,speed:()=>worldSpeed(G)*G.slowK,
   open:{pause:openPause,settings:openSettings,daily:openDaily,fail:openFail,complete:openComplete,boosterIntro:openBoosterIntro,

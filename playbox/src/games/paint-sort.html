@@ -192,32 +192,44 @@ function shuffle(a, r){
   return a;
 }
 
-/* ---- difficulty curve ----
-   Levels come in blocks of ten. Inside a block the heat climbs, spikes at the
-   5th level (hard), drops back, climbs again and spikes harder at the 10th
-   (super hard). Each block starts a notch above the last one, so the curve is
-   a rising sawtooth. RAMP is the in-block shape, PICK chooses which of the
-   generated candidates to keep (0 = the most forgiving, 1 = the most punishing). */
+/* ---- difficulty ----
+   A level's difficulty is one number, its heat h. The whole part sets the
+   colours (3 + h), the fraction picks which of the generated candidates to
+   keep (0 = the most forgiving, 1 = the most punishing), so difficulty rises
+   smoothly with h. Which heat a level gets is the adaptive model's call
+   (Playbox.skill, in the shell): it aims each slot of a block of ten at a
+   target win rate for this player, so the 5th level (hard) and the 10th
+   (super hard) still spike, relative to how well this player plays.
+   baseHeat(n) is the sawtooth a typical new player starts on, and the heat
+   used when no model is given (the probe, tests): inside a block it climbs,
+   spikes at the 5th, drops back, climbs and spikes harder at the 10th, and
+   each block starts a notch above the last. */
 const RAMP = [0, .45, .9, 1.35, 2.5, .6, 1.05, 1.5, 1.95, 3.6];
-const PICK = [0, .35, .55, .7, 1, 0, .45, .6, .75, 1];
 const BLOCK_STEP = 1.15;                        // heat added per block of ten
 const MAX_COLOURS = 12;
-const K_CAP = [10, 11, 12];                     // colour ceiling per tier keeps the spikes above the ramp forever
+const HEAT_MAX = MAX_COLOURS - 2;               // 12 colours, most punishing candidate
+const baseHeat = n => { n = Math.max(1, n | 0); return Math.floor((n - 1) / 10) * BLOCK_STEP + RAMP[(n - 1) % 10]; };
+// how far the model may move a level: down to 3 below the typical curve, up
+// to 4 above the hardest level of its block of ten
+function heatRange(n){
+  const b = baseHeat(n), top = Math.floor((Math.max(1, n | 0) - 1) / 10) * BLOCK_STEP + RAMP[9];
+  return [Math.max(0, b - 3), Math.min(HEAT_MAX, top + 4)];
+}
 
-function spec(n){
+function spec(n, h){
   n = Math.max(1, n | 0);
   const block = Math.floor((n - 1) / 10), pos = (n - 1) % 10;
   const tier = pos === 9 ? 2 : pos === 4 ? 1 : 0;           // 0 normal · 1 hard · 2 super hard
-  const heat = block * BLOCK_STEP + RAMP[pos];
-  const K = n === 1 ? 3 : Math.min(K_CAP[tier], Math.round(3 + heat));
+  const heat = n === 1 ? 0 : Math.min(HEAT_MAX, Math.max(0, h == null ? baseHeat(n) : +h));
+  const K = Math.min(MAX_COLOURS, 3 + Math.floor(heat));
   // hidden layers start at level 13: on the spikes and two ramp levels per
   // block, and from level 61 on every ramp level except the breathers
   const mysteryOn = n >= 13 && (tier > 0 || pos === 2 || pos === 7 || (block >= 6 && pos !== 0 && pos !== 5));
   const mystery = mysteryOn ? Math.min(.7, .3 + block * .04 + tier * .12) : 0;
   return {
     n, block, pos, tier, heat, K, E: 2, cap: CAP, mystery,
-    pick: PICK[pos],
-    cands: tier === 2 ? 14 : tier === 1 ? 9 : 4,
+    pick: K === MAX_COLOURS ? Math.min(1, heat - (MAX_COLOURS - 3)) : heat - Math.floor(heat),
+    cands: tier === 2 ? 10 : tier === 1 ? 8 : 5,
     reward: tier === 2 ? 60 : tier === 1 ? 30 : 10
   };
 }
@@ -420,9 +432,9 @@ function deal(K, E, C, r){
 
 /* Build level n. Deterministic: the same n always yields the same board, on
    every device, so a restart or a reinstall replays the same puzzle. */
-function generate(n){
-  const sp = spec(n), C = sp.cap;
-  const r = rng32(seedFor(n, 7));
+function generate(n, h){
+  const sp = spec(n, h), C = sp.cap;
+  const r = rng32(seedFor(n, 7 + Math.round(sp.heat * 20)));
   const cands = [];
   let attempts = 0;
   while(cands.length < sp.cands && attempts < sp.cands * 6){
@@ -1057,6 +1069,28 @@ function mount(stage, api){
   S.tips = S.tips || {};
   S.stats = Object.assign({ won: 0, hard: 0, super: 0 }, S.stats);
   if(S.symbols == null) S.symbols = false;
+  // adaptive difficulty: this game's belief about the player's skill (Playbox.skill).
+  // beta comes from the bots: failure climbs from 15% to 85% over about 3.7 heat.
+  const SK = api.skill, SKILL = { beta: 1.8, mu0: 3.2, sd0: 1.8, drift: .3 };
+  if(!SK.valid(S.skill)) S.skill = SK.create(SKILL);
+  if(!S.tries || typeof S.tries !== 'object') S.tries = { n: 0, fails: 0 };
+  const failsAt = n => S.tries.n === n ? S.tries.fails | 0 : 0;
+  // the heat that gives level n its slot's target win rate for this player
+  function heatFor(n){
+    const [lo, hi] = heatRange(n), p = SK.target((n - 1) % 10, failsAt(n));
+    return Math.round(Math.min(hi, Math.max(lo, SK.heat(S.skill, p, SKILL))) * 20) / 20;
+  }
+  // one reading per try: a dead end (or giving up) is a lost try; a finished
+  // board is a win, and pours close to the shortest solution, with no
+  // boosters, say it went easily
+  function observe(won, q){
+    if(!L || L.observed) return;
+    L.observed = true;
+    SK.observe(S.skill, L.h, won, SKILL);
+    if(won && q != null) SK.quality(S.skill, L.h, q, SKILL);
+    S.tries = won ? { n: 0, fails: 0 } : { n: L.n, fails: failsAt(L.n) + 1 };
+    api.persist();
+  }
 
   const el = h('div', { class: 'ps', 'data-tier': '0' });
   el.innerHTML = TEMPLATE;
@@ -1082,22 +1116,22 @@ function mount(stage, api){
   const timers = new Set();
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); return id; };
   const cache = new Map();
-  const levelData = n => { if(!cache.has(n)) cache.set(n, generate(n)); return cache.get(n); };
+  const levelData = (n, h) => { const k = n + '@' + h; if(!cache.has(k)) cache.set(k, generate(n, h)); return cache.get(k); };
 
   /* ---------- level state ---------- */
   function freshLevel(n){
-    const gd = levelData(n), colorOf = [], vials = [], rev = [];
+    const heat = heatFor(n), gd = levelData(n, heat), colorOf = [], vials = [], rev = [];
     gd.vials.forEach((v, vi) => {
       const ids = [];
       v.forEach((c, ui) => { const id = colorOf.length; colorOf.push(gd.palette[c]); ids.push(id); if(!gd.hidden[vi][ui]) rev.push(id); });
       vials.push(ids);
     });
-    return { n, colorOf, palette: gd.palette.slice(), vials, rev, init: vials.map(v => v.slice()), rev0: rev.slice(),
-      hist: [], undos: UNDOS_PER_TRY, moves: 0, extra: false, help: false };
+    return { n, h: gd.spec.heat, len: gd.len, colorOf, palette: gd.palette.slice(), vials, rev, init: vials.map(v => v.slice()), rev0: rev.slice(),
+      hist: [], undos: UNDOS_PER_TRY, moves: 0, extra: false, help: false, observed: false };
   }
   function hydrate(cur){
     L = Object.assign({}, cur);
-    L.sp = spec(cur.n);
+    L.sp = spec(cur.n, cur.h); L.h = L.sp.heat;
     L.revSet = new Set(cur.rev);
     L.won = false;
     art = buildArt(cur.n, L.palette.length);
@@ -1108,7 +1142,8 @@ function mount(stage, api){
   function persist(){
     if(L && !L.won){
       S.cur = { n: L.n, colorOf: L.colorOf, palette: L.palette, vials: L.vials, rev: [...L.revSet], init: L.init,
-        rev0: L.rev0, hist: L.hist, undos: L.undos, moves: L.moves, extra: L.extra, help: L.help };
+        rev0: L.rev0, hist: L.hist, undos: L.undos, moves: L.moves, extra: L.extra, help: L.help,
+        h: L.h, len: L.len, observed: !!L.observed };
     }
     api.persist();
   }
@@ -1319,10 +1354,12 @@ function mount(stage, api){
     L.clean = !L.help;
     if(L.clean) S.coins += 5;
     if(L.n === 1) S.tips.tut = true;
+    observe(true, L.len && L.moves ? SK.Phi((L.len / L.moves - .7) / .25) * (L.help ? .6 : 1) : null);
     S.level = Math.max(S.level, L.n + 1);
     S.cur = null;
     api.persist(true);
-    later(() => levelData(L.n + 1), 900);        // mix the next board while the player admires this one
+    const next = L.n + 1;
+    later(() => levelData(next, heatFor(next)), 900);   // mix the next board while the player admires this one
   }
   function winSequence(){
     if(!L || view !== 'play') return;
@@ -1385,10 +1422,17 @@ function mount(stage, api){
   function restart(ask){
     if(!L || L.won || anims.length) return;
     if(ask && L.moves > 0){
-      sheet({ eyebrow: `Level ${L.n}`, title: 'Start this level again?', sub: 'The board goes back to how it started. Your 5 undos come back too.',
-        actions: [{ label: 'Restart level', onClick: () => restart(false) }, { label: 'Keep playing', kind: 'ghost' }] });
+      // giving up part-way is a lost try; after two, a gentler board is on offer
+      const gaveUp = () => { if(L.moves >= 3) observe(false); };
+      const gentler = failsAt(L.n) + (L.observed || L.moves < 3 ? 0 : 1) >= 2;
+      sheet({ eyebrow: `Level ${L.n}`, title: 'Start this level again?', sub: 'The board goes back to how it started. Your 5 undos come back too.' +
+        (gentler ? ' Or mix a new board, set a little easier.' : ''),
+        actions: [{ label: 'Restart level', onClick: () => { gaveUp(); restart(false); } },
+          gentler ? { label: 'Mix a gentler board', kind: 'ghost', onClick: () => { gaveUp(); S.cur = null; startLevel(L.n, true); } } : null,
+          { label: 'Keep playing', kind: 'ghost' }].filter(Boolean) });
       return;
     }
+    L.observed = false;                          // a new try at the same board
     L.vials = L.init.map(v => v.slice()); L.revSet = new Set(L.rev0);
     L.hist = []; L.undos = UNDOS_PER_TRY; L.moves = 0;
     sel = -1; hintMv = null;
@@ -1431,6 +1475,7 @@ function mount(stage, api){
   }
   function showStuck(){
     if(stuckShown) return;
+    observe(false);
     stuckShown = true; stuckEl.hidden = false;
     ref('stuckVial').hidden = L.extra;
     sfx.bonk();
@@ -1757,7 +1802,8 @@ function mount(stage, api){
   /* ---------- lobby ---------- */
   function renderLobby(){
     bind('coins', S.coins);
-    const n = S.level, sp = spec(n), resume = S.cur && S.cur.n === n;
+    const n = S.level, resume = S.cur && S.cur.n === n;
+    const heat = resume ? S.cur.h : heatFor(n), sp = spec(n, heat);
     bind('nextEyebrow', sp.tier ? `Up next · ${TIER_NAME[sp.tier]}` : 'Up next');
     ref('lobby').querySelector('.ps-next-eyebrow').dataset.tier = sp.tier;
     bind('nextTitle', `Study No. ${n}`);
@@ -1776,16 +1822,16 @@ function mount(stage, api){
     bind('blockLabel', `Levels ${block * 10 + 1}–${block * 10 + 10}`);
     bind('lobbyNote', S.stats.won
       ? `${S.stats.won} painting${S.stats.won === 1 ? '' : 's'} finished · ${S.stats.hard + S.stats.super} hard level${S.stats.hard + S.stats.super === 1 ? '' : 's'} beaten`
-      : 'Every level is mixed fresh on your device. Levels 5 and 10 of each ten are the hard ones.');
+      : 'Every level is mixed fresh on your device, to suit how you play. Levels 5 and 10 of each ten are the hard ones.');
     renderRoad(n);
-    later(() => levelData(n), 120);             // have the board ready before Play is tapped
+    if(!resume) later(() => levelData(n, heat), 120);   // have the board ready before Play is tapped
   }
   function renderRoad(n){
     const svg = ref('road'), block = Math.floor((n - 1) / 10), first = block * 10 + 1;
-    const X = p => 22 + p * (296 / 9), Y = p => 104 - RAMP[p] / 3.6 * 76;
+    const X = p => 22 + p * (296 / 9), Y = p => 104 - (1 - SK.TARGET[p]) / .64 * 76;
     const ns = 'http://www.w3.org/2000/svg', mk = (tag, a) => { const e = document.createElementNS(ns, tag); for(const k in a) e.setAttribute(k, a[k]); return e; };
     svg.replaceChildren();
-    const pts = RAMP.map((_, p) => `${X(p)},${Y(p)}`);
+    const pts = SK.TARGET.map((_, p) => `${X(p)},${Y(p)}`);
     svg.append(mk('polyline', { points: pts.join(' '), class: 'rd-line' }));
     const doneP = n - first;
     if(doneP > 0) svg.append(mk('polyline', { points: pts.slice(0, doneP + 1).join(' '), class: 'rd-done' }));
@@ -1865,6 +1911,8 @@ function mount(stage, api){
     state: () => L && colors(), level: () => L && L.n, tap: tapVial, undo, hint, addVial, restart: () => restart(false),
     solveNow: () => L && solve(colors(), CAP, 200000), view: () => view, idle: () => !anims.length,
     save: () => JSON.parse(JSON.stringify({ level: S.level, coins: S.coins, inv: S.inv, stats: S.stats })),
+    skill: () => Object.assign({ tries: S.tries }, S.skill), heatFor, heat: () => L && L.h,
+    setSkill: (mu, sd) => { S.skill = Object.assign(SK.create(SKILL), { mu, sd: sd || S.skill.sd }); api.persist(); },     // dev
     play: n => { if(n){ S.level = n; S.cur = null; } startLevel(S.level, false); }     // dev: jump to a level
   });
 

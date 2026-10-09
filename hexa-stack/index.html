@@ -73,6 +73,8 @@
     font-family:var(--display); font-weight:700; font-size:12px; letter-spacing:.12em;
     text-transform:uppercase; color:var(--dim); white-space:nowrap;
   }
+  .ribbon .lv[data-tone="1"]{color:#FF8A8F}
+  .ribbon .lv[data-tone="2"]{color:#C99BFF}
   .bar{flex:1; height:6px; border-radius:99px; background:rgba(255,255,255,.09); overflow:hidden}
   .bar i{display:block; height:100%; width:0%; border-radius:99px;
     background:linear-gradient(90deg,#8B5CF6,#22D3EE); transition:width .45s cubic-bezier(.2,.9,.2,1)}
@@ -211,6 +213,90 @@ const COLOURS = [
 ];
 const MAX_COLOURS = COLOURS.length;
 
+/* ----------------------------- adaptive difficulty -----------------------------
+   The same Bayesian skill model as Playbox (playbox/src/shell.html); keep the
+   copies equal. The endless run is cut into stages of CLEARS_PER_TIER clears
+   (the same seven clears that bring a new colour). Each stage is dealt at a
+   heat the model picks for this player: the 5th stage of every ten is a hard
+   wave and the 10th a super-hard one. Losing a stage ends the run, so every
+   stage aims at the target of a second try (the sawtooth eased by mercy once):
+   about 94% of ordinary stages survive, 70% of hard ones, 62% of super-hard ones. */
+// @skill-start ---------------------------------------------------------------
+/* A Bayesian estimate of how good this player is, used to pick the heat of
+   every level so each slot of the sawtooth is won about as often as it should
+   be, whoever is playing.
+
+   Model. Skill θ lives on the game's own heat scale. A player whose θ equals a
+   level's heat h wins it half the time:      P(win | θ, h) = Φ((θ − h) / β).
+   The belief about θ is a Gaussian N(mu, sd²), starting from a wide prior.
+
+   Learning, after each attempt: assumed-density filtering, i.e. the Gaussian
+   whose mean and variance match prior × probit likelihood exactly (the update
+   TrueSkill uses):
+       c = √(β² + sd²),  t = ±(mu − h)/c   (+ for a win, − for a loss)
+       v = φ(t)/Φ(t),    w = v(v + t)
+       mu ← mu ± v·sd²/c,   sd² ← sd²·(1 − w·sd²/c²)
+   How cleanly a level was won (q, 0..1, 0.5 = "just about") is a second,
+   noisier reading of θ: x = h + β·Φ⁻¹(q), folded in with a Kalman step of
+   noise 1.5β. Skill drifts as people practise, so sd² grows by τ² first.
+
+   Choosing a level. The posterior predictive chance of winning heat h is
+       P(win | h) = Φ((mu − h) / √(β² + sd²)),
+   so the heat that gives a target win rate p is
+       h = mu − Φ⁻¹(p)·√(β² + sd²).
+   The sawtooth is a list of target win rates: high on ordinary levels, about a
+   coin flip on the 5th level of every ten, lower still on the 10th. While the
+   game is unsure (a new player, large sd) the gaps widen on both sides. Every
+   failed try at a level eases its target for the next try (mercy). */
+const SKILL_TARGET = [.9, .86, .82, .78, .5, .88, .84, .8, .76, .36];
+const SKILL_MERCY = .6;            // each failed try keeps this share of the target's miss chance
+function skillPhi(x){              // standard normal CDF (Abramowitz–Stegun 7.1.26 on erf)
+  const z = Math.abs(x) / Math.SQRT2, t = 1 / (1 + .3275911 * z);
+  const e = 1 - t * (.254829592 + t * (-.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.exp(-z * z);
+  return x >= 0 ? .5 * (1 + e) : .5 * (1 - e);
+}
+const skillPdf = x => Math.exp(-x * x / 2) / 2.5066282746310002;
+function skillPhiInv(p){           // inverse normal CDF (Acklam), p clamped to (1e-9, 1 − 1e-9)
+  p = Math.min(1 - 1e-9, Math.max(1e-9, p));
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239];
+  const b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572];
+  const c = [-.007784894002430293, -.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const d = [.007784695709041462, .3224671290700398, 2.445134137142996, 3.754408661907416];
+  if(p < .02425){ const q = Math.sqrt(-2 * Math.log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+  if(p > 1 - .02425){ const q = Math.sqrt(-2 * Math.log(1 - p)); return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+  const q = p - .5, r = q * q;
+  return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+}
+// cfg: { beta, mu0, sd0, drift }
+function skillNew(cfg){ return { mu: cfg.mu0, sd: cfg.sd0, n: 0 }; }
+function skillValid(s){ return !!s && isFinite(s.mu) && isFinite(s.sd) && s.sd > 0; }
+function skillChance(s, h, cfg){ return skillPhi((s.mu - h) / Math.sqrt(cfg.beta * cfg.beta + s.sd * s.sd)); }
+function skillTarget(pos, fails){ return 1 - (1 - SKILL_TARGET[pos]) * Math.pow(SKILL_MERCY, fails || 0); }
+function skillHeat(s, p, cfg){ return s.mu - skillPhiInv(p) * Math.sqrt(cfg.beta * cfg.beta + s.sd * s.sd); }
+function skillObserve(s, h, won, cfg){
+  const b = cfg.beta, v0 = s.sd * s.sd + cfg.drift * cfg.drift;
+  const c = Math.sqrt(b * b + v0), y = won ? 1 : -1, t = y * (s.mu - h) / c;
+  const P = skillPhi(t), v = P > 1e-12 ? skillPdf(t) / P : -t, w = v * (v + t);
+  s.mu += y * v0 / c * v;
+  s.sd = Math.sqrt(v0 * Math.max(.02, 1 - v0 / (c * c) * w));
+  s.n = (s.n | 0) + 1;
+  return s;
+}
+function skillObserveQuality(s, h, q, cfg){
+  const x = h + cfg.beta * skillPhiInv(Math.min(.97, Math.max(.03, q)));
+  // a reading pinned at either end only says "at least" (or "at most") x
+  if((q >= .95 && x < s.mu) || (q <= .05 && x > s.mu)) return s;
+  const nu = 1.5 * cfg.beta, v0 = s.sd * s.sd, K = v0 / (v0 + nu * nu);
+  s.mu += K * (x - s.mu); s.sd = Math.sqrt(v0 * (1 - K));
+  return s;
+}
+// @skill-end -----------------------------------------------------------------
+const SKILL = { beta: 1, mu0: 2.5, sd0: 1.8, drift: .2 };
+const HEAT_MAX = 8;
+let SKL = skillNew(SKILL);
+const stageTier = st => { const p = st % 10; return p === 9 ? 2 : p === 4 ? 1 : 0; };
+const stageHeat = st => clamp(skillHeat(SKL, skillTarget(st % 10, 1), SKILL), 0, HEAT_MAX);
+
 /* ----------------------------- utils ----------------------------- */
 const clamp = (v,a,b)=> v<a?a:v>b?b:v;
 const lerp  = (a,b,t)=> a+(b-a)*t;
@@ -283,6 +369,7 @@ const G = {
   cells:[], map:new Map(),
   tray:new Array(TRAY_SLOTS).fill(null),
   score:0, best:0, clears:0, colours:START_COLOURS,
+  stage:0, heat:0, peak:0, stageDone:false,     // adaptive stage, its heat, fullest the board got in it
   over:false, rotating:false, rot:0,
   chain:0, dirty:false, lastPlaced:null,
   held:null, selected:-1,
@@ -697,13 +784,16 @@ function draw(){
     ctx.globalAlpha=clamp(b.life,0,1);
     ctx.translate(L.cx, L.cy - L.s*3.6);
     const pop = 1+0.22*Math.max(0, 1-(1-b.life)*4);
-    ctx.scale(pop,pop);
     ctx.font=`800 ${Math.round(L.s*0.95)}px 'Baloo 2', ui-rounded, system-ui, sans-serif`;
+    const fit = Math.min(1, L.w*0.88/(ctx.measureText(b.txt).width*pop + L.s*0.22));   // long banners shrink to fit
+    ctx.scale(pop*fit,pop*fit);
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.lineWidth=L.s*0.22; ctx.lineJoin='round'; ctx.strokeStyle='rgba(10,5,30,.9)';
     ctx.strokeText(b.txt,0,0);
     const gr=ctx.createLinearGradient(0,-L.s*0.5,0,L.s*0.5);
-    gr.addColorStop(0,'#FFF0B0'); gr.addColorStop(1,'#FFB020');
+    if(b.tone===2){ gr.addColorStop(0,'#F1DEFF'); gr.addColorStop(1,'#B06BFF'); }
+    else if(b.tone===1){ gr.addColorStop(0,'#FFD9D6'); gr.addColorStop(1,'#FF5C63'); }
+    else { gr.addColorStop(0,'#FFF0B0'); gr.addColorStop(1,'#FFB020'); }
     ctx.fillStyle=gr; ctx.fillText(b.txt,0,0);
     ctx.restore();
   }
@@ -794,25 +884,26 @@ function boardTopColours(){
   }
   return pool;
 }
+// how often a new tile matches a colour already on top of the board: 0.8 at
+// heat 0, 0.62 (the original game) at about 2.5, down to 0.25
 function pickColour(exclude){
   const pool = boardTopColours().filter(c=>c!==exclude);
-  if(pool.length && Math.random()<0.62) return pool[rnd(pool.length)];
+  if(pool.length && Math.random()<clamp(0.8-0.07*G.heat, 0.25, 0.8)) return pool[rnd(pool.length)];
   let c, guard=0;
   do{ c=rnd(G.colours); }while(c===exclude && ++guard<12);
   return c;
 }
+// taller stacks with heat (the original early and late mixes sit near heat 0 and 4)
 function stackHeight(){
-  const late = G.clears>18;
-  const r=Math.random();
-  if(late) return r<0.22?1 : r<0.58?2 : r<0.88?3 : 4;
-  return r<0.30?1 : r<0.70?2 : r<0.95?3 : 4;
+  const t = clamp(G.heat/7, 0, 1), r=Math.random();
+  return r<0.32-0.14*t?1 : r<0.72-0.17*t?2 : r<0.95-0.10*t?3 : 4;
 }
 function genStack(){
   let left = stackHeight();
   const tiles=[];
   let last=-1;
   while(left>0){
-    const runMax = Math.min(left, 3);
+    const runMax = Math.min(left, G.heat>=5 ? 2 : 3);   // hot stages break stacks into more colours
     const run = 1+rnd(runMax);
     const col = pickColour(last);
     for(let i=0;i<run;i++) tiles.push(col);
@@ -836,13 +927,33 @@ const anyPrimed = ()=> G.cells.some(c=>c.primed);
 
 let resolving = false, refilling = false;
 
+// one reading per stage: surviving it is a win, and room to spare says it went easily
+function observeStage(won){
+  if(G.stageDone) return;
+  G.stageDone=true;
+  skillObserve(SKL, G.heat, won, SKILL);
+  if(won) skillObserveQuality(SKL, G.heat, skillPhi(((19-G.peak)/19 - 0.25)/0.15), SKILL);
+  saveSkill();
+}
+function startStage(st){
+  G.stage=st; G.heat=stageHeat(st); G.peak=G.cells.filter(c=>c.stack.length).length; G.stageDone=false;
+}
 function checkTier(){
+  let txt=null, tone=0;
+  const st = Math.floor(G.clears/CLEARS_PER_TIER);
+  if(st>G.stage){
+    observeStage(true);
+    startStage(st);
+    tone=stageTier(st);
+    if(tone) txt = tone===2 ? 'SUPER HARD WAVE' : 'HARD WAVE';
+  }
   const tier = Math.min(MAX_COLOURS-START_COLOURS, Math.floor(G.clears/CLEARS_PER_TIER));
   const want = START_COLOURS + tier;
   if(want>G.colours){
     G.colours=want;
-    FX.banner={txt:`NEW COLOUR`, life:1.25};
+    txt = txt ? txt+' · NEW COLOUR' : 'NEW COLOUR';
   }
+  if(txt) FX.banner={txt, life:tone?1.8:1.25, tone};
 }
 
 async function maybeRefill(){
@@ -871,6 +982,7 @@ async function place(cell, tiles, slot){
   cell.offY = -L.s*1.8;
   cell.dropping = true;
   G.lastPlaced = cell;
+  G.peak = Math.max(G.peak, G.cells.filter(c=>c.stack.length).length);
   G.tray[slot]=null;
   Sound.place();
 
@@ -1189,9 +1301,10 @@ let shownScore=0;
 
 function syncHUD(){
   if(G.score>G.best){ G.best=G.score; saveBest(G.best); el('best').textContent=G.best.toLocaleString(); }
-  const tierIdx = Math.min(MAX_COLOURS-START_COLOURS, Math.floor(G.clears/CLEARS_PER_TIER));
-  el('lv').textContent = `Tier ${tierIdx+1} · ${G.colours} colours`;
-  const into = G.colours>=MAX_COLOURS ? 1 : (G.clears % CLEARS_PER_TIER)/CLEARS_PER_TIER;
+  const tone = stageTier(G.stage);
+  el('lv').textContent = `Stage ${G.stage+1} · ${G.colours} colours${tone===2?' · super hard':tone===1?' · hard':''}`;
+  el('lv').dataset.tone = tone;
+  const into = (G.clears % CLEARS_PER_TIER)/CLEARS_PER_TIER;
   el('bar').style.width = (into*100).toFixed(1)+'%';
 }
 function tickScore(){
@@ -1217,10 +1330,23 @@ async function loadBest(){
 async function saveBest(v){
   try{ if(window.storage) await window.storage.set('hexastack:best', String(v)); }catch(e){}
 }
+async function loadSkill(){
+  try{
+    if(window.storage){
+      const r = await window.storage.get('hexastack:skill');
+      const o = r && r.value ? JSON.parse(r.value) : null;
+      if(skillValid(o)) SKL = o;
+    }
+  }catch(e){}
+}
+async function saveSkill(){
+  try{ if(window.storage) await window.storage.set('hexastack:skill', JSON.stringify(SKL)); }catch(e){}
+}
 
 /* ----------------------------- game over ----------------------------- */
 async function gameOver(){
   G.over=true;
+  observeStage(false);
   Sound.over();
   await wait(220);
   el('ovScore').textContent = G.score.toLocaleString();
@@ -1237,6 +1363,7 @@ async function gameOver(){
 }
 
 async function newGame(){
+  if(!G.over && G.peak>=13) observeStage(false);     // started over from a crowded board: that stage was lost
   el('veil').classList.remove('on');
   anims.length=0;
   FX.flyers.length=0; FX.pops.length=0; FX.parts.length=0; FX.floats.length=0; FX.banner=null; FX.shake=0;
@@ -1246,6 +1373,7 @@ async function newGame(){
   G.chain=0; G.dirty=false; G.lastPlaced=null;
   resolving=false; refilling=false;
   buildBoard(); layout();
+  startStage(0);
 
   // Seed a few stacks so the first placements have something to bite on.
   // Never give two neighbours the same top colour — the board should start
@@ -1259,6 +1387,7 @@ async function newGame(){
     const col = open.length ? open[rnd(open.length)] : rnd(G.colours);
     c.stack=new Array(1+rnd(3)).fill(col);
   }
+  G.peak=G.cells.filter(c=>c.stack.length).length;
   syncHUD();
   el('hint').style.opacity='1';
   refilling=true;
@@ -1295,8 +1424,12 @@ new ResizeObserver(()=>layout()).observe(cvs);
 buildBoard();
 layout();
 loadBest();
-newGame();
+loadSkill().then(newGame);
 requestAnimationFrame(frame);
+// headless hooks for checks and screenshots
+window.__hx = { get G(){ return G; }, skill: ()=>Object.assign({}, SKL), heat: ()=>G.heat, stage: ()=>G.stage,
+  setSkill: (mu, sd)=>{ SKL = Object.assign(skillNew(SKILL), {mu, sd: sd||SKL.sd}); saveSkill(); G.heat = stageHeat(G.stage); },
+  advance: k=>{ for(let i=0;i<k;i++){ G.clears++; checkTier(); } syncHUD(); } };     // dev: count k clears
 </script>
 </body>
 </html>

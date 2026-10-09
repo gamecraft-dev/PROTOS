@@ -201,31 +201,42 @@ function shuffle(a, rs){
   return a;
 }
 
-/* ---- difficulty curve ----
-   The same sawtooth as Paint Sort: blocks of ten, heat climbing inside a
-   block, a spike at the 5th level (hard) and a bigger one at the 10th (super
-   hard), and each block starting a notch above the last. */
+/* ---- difficulty ----
+   Every knob of a level follows one number, its heat h. Which heat a level
+   gets is the adaptive model's call (Playbox.skill, in the shell): it aims
+   each slot of a block of ten at a target win rate for this player, so the
+   5th level (hard) and the 10th (super hard) still spike, relative to how
+   well this player plays. baseHeat(n) is the sawtooth a typical new player
+   starts on, and the heat used when no model is given (the probe, tests). */
 const RAMP = [0, .4, .8, 1.2, 2.4, .5, .9, 1.3, 1.7, 3.4];
 const BLOCK_STEP = .6;
-const K_CAP = [5, 6, 6];                        // most cake types in one level, per tier
-const GOAL_CAP = [16, 20, 22];                  // most cakes to bake in one level, per tier
+const HEAT_MAX = 10;
+const STAND_WORTH = .5;                         // heat one cake stand is worth; the other knobs give it back
+const baseHeat = n => { n = Math.max(1, n | 0); return Math.floor((n - 1) / 10) * BLOCK_STEP + RAMP[(n - 1) % 10]; };
+// how far the model may move a level: down to 3 below the typical curve, up
+// to 4 above the hardest level of its block of ten
+function heatRange(n){ const b = baseHeat(n), top = Math.floor((Math.max(1, n | 0) - 1) / 10) * BLOCK_STEP + RAMP[9]; return [Math.max(0, b - 3), Math.min(HEAT_MAX, top + 4)]; }
 
-function spec(n){
+function spec(n, h){
   n = Math.max(1, n | 0);
   const block = Math.floor((n - 1) / 10), pos = (n - 1) % 10;
   const tier = pos === 9 ? 2 : pos === 4 ? 1 : 0;           // 0 normal · 1 hard · 2 super hard
-  const heat = block * BLOCK_STEP + RAMP[pos];
+  const heat = Math.min(HEAT_MAX, Math.max(0, h == null ? baseHeat(n) : +h));
   const pool = UNLOCK_AT.filter(u => u <= n).length;
-  const K = n === 1 ? 3 : Math.min(pool, K_CAP[tier], Math.round(3.2 + heat * .55));
+  // cake stands come with heat; a hard level always has one and a super-hard
+  // level two. Each stand spends STAND_WORTH of the heat; the rest drives the
+  // other knobs, so the level's overall difficulty still follows h smoothly.
+  const blocked = n < 4 ? 0 : Math.min(4, Math.max(tier, heat >= 3.5 ? 1 + Math.floor((heat - 3.5) / 2) : 0));
+  const k = Math.max(0, heat - blocked * STAND_WORTH);
   return {
-    n, block, pos, tier, heat, K, pool,
-    goal: n === 1 ? 3 : Math.min(GOAL_CAP[tier], Math.round(6 + heat * 2.2 + Math.min(block, 8) * .4)),
-    blocked: n < 4 ? 0 : tier === 2 ? 2 : tier === 1 ? (heat >= 4 ? 2 : 1) : (heat >= 5 ? 1 : 0),
-    pre: n < 3 ? 0 : Math.min(6, 2 + Math.floor(heat * .8)),
-    mix: Math.min(.7, .28 + heat * .06 + tier * .08),                   // chance a plate holds a second cake
-    mix3: Math.min(.3, Math.max(0, heat - 1.5) * .07),      // and a third
-    help: Math.max(.3, .62 - heat * .05 - tier * .1),                    // chance a new plate's cake is one already out
-    big: Math.min(.5, .12 + heat * .05),                    // chance of a 4- or 5-slice plate
+    n, block, pos, tier, heat, pool, blocked,
+    K: n === 1 ? 3 : Math.max(3, Math.min(pool, 8, Math.round(3.2 + k * .5))),
+    goal: n === 1 ? 3 : Math.max(5, Math.min(26, Math.round(6 + k * 2.2))),
+    pre: n < 3 ? 0 : Math.min(6, 2 + Math.floor(k * .8)),
+    mix: Math.min(.7, .28 + k * .07),                       // chance a plate holds a second cake
+    mix3: Math.min(.3, Math.max(0, k - 1.5) * .07),         // and a third
+    help: Math.max(.3, .64 - k * .06),                      // chance a new plate's cake is one already out
+    big: Math.min(.5, .12 + k * .05),                       // chance of a 4- or 5-slice plate
     reward: tier === 2 ? 60 : tier === 1 ? 30 : 10
   };
 }
@@ -369,8 +380,8 @@ function deal(L){
    few plates already out, and the first tray. Deterministic per level number,
    so a restart replays the same opening (the plates after that follow from
    where you put things). */
-function newLevel(n){
-  const sp = spec(n), rs = { s: seedFor(n, 11) | 0 };
+function newLevel(n, h){
+  const sp = spec(n, h), rs = { s: seedFor(n, 11 + Math.round(sp.heat * 20)) | 0 };
   const pool = UNLOCK_AT.map((u, f) => u <= n ? f : -1).filter(f => f >= 0);
   const newest = pool.filter(f => UNLOCK_AT[f] === n && n > 1);
   const rest = shuffle(pool.filter(f => !newest.includes(f)), rs);
@@ -465,8 +476,8 @@ function botMove(L, skill, rand){
   return pick[(rand() * pick.length) | 0];
 }
 // plays level n from its opening; returns plates used, or -1 for a loss
-function playout(n, skill, seed){
-  const L = newLevel(n);
+function playout(n, skill, seed, h){
+  const L = newLevel(n, h);
   L.rs.s = (L.rs.s ^ seed) | 0;                  // a different run of plates each time
   const rr = { s: seed | 0 }, rand = () => rngNext(rr);
   for(let k = 0; k < 600; k++){
@@ -1046,6 +1057,25 @@ function mount(stage, api){
   S.baked = S.baked || {};
   S.seen = S.seen || {};
   S.tips = S.tips || {};
+  // adaptive difficulty: this game's belief about the player's skill (Playbox.skill)
+  const SK = api.skill, SKILL = { beta: 1, mu0: 2.5, sd0: 1.8, drift: .2 };
+  if(!SK.valid(S.skill)) S.skill = SK.create(SKILL);
+  if(!S.tries || typeof S.tries !== 'object') S.tries = { n: 0, fails: 0 };
+  const failsAt = n => S.tries.n === n ? S.tries.fails | 0 : 0;
+  // the heat that gives level n its slot's target win rate for this player
+  function heatFor(n){
+    const [lo, hi] = heatRange(n), p = SK.target((n - 1) % 10, failsAt(n));
+    return Math.round(Math.min(hi, Math.max(lo, SK.heat(S.skill, p, SKILL))) * 20) / 20;
+  }
+  // one reading per attempt: won or lost, and for a win how much room was left
+  function observe(won, q){
+    if(!L || L.observed) return;
+    L.observed = true;
+    SK.observe(S.skill, L.h, won, SKILL);
+    if(won && q != null) SK.quality(S.skill, L.h, q, SKILL);
+    S.tries = won ? { n: 0, fails: 0 } : { n: L.n, fails: failsAt(L.n) + 1 };
+    api.persist();
+  }
 
   const el = h('div', { class: 'cs', 'data-tier': '0' });
   el.innerHTML = TEMPLATE;
@@ -1444,7 +1474,8 @@ function mount(stage, api){
     }
     for(const e of st.emptied) if(vis[e] && !vis[e].dying) vis[e].dying = t + span * .5;
     if(st.cake){
-      later(() => serve(st.d, st.f), span + 110);
+      const g0 = gen;
+      later(() => { if(g0 === gen) serve(st.d, st.f); }, span + 110);
       return span + 260;
     }
     return span + 150;
@@ -1468,15 +1499,25 @@ function mount(stage, api){
     if(chip){ chip.classList.remove('bump'); void chip.offsetWidth; chip.classList.add('bump'); }
     renderGoal();
   }
-  function playSteps(steps, done){
-    let i = 0;
-    const next = () => {
-      if(i >= steps.length){ done(); return; }
-      const wait = playStep(steps[i++]);
-      kick();
-      later(next, wait);
-    };
-    next();
+  /* One queue of steps for the whole counter. The engine settles a placement
+     the moment the plate lands, so its steps always follow the steps of every
+     earlier placement; playing them strictly in order keeps the pictures in
+     step with the board, however fast plates go down. */
+  let queue = [], playing = false, gen = 0;
+  function enqueue(steps){ queue.push(...steps); pump(); }
+  function pump(){
+    if(playing) return;
+    if(!queue.length){ settle(); return; }
+    playing = true;
+    const g0 = gen, wait = playStep(queue.shift());
+    kick();
+    later(() => { if(g0 !== gen) return; playing = false; pump(); }, wait);
+  }
+  const sorting = () => playing || queue.length > 0;
+  // drop everything in flight (undo, restart): the pictures are rebuilt from the board
+  function stopPlayback(){
+    gen++; queue = []; playing = false;
+    flyers = []; served = []; movers = [];
   }
 
   /* ---------- level state ---------- */
@@ -1486,33 +1527,38 @@ function mount(stage, api){
   }
   function persist(){
     if(L && !L.won){
-      S.cur = { n: L.n, flv: L.flv, cells: L.cells, tray: L.tray, rs: L.rs.s, baked: L.baked, bakedBy: L.bakedBy,
-        moves: L.moves, undos: L.undos, clean: L.clean };
+      S.cur = { n: L.n, h: L.h, flv: L.flv, cells: L.cells, tray: L.tray, rs: L.rs.s, baked: L.baked, bakedBy: L.bakedBy,
+        moves: L.moves, undos: L.undos, clean: L.clean, minFree: L.minFree, observed: L.observed };
     }
     api.persist();
   }
   function hydrate(cur){
-    const sp = spec(cur.n);
-    return { n: cur.n, sp, flv: cur.flv.slice(), cells: cur.cells.map(p => isPlate(p) ? p.slice() : p), tray: cur.tray.map(p => p && p.slice()),
+    const sp = spec(cur.n, cur.h);
+    return { n: cur.n, h: sp.heat, sp, flv: cur.flv.slice(), minFree: cur.minFree == null ? CELLS : cur.minFree, observed: !!cur.observed, cells: cur.cells.map(p => isPlate(p) ? p.slice() : p), tray: cur.tray.map(p => p && p.slice()),
       rs: { s: cur.rs | 0 }, baked: cur.baked | 0, bakedBy: Object.assign({}, cur.bakedBy), moves: cur.moves | 0,
       undos: cur.undos == null ? UNDOS_PER_TRY : cur.undos, clean: cur.clean !== false, won: false };
   }
 
   /* ---------- placing ---------- */
+  /* A spot takes a plate when the board says it is empty and nothing is still
+     drawn there (a plate that is only fading out doesn't count), and no other
+     plate is already on its way to it. */
+  const free = c => L.cells[c] === null && (!vis[c] || !!vis[c].dying) && !movers.some(m => m.c === c);
   function emptyTarget(x, y){
     let best = -1, bd = cw * .75;
     for(let c = 0; c < CELLS; c++){
-      if(L.cells[c] !== null) continue;
+      if(!free(c)) continue;
       const d = Math.hypot(cellX(c) - x, (cellY(c) - y) / .9);
       if(d < bd){ bd = d; best = c; }
     }
     return best;
   }
+  const inFlight = t => movers.some(m => m.t === t);
   function putDown(t, c, x0, y0, lift){
-    if(busy || !L.tray[t] || L.cells[c] !== null) return;
-    busy = true; sel = -1;
+    if(busy || !L.tray[t] || inFlight(t) || !free(c)) return;
+    sel = -1;
     sfx.drop();
-    movers.push({ t, x0, y0, x1: cellX(c), y1: cellY(c), lift: lift || 0, t0: now(), dur: 150, done: () => commit(t, c) });
+    movers.push({ t, c, x0, y0, x1: cellX(c), y1: cellY(c), lift: lift || 0, t0: now(), dur: 150, done: () => commit(t, c) });
     kick();
   }
   function commit(t, c){
@@ -1522,18 +1568,19 @@ function mount(stage, api){
     vis[c] = pv;
     sfx.place(); buzz(8);
     const res = place(L, t, c);
+    L.minFree = Math.min(L.minFree, L.cells.reduce((k, x) => k + (x === null), 0));
     for(const s of res.steps) if(s.cake){ S.stats.cakes++; S.baked[s.f] = (S.baked[s.f] || 0) + 1; }
-    combo = 0;
     if(tut === 1){ tut = 2; coach(); }
+    // the next three plates come straight away, so play never waits on the sort
+    if(res.dealt){ trayVis = L.tray.map((p, i) => p ? plateVis(p, now() + 160 + i * 80) : null); later(() => sfx.deal(), 160); }
+    if(isWon(L)) busy = true;                  // the order is filled: no more plates
     persist();
-    playSteps(res.steps, () => {
-      if(res.dealt){ trayVis = L.tray.map((p, i) => p ? plateVis(p, now() + 120 + i * 80) : null); later(() => sfx.deal(), 120); }
-      kick();
-      later(settle, 60);
-    });
+    enqueue(res.steps);
   }
+  // the queue has run dry: everything on screen now matches the board
   function settle(){
-    busy = isWon(L);
+    combo = 0;
+    if(!L) return;
     // the visuals should now match the board exactly; mend them if not
     let off = false;
     for(let c = 0; c < CELLS; c++){
@@ -1542,9 +1589,9 @@ function mount(stage, api){
       if(a !== b){ off = true; vis[c] = isPlate(p) ? plateVis(p, 0) : null; }
     }
     if(off) console.warn('cake-sort: visuals re-synced');
-    if(isWon(L)){ later(win, served.length ? 1250 : 250); return; }
-    if(isStuck(L)){ showStuck(); }
-    else hideMsg();
+    if(isWon(L)){ busy = true; later(win, served.length ? 1250 : 250); return; }
+    if(isStuck(L)){ observe(false); if(!movers.length) showStuck(); }
+    else if(!hammer) hideMsg();
     if(tut === 2 && L.baked > 0){ tut = 3; coach(); }
     kick();
   }
@@ -1558,7 +1605,7 @@ function mount(stage, api){
       actions: [{ label: `Buy for ${price}`, onClick: () => { S.coins -= price; L.clean = false; persist(); updateHud(); fn(true); } }, { label: 'Not now', kind: 'ghost' }] });
   }
   function undo(){
-    if(!L || busy || L.won) return;
+    if(!L || busy || L.won || movers.length) return;
     if(!undoStack.length){ toast('Nothing to undo'); sfx.bonk(); return; }
     if(L.undos <= 0){ buyOr('undo', () => doUndo(true)); return; }
     doUndo(false);
@@ -1569,6 +1616,7 @@ function mount(stage, api){
     if(!paid) L.undos--;
     L.clean = false;
     L.cells = s.cells; L.tray = s.tray; L.rs.s = s.rs; L.baked = s.baked; L.bakedBy = s.bakedBy; L.moves = s.moves;
+    stopPlayback();
     syncVis(false);
     for(const pv of trayVis) if(pv) pv.born = now();
     shown = Object.assign({}, L.bakedBy); shownTotal = L.baked;
@@ -1577,6 +1625,7 @@ function mount(stage, api){
   function toggleHammer(){
     if(!L || busy || L.won) return;
     if(hammer){ setHammer(false); return; }
+    if(sorting() || movers.length){ toast('Wait for the slices to settle'); return; }
     if(!L.cells.some(isPlate)){ toast('No plates on the counter'); return; }
     if(S.inv.hammer <= 0){ buyOr('hammer', () => { S.inv.hammer++; persist(); updateHud(); setHammer(true); }); return; }
     setHammer(true);
@@ -1600,7 +1649,7 @@ function mount(stage, api){
     setHammer(false); updateHud(); persist(); kick();
   }
   function refresh(){
-    if(!L || busy || L.won) return;
+    if(!L || busy || L.won || movers.length) return;
     if(S.inv.refresh <= 0){ buyOr('refresh', () => { S.inv.refresh++; doRefresh(); }); return; }
     doRefresh();
   }
@@ -1682,11 +1731,12 @@ function mount(stage, api){
   function startLevel(n, fresh){
     closeSheet();
     busy = false; sel = -1; kc = -1; drag = null; hammer = false; combo = 0;
-    flyers = []; served = []; parts = []; movers = []; undoStack = [];
+    stopPlayback(); parts = []; undoStack = [];
     for(const id of timers) clearTimeout(id); timers.clear();
     floats.replaceChildren(); hideMsg(); ref('hammerTool').classList.remove('on');
     const resume = !fresh && S.cur && S.cur.n === n;
-    L = resume ? hydrate(S.cur) : Object.assign(newLevel(n), { undos: UNDOS_PER_TRY, clean: true, won: false });
+    if(resume) L = hydrate(S.cur);
+    else { L = newLevel(n, heatFor(n)); Object.assign(L, { h: L.sp.heat, undos: UNDOS_PER_TRY, clean: true, won: false, minFree: CELLS, observed: false }); }
     shown = Object.assign({}, L.bakedBy); shownTotal = L.baked;
     tut = n === 1 && !resume ? 1 : 0;
     coachEl.hidden = !tut;
@@ -1708,9 +1758,10 @@ function mount(stage, api){
   }
   function restart(confirmFirst){
     if(!L) return;
-    const go = () => { S.cur = null; startLevel(L.n, true); };
+    // giving up part-way counts as a lost try, so the next one is set a little easier
+    const go = () => { if(L.moves >= 5) observe(false); S.cur = null; startLevel(L.n, true); };
     if(!confirmFirst || L.moves === 0){ go(); return; }
-    sheet({ eyebrow: `Level ${L.n}`, title: 'Start this level again?', sub: 'The counter is cleared and you get the same first plates.',
+    sheet({ eyebrow: `Level ${L.n}`, title: 'Start this level again?', sub: 'The counter is cleared and you get a fresh set of plates.',
       actions: [{ label: 'Restart', onClick: go }, { label: 'Keep playing', kind: 'ghost' }] });
   }
   function intro(tier, then){
@@ -1768,6 +1819,11 @@ function mount(stage, api){
     if(!L || L.won) return;
     L.won = true;
     shown = Object.assign({}, L.bakedBy); shownTotal = L.baked; renderGoal();
+    // how much room was left at the tightest moment says how easily it went:
+    // bots that win half the time keep about 12% of the counter free, easy
+    // wins about half of it, so that maps to 0.5 and 0.9 (boosters cost a bit)
+    const room = L.minFree / (CELLS - L.sp.blocked);
+    observe(true, SK.Phi((room - .12 - (L.clean ? 0 : .1)) / .3));
     const sp = L.sp, bonus = L.clean ? 5 : 0, total = sp.reward + bonus;
     S.coins += total; S.level = Math.max(S.level, L.n + 1); S.cur = null;
     S.stats.won++; if(sp.tier === 1) S.stats.hard++; if(sp.tier === 2) S.stats.super++;
@@ -1823,8 +1879,9 @@ function mount(stage, api){
   function renderLobby(){
     theme = readTheme(el);
     bind('coins', S.coins);
-    const n = S.level, sp = spec(n), resume = S.cur && S.cur.n === n;
-    const flv = resume ? S.cur.flv : newLevel(n).flv;
+    const n = S.level, resume = S.cur && S.cur.n === n;
+    const heat = resume ? S.cur.h : heatFor(n), sp = spec(n, heat);
+    const flv = resume ? S.cur.flv : newLevel(n, heat).flv;
     const eb = ref('nextEyebrow');
     eb.textContent = sp.tier ? `Up next · ${TIER_NAME[sp.tier]}` : 'Up next'; eb.dataset.tier = sp.tier;
     bind('nextTitle', `Level ${n}`);
@@ -1859,13 +1916,14 @@ function mount(stage, api){
     bind('lobbyNote', S.stats.cakes
       ? `${S.stats.cakes} cake${S.stats.cakes === 1 ? '' : 's'} baked · ${S.stats.won} level${S.stats.won === 1 ? '' : 's'} cleared`
       : 'Drag plates of cake slices onto the counter. Matching slices fly together into whole cakes.');
+    ref('lobby').querySelector('.cs-lobby-note').append(h('span', { class: 'cs-tuned' }, ' Levels adjust to how you play.'));
   }
 
   /* ---------- input ---------- */
   const pt = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
   function hitTray(x, y){
     let best = -1, bd = pr * 1.35;
-    trayXs.forEach((tx, i) => { if(!L.tray[i]) return; const d = Math.hypot(tx - x, (trayY - y) / .85); if(d < bd){ bd = d; best = i; } });
+    trayXs.forEach((tx, i) => { if(!L.tray[i] || inFlight(i)) return; const d = Math.hypot(tx - x, (trayY - y) / .85); if(d < bd){ bd = d; best = i; } });
     return best;
   }
   function hitCell(x, y){
@@ -1932,7 +1990,7 @@ function mount(stage, api){
     const k = e.key.toLowerCase();
     if(k === '1' || k === '2' || k === '3'){
       const t = +k - 1;
-      if(L.tray[t] && !busy){ sel = sel === t ? -1 : t; if(sel >= 0){ sfx.pick(); if(kc < 0) kc = L.cells.indexOf(null); } kick(); }
+      if(L.tray[t] && !busy && !inFlight(t)){ sel = sel === t ? -1 : t; if(sel >= 0){ sfx.pick(); if(kc < 0) kc = L.cells.indexOf(null); } kick(); }
       e.preventDefault(); return;
     }
     if(k.startsWith('arrow')){
@@ -1983,11 +2041,15 @@ function mount(stage, api){
   window.__cs = Object.assign(window.__cs || {}, {
     state: () => L && { cells: L.cells.map(p => isPlate(p) ? p.slice() : p), tray: L.tray.map(p => p && p.slice()), baked: L.baked, goal: L.sp.goal },
     level: () => L && L.n, view: () => view, won: () => !!(L && L.won),
-    idle: () => (!busy || !!(L && L.won)) && !flyers.length && !served.length && !movers.length,
-    place: (t, c) => { if(L && !busy && L.tray[t] && L.cells[c] === null){ putDown(t, c, trayXs[t], trayY, 0); return true; } return false; },
+    idle: () => !sorting() && !flyers.length && !served.length && !movers.length,
+    sorting: () => sorting(),
+    canPlace: (t, c) => !!(L && !busy && L.tray[t] && !inFlight(t) && free(c)),
+    place: (t, c) => { if(L && !busy && L.tray[t] && !inFlight(t) && free(c)){ putDown(t, c, trayXs[t], trayY, 0); return true; } return false; },
     undo, hammer: c => { if(L && isPlate(L.cells[c])){ smash(c); } }, refresh,
     where: () => ({ tray: trayXs.map(x => [x, trayY]), cells: L ? L.cells.map((_, c) => [cellX(c), cellY(c)]) : [] }),
     save: () => JSON.parse(JSON.stringify({ level: S.level, coins: S.coins, inv: S.inv, stats: S.stats, baked: S.baked })),
+    skill: () => Object.assign({ tries: S.tries }, S.skill), heatFor, heat: () => L && L.h,
+    setSkill: (mu, sd) => { S.skill = Object.assign(SK.create(SKILL), { mu, sd: sd || S.skill.sd }); api.persist(); },     // dev
     play: n => { if(n){ S.level = Math.max(1, n); S.cur = null; } startLevel(S.level, !!n); }
   });
 
