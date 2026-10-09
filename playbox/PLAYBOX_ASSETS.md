@@ -14,3 +14,8 @@
 
 - Bungee (font)
 - Fredoka (font)
+
+## Cake Sort
+
+- Lilita One (font)
+- Figtree (font)

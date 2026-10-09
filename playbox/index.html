@@ -616,6 +616,2076 @@ window.Playbox = { register, store, audio, buzz, on, emit, ui: { sheet, closeShe
 })();
 </script>
 <style>
+/* ---------- Cake Sort: a bakery counter, porcelain plates, cakes cut in six ---------- */
+:root{
+  --cs-bg-a:#FFF6EE; --cs-bg-b:#FFDDE6;
+  --cs-hard-a:#FFEEE7; --cs-hard-b:#FFC4BB;
+  --cs-super-a:#F4ECFF; --cs-super-b:#D7C3FA;
+  --cs-cloth:#FFFFFF; --cs-check:rgba(240,86,140,.11); --cs-cloth-edge:#F1BCCD;
+  --cs-mat:rgba(255,250,252,.95); --cs-mat-edge:rgba(225,120,158,.36);
+  --cs-plate:#FFFFFF; --cs-plate-edge:#CDD4E2; --cs-plate-well:#F2F4F9; --cs-plate-line:#F6A8C2;
+  --cs-shadow:rgba(120,40,70,.2); --cs-wood:#F4CFAB; --cs-wood-2:#DDA97F;
+  --cs-edge:rgba(80,30,45,.3); --cs-glass:rgba(205,228,255,.42);
+  --cs-accent:#F0568C; --cs-accent-deep:#B8305F; --cs-accent-soft:#FFE4EE;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --cs-bg-a:#2C1622; --cs-bg-b:#12090F;
+    --cs-hard-a:#3B1618; --cs-hard-b:#160809;
+    --cs-super-a:#2B1A4A; --cs-super-b:#100A20;
+    --cs-cloth:#3A2231; --cs-check:rgba(255,255,255,.045); --cs-cloth-edge:#5A3349;
+    --cs-mat:rgba(255,255,255,.07); --cs-mat-edge:rgba(255,160,200,.2);
+    --cs-plate:#ECE6EC; --cs-plate-edge:#8F879A; --cs-plate-well:#DAD3DB; --cs-plate-line:#E07AA0;
+    --cs-shadow:rgba(0,0,0,.45); --cs-wood:#6E4632; --cs-wood-2:#4C2E20;
+    --cs-edge:rgba(0,0,0,.38); --cs-glass:rgba(170,200,255,.2);
+    --cs-accent:#FF7AA8; --cs-accent-deep:#B8456E; --cs-accent-soft:#3A1826;
+  }
+}
+:root[data-theme="dark"]{
+  --cs-bg-a:#2C1622; --cs-bg-b:#12090F;
+  --cs-hard-a:#3B1618; --cs-hard-b:#160809;
+  --cs-super-a:#2B1A4A; --cs-super-b:#100A20;
+  --cs-cloth:#3A2231; --cs-check:rgba(255,255,255,.045); --cs-cloth-edge:#5A3349;
+  --cs-mat:rgba(255,255,255,.07); --cs-mat-edge:rgba(255,160,200,.2);
+  --cs-plate:#ECE6EC; --cs-plate-edge:#8F879A; --cs-plate-well:#DAD3DB; --cs-plate-line:#E07AA0;
+  --cs-shadow:rgba(0,0,0,.45); --cs-wood:#6E4632; --cs-wood-2:#4C2E20;
+  --cs-edge:rgba(0,0,0,.38); --cs-glass:rgba(170,200,255,.2);
+  --cs-accent:#FF7AA8; --cs-accent-deep:#B8456E; --cs-accent-soft:#3A1826;
+}
+.board[data-game="cake-sort"]{--b-accent:#F0568C; --b-deep:#B8305F; --b-soft:#FFE4EE; --b-ink:#FFFFFF; --b-text:#B8305F}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .board[data-game="cake-sort"]{--b-accent:#FF7AA8; --b-deep:#B8456E; --b-soft:#3A1826; --b-ink:#2A0614; --b-text:#FF9EC0}
+}
+:root[data-theme="dark"] .board[data-game="cake-sort"]{--b-accent:#FF7AA8; --b-deep:#B8456E; --b-soft:#3A1826; --b-ink:#2A0614; --b-text:#FF9EC0}
+
+.cs{position:absolute;inset:0;overflow:hidden;color:var(--ink);background:linear-gradient(180deg,var(--cs-bg-a),var(--cs-bg-b))}
+.cs[data-tier="1"]{background:linear-gradient(180deg,var(--cs-hard-a),var(--cs-hard-b))}
+.cs[data-tier="2"]{background:linear-gradient(180deg,var(--cs-super-a),var(--cs-super-b))}
+.cs-lobby,.cs-play{position:absolute;inset:0;display:flex;flex-direction:column}
+.cs-cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;outline:none}
+.cs-play>.cs-bar,.cs-goal,.cs-coach,.cs-field,.cs-tools{position:relative;z-index:1}
+.cs-fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
+.cs-bar{display:flex;align-items:center;gap:10px;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 6px;flex:0 0 auto}
+.cs-play .cs-bar,.cs-goal,.cs-coach,.cs-field,.cs-tools{pointer-events:none}
+.cs-play .cs-bar>*,.cs-tools>*{pointer-events:auto}
+.cs-spacer{flex:1}
+.cs-lvl{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
+.cs-lvl>span:first-child{font-family:var(--f-disp);font-size:24px;line-height:1;white-space:nowrap}
+.cs-tier{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#fff;line-height:1;
+  padding:4px 7px;border-radius:999px;background:var(--hard);white-space:nowrap}
+.cs-tier[data-tier="2"]{background:var(--super)}
+
+/* the order: how many cakes to bake, and which */
+.cs-goal{display:flex;flex-direction:column;gap:7px;margin:2px 14px 0;padding:10px 12px 10px;border-radius:20px;
+  background:color-mix(in srgb,var(--surface) 82%,transparent);box-shadow:var(--shadow-sm);flex:0 0 auto}
+.cs-goal-row{display:flex;align-items:center;gap:10px}
+.cs-goal-t{font-weight:800;font-size:14px;color:var(--muted);white-space:nowrap}
+.cs-meter{flex:1;height:12px;border-radius:999px;background:var(--surface-2);box-shadow:inset 0 1px 2px rgba(0,0,0,.12);overflow:hidden;min-width:40px}
+.cs-meter i{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,var(--cs-accent),color-mix(in srgb,var(--cs-accent) 70%,#FFD45A));
+  transition:width .45s cubic-bezier(.2,.9,.25,1)}
+.cs-goal-n{font-family:var(--f-disp);font-size:20px;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cs-goal-n span{color:var(--dim);font-size:15px}
+.cs-menu{display:flex;gap:5px;flex-wrap:wrap;justify-content:center}
+.cs-chip{display:flex;align-items:center;gap:2px;padding:2px 7px 2px 1px;border-radius:999px;background:var(--surface-2);
+  font-weight:800;font-size:13px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.cs-chip canvas{width:28px;height:24px;display:block}
+.cs-chip.bump{animation:csBump .45s cubic-bezier(.2,1.6,.4,1)}
+@keyframes csBump{30%{transform:scale(1.22)}100%{transform:none}}
+.cs-coach{height:46px;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:700;color:var(--muted);font-size:14px;line-height:1.3;padding:4px 24px 0;text-wrap:balance;flex:0 0 auto}
+.cs-coach[hidden]{display:none}
+.cs-field{flex:1;min-height:0}
+.cs-floats{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:4}
+.cs-float{position:absolute;transform:translate(-50%,-50%);font-family:var(--f-disp);font-size:18px;white-space:nowrap;
+  color:var(--c);-webkit-text-stroke:5px var(--surface);paint-order:stroke fill;animation:csFloat 1.4s ease-out forwards}
+.cs-float.big{font-size:24px}
+@keyframes csFloat{0%{opacity:0;transform:translate(-50%,-10%) scale(.6)}15%{opacity:1;transform:translate(-50%,-60%) scale(1.08)}
+  75%{opacity:1;transform:translate(-50%,-120%) scale(1)}100%{opacity:0;transform:translate(-50%,-160%) scale(1)}}
+
+.cs-bar-msg{position:absolute;left:12px;right:12px;bottom:100%;margin-bottom:6px;z-index:3;
+  display:flex;align-items:center;gap:8px;padding:8px 8px 8px 14px;border-radius:16px;
+  background:var(--surface);box-shadow:var(--shadow);animation:csRise .3s cubic-bezier(.2,.9,.25,1);pointer-events:auto}
+.cs-bar-msg[hidden]{display:none}
+.cs-bar-t{flex:1;font-weight:800;font-size:14px;line-height:1.2}
+.cs-bar-msg.bad .cs-bar-t{color:var(--bad)}
+.cs-bar-msg .btn{padding:9px 11px;font-size:14px;border-radius:12px;box-shadow:0 3px 0 var(--line)}
+@keyframes csRise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+.cs-tools{display:flex;justify-content:space-around;gap:6px;padding:6px 12px calc(12px + env(safe-area-inset-bottom,0px));flex:0 0 auto}
+.cs-tool{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;width:84px}
+.cs-tool .ic{width:56px;height:56px;border-radius:19px;background:var(--surface);color:var(--ink);display:grid;place-items:center;
+  box-shadow:0 4px 0 var(--line);transition:transform .1s,box-shadow .1s,background .2s}
+.cs-tool .ic svg{width:27px;height:27px}
+.cs-tool:active .ic{transform:translateY(4px);box-shadow:none}
+.cs-tool .lb{font-size:12px;font-weight:800;color:var(--muted);white-space:nowrap}
+.cs-tool .n{position:absolute;top:-5px;right:2px;min-width:23px;height:23px;padding:0 6px;border-radius:999px;display:grid;place-items:center;
+  background:var(--cs-accent);color:#fff;font-size:12.5px;font-weight:800;box-shadow:0 0 0 2.5px var(--cs-bg-a);font-variant-numeric:tabular-nums}
+.cs-tool .n.buy{background:var(--coin);color:#4A3000}
+.cs-tool.on .ic{background:var(--cs-accent);color:#fff;box-shadow:0 4px 0 var(--cs-accent-deep)}
+
+/* hard level intro */
+.cs-intro{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:24px;cursor:pointer;
+  background:repeating-linear-gradient(-45deg,rgba(0,0,0,.05) 0 18px,transparent 18px 36px),color-mix(in srgb,var(--hard) 88%,black)}
+.cs-intro[data-tier="2"]{background:repeating-linear-gradient(-45deg,rgba(0,0,0,.07) 0 18px,transparent 18px 36px),color-mix(in srgb,var(--super) 85%,black)}
+.cs-intro.on{animation:csIntro 2.1s ease forwards}
+@keyframes csIntro{0%{opacity:0}8%{opacity:1}85%{opacity:1}100%{opacity:0}}
+.cs-intro-card{text-align:center;color:#fff;animation:csSlam .55s cubic-bezier(.2,1.5,.4,1)}
+@keyframes csSlam{0%{transform:scale(2.2) rotate(-6deg);opacity:0}60%{opacity:1}100%{transform:none}}
+.cs-intro-k{font-family:var(--f-disp);font-size:clamp(40px,12vw,56px);line-height:1;text-shadow:0 4px 0 rgba(0,0,0,.25)}
+.cs-intro-n{font-weight:800;letter-spacing:.14em;text-transform:uppercase;font-size:13px;margin-top:10px;opacity:.85}
+.cs-intro-s{font-size:16px;font-weight:600;margin-top:14px;opacity:.95}
+
+/* lobby */
+.cs-lobby-body{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:18px;
+  padding:8px 18px calc(22px + env(safe-area-inset-bottom,0px))}
+.cs-word{font-family:var(--f-disp);font-weight:400;font-size:clamp(40px,12.5vw,54px);line-height:.95;margin:4px 0 0;letter-spacing:.005em}
+.cs-word i{font-style:normal;color:var(--c);text-shadow:0 3px 0 color-mix(in srgb,var(--c) 58%,black)}
+.cs-next{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:22px;background:var(--surface);box-shadow:var(--shadow)}
+.cs-next-top{display:flex;align-items:center;gap:14px}
+.cs-next-art{width:116px;height:96px;flex:0 0 auto}
+.cs-next-meta{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cs-next-eyebrow{font-size:11.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--cs-accent)}
+.cs-next-eyebrow[data-tier="1"]{color:var(--hard)}
+.cs-next-eyebrow[data-tier="2"]{color:var(--super)}
+.cs-next-title{font-family:var(--f-disp);font-size:26px;line-height:1.05}
+.cs-next-sub{font-size:13.5px;color:var(--muted);font-weight:600}
+.cs-next .cs-menu{justify-content:flex-start}
+.cs-go svg{width:22px;height:22px}
+.cs-go.btn-primary{background:var(--cs-accent);color:#fff;box-shadow:0 5px 0 var(--cs-accent-deep)}
+.cs-shelf{padding:14px 14px 16px;border-radius:22px;background:var(--surface);box-shadow:var(--shadow)}
+.cs-shelf-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
+.cs-shelf-title{font-family:var(--f-disp);font-size:19px}
+.cs-shelf-count{font-size:12.5px;font-weight:700;color:var(--dim)}
+.cs-shelf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.cs-cake{display:flex;align-items:center;gap:8px;padding:5px 8px 5px 4px;border-radius:16px;background:var(--surface-2);min-width:0}
+.cs-cake canvas{width:52px;height:44px;flex:0 0 auto;display:block}
+.cs-cake div{display:flex;flex-direction:column;min-width:0}
+.cs-cake b{font-size:13.5px;line-height:1.15;font-weight:800;text-wrap:balance}
+.cs-cake span{font-size:12px;color:var(--dim);font-weight:700;font-variant-numeric:tabular-nums}
+.cs-cake.locked b{color:var(--dim)}
+.cs-lobby-note{margin:0;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.5}
+
+/* sheets that belong to this game */
+.cs-show{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:4px}
+.cs-show canvas{width:min(100%,260px);aspect-ratio:26/19;display:block}
+.cs-win{display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:6px}
+.cs-win .cs-menu{gap:8px}
+.cs-win-coins{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:var(--muted)}
+.cs-win-coins b{font-family:var(--f-disp);font-weight:400;font-size:26px;color:var(--ink);font-variant-numeric:tabular-nums}
+.cs-win-coins .coin{width:24px;height:24px}
+.cs-how{padding:12px 0;border-bottom:1px solid var(--line)}
+.cs-how:last-child{border-bottom:0}
+.cs-how-t{font-weight:800;font-size:15.5px}
+.cs-how-d{color:var(--muted);font-size:14px;line-height:1.45;margin-top:2px}
+.cs-card-art{background:linear-gradient(180deg,var(--cs-bg-a),var(--cs-bg-b))}
+</style>
+<script>
+/* ==========================================================
+   CAKE SORT — drop plates of cake slices onto the counter;
+   matching slices fly together until six make a whole cake.
+   0 engine (pure, headless-testable) · 1 cakes · 2 drawing
+   3 sound · 4 game · 5 board art · 6 register
+   ========================================================== */
+(function(){
+'use strict';
+
+// @engine-start ------------------------------------------------------------
+// Everything between the engine markers is pure: no DOM, no Playbox. The
+// balance probe (tools/cake-probe.mjs) evaluates this slice on its own in Node.
+
+const CAP = 6;                                  // slices in a whole cake
+const COLS = 4, ROWS = 5, CELLS = COLS * ROWS;  // the counter
+const TRAY = 3;                                 // plates offered at a time
+const BLOCKED = -1;                             // a cell with a cake stand on it
+// the level where each cake first joins the menu (index = cake type)
+const UNLOCK_AT = [1, 1, 1, 3, 5, 8, 12, 16, 21, 27];
+
+/* Mulberry32 with its state in an object, so a level in progress (and every
+   undo snapshot) can store exactly where the plate dealer has got to. */
+function rngNext(st){
+  st.s = (st.s + 0x6D2B79F5) | 0;
+  let t = Math.imul(st.s ^ (st.s >>> 15), 1 | st.s);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+function seedFor(n, salt){
+  let h = (0x9E3779B9 ^ Math.imul(n | 0, 0x85EBCA6B) ^ Math.imul((salt | 0) + 1, 0xC2B2AE35)) >>> 0;
+  h ^= h >>> 16; h = Math.imul(h, 0x7FEB352D);
+  h ^= h >>> 15; h = Math.imul(h, 0x846CA68B);
+  h ^= h >>> 16; return h >>> 0;
+}
+function shuffle(a, rs){
+  for(let i = a.length - 1; i > 0; i--){ const j = (rngNext(rs) * (i + 1)) | 0; const t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a;
+}
+
+/* ---- difficulty curve ----
+   The same sawtooth as Paint Sort: blocks of ten, heat climbing inside a
+   block, a spike at the 5th level (hard) and a bigger one at the 10th (super
+   hard), and each block starting a notch above the last. */
+const RAMP = [0, .4, .8, 1.2, 2.4, .5, .9, 1.3, 1.7, 3.4];
+const BLOCK_STEP = .6;
+const K_CAP = [5, 6, 6];                        // most cake types in one level, per tier
+const GOAL_CAP = [16, 20, 22];                  // most cakes to bake in one level, per tier
+
+function spec(n){
+  n = Math.max(1, n | 0);
+  const block = Math.floor((n - 1) / 10), pos = (n - 1) % 10;
+  const tier = pos === 9 ? 2 : pos === 4 ? 1 : 0;           // 0 normal · 1 hard · 2 super hard
+  const heat = block * BLOCK_STEP + RAMP[pos];
+  const pool = UNLOCK_AT.filter(u => u <= n).length;
+  const K = n === 1 ? 3 : Math.min(pool, K_CAP[tier], Math.round(3.2 + heat * .55));
+  return {
+    n, block, pos, tier, heat, K, pool,
+    goal: n === 1 ? 3 : Math.min(GOAL_CAP[tier], Math.round(6 + heat * 2.2 + Math.min(block, 8) * .4)),
+    blocked: n < 4 ? 0 : tier === 2 ? 2 : tier === 1 ? (heat >= 4 ? 2 : 1) : (heat >= 5 ? 1 : 0),
+    pre: n < 3 ? 0 : Math.min(6, 2 + Math.floor(heat * .8)),
+    mix: Math.min(.7, .28 + heat * .06 + tier * .08),                   // chance a plate holds a second cake
+    mix3: Math.min(.3, Math.max(0, heat - 1.5) * .07),      // and a third
+    help: Math.max(.3, .62 - heat * .05 - tier * .1),                    // chance a new plate's cake is one already out
+    big: Math.min(.5, .12 + heat * .05),                    // chance of a 4- or 5-slice plate
+    reward: tier === 2 ? 60 : tier === 1 ? 30 : 10
+  };
+}
+
+/* ---- board helpers ---- */
+const isPlate = v => Array.isArray(v);
+function neighbours(c){
+  const x = c % COLS, y = (c / COLS) | 0, out = [];
+  if(y > 0) out.push(c - COLS);
+  if(x > 0) out.push(c - 1);
+  if(x < COLS - 1) out.push(c + 1);
+  if(y < ROWS - 1) out.push(c + COLS);
+  return out;
+}
+function countOf(p, f){ let k = 0; for(const x of p) if(x === f) k++; return k; }
+function kindsOf(p){ const out = []; for(const x of p) if(!out.includes(x)) out.push(x); return out; }
+const isCake = p => p.length === CAP && p.every(x => x === p[0]);
+// slices of f leave from the end of their group and arrive after it, so each
+// plate keeps every cake type in one run of neighbouring slots
+function takeSlices(p, f, k){
+  for(let i = p.length - 1; i >= 0 && k > 0; i--) if(p[i] === f){ p.splice(i, 1); k--; }
+}
+function addSlices(p, f, k){
+  const at = p.lastIndexOf(f);
+  const ins = Array(k).fill(f);
+  if(at < 0) p.push(...ins); else p.splice(at + 1, 0, ...ins);
+}
+const emptyCells = cells => { const out = []; for(let c = 0; c < CELLS; c++) if(cells[c] === null) out.push(c); return out; };
+
+/* ---- the sort ----
+   A plate that changes looks at each cake type it holds. Among itself and the
+   neighbours holding the same cake, the plate that can end up with the most
+   slices of it becomes the gathering point, and the slices on the plates next
+   to it fly over, smallest groups first, as far as there is room. A transfer
+   happens only if it leaves more slices together than any plate that gives
+   them up had, so the sort always settles. Six slices of one cake make a
+   whole cake, which is served (taken off the board); a plate left empty goes
+   too. Every plate a transfer touches is checked again, so sorting chains. */
+function bestGather(cells, c){
+  const p = cells[c];
+  let best = null;
+  for(const f of kindsOf(p)){
+    const cands = [c];
+    for(const n of neighbours(c)) if(isPlate(cells[n]) && cells[n].includes(f)) cands.push(n);
+    if(cands.length < 2) continue;
+    for(const d of cands){
+      const pd = cells[d], cd = countOf(pd, f), room = CAP - pd.length;
+      if(room <= 0) continue;
+      let srcs = [];
+      for(const n of neighbours(d)){
+        const q = cells[n];
+        if(isPlate(q) && !isCake(q)){ const k = countOf(q, f); if(k) srcs.push([n, k]); }
+      }
+      srcs.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+      let from, final;
+      for(;;){
+        from = []; let left = room;
+        for(const [n, k] of srcs){ if(!left) break; const take = Math.min(k, left); from.push([n, take, k]); left -= take; }
+        final = cd + room - left;
+        const keep = srcs.filter(([, k]) => k < final);
+        if(keep.length === srcs.length) break;
+        srcs = keep;
+      }
+      if(!from.length) continue;
+      const others = pd.length - cd;
+      const cake = final === CAP && others === 0;
+      const moved = final - cd;
+      // completes a cake > most slices together > fewest other cakes on the
+      // gathering plate > fewest slices flown > the plate that changed
+      const key = [cake ? 1 : 0, final, -others, -moved, d === c ? 1 : 0];
+      if(!best || cmpKey(key, best.key) > 0) best = { key, f, d, from: from.map(([n, take]) => [n, take]) };
+    }
+  }
+  return best;
+}
+function cmpKey(a, b){ for(let i = 0; i < a.length; i++) if(a[i] !== b[i]) return a[i] - b[i]; return 0; }
+
+/* Settle the board after the plate at `start` changed. Mutates `cells` and
+   returns the steps in the order they should play: each step is one gathering
+   ({d, f, from: [[cell, slices]], cake, emptied}). */
+function resolve(cells, start){
+  const steps = [], queue = [start];
+  let guard = 0;
+  while(queue.length && guard < 400){
+    const c = queue.shift();
+    for(;;){
+      if(++guard > 400) break;
+      if(!isPlate(cells[c]) || isCake(cells[c])) break;
+      const g = bestGather(cells, c);
+      if(!g) break;
+      const touched = [g.d];
+      for(const [n, k] of g.from){ takeSlices(cells[n], g.f, k); addSlices(cells[g.d], g.f, k); touched.push(n); }
+      const step = { d: g.d, f: g.f, from: g.from, cake: false, emptied: [] };
+      for(const [n] of g.from) if(!cells[n].length){ cells[n] = null; step.emptied.push(n); }
+      if(isCake(cells[g.d])){ step.cake = true; cells[g.d] = null; }
+      steps.push(step);
+      for(const t of touched) if(t !== c && isPlate(cells[t]) && !queue.includes(t)) queue.push(t);
+      if(!isPlate(cells[c])) break;
+    }
+  }
+  return steps;
+}
+
+/* ---- dealing plates ---- */
+function makePlate(cells, sp, flv, rs){
+  const r = () => rngNext(rs);
+  let n;
+  const u = r();
+  if(u < sp.big) n = r() < .7 ? 4 : 5;
+  else n = u < sp.big + (1 - sp.big) * .22 ? 1 : u < sp.big + (1 - sp.big) * .62 ? 2 : 3;
+  let kinds = 1;
+  if(n >= 2 && r() < sp.mix) kinds = 2;
+  if(n >= 3 && kinds === 2 && r() < sp.mix3) kinds = 3;
+  // what's already out, weighted by how many slices of it there are
+  const out = new Map();
+  for(const p of cells) if(isPlate(p)) for(const f of p) out.set(f, (out.get(f) || 0) + 1);
+  const chosen = [];
+  while(chosen.length < kinds){
+    let f = -1;
+    if(out.size && r() < sp.help){
+      let tot = 0; for(const [g, k] of out) if(!chosen.includes(g)) tot += k;
+      let x = r() * tot;
+      for(const [g, k] of out){ if(chosen.includes(g)) continue; x -= k; if(x < 0){ f = g; break; } }
+    }
+    if(f < 0){ const left = flv.filter(g => !chosen.includes(g)); f = left[(r() * left.length) | 0]; }
+    chosen.push(f);
+  }
+  const counts = chosen.map(() => 1);
+  for(let k = kinds; k < n; k++) counts[(r() * kinds) | 0]++;
+  const plate = [];
+  chosen.forEach((f, i) => { for(let k = 0; k < counts[i]; k++) plate.push(f); });
+  return plate;
+}
+function deal(L){
+  if(L.tray.some(Boolean)) return false;
+  for(let t = 0; t < TRAY; t++) L.tray[t] = makePlate(L.cells, L.sp, L.flv, L.rs);
+  return true;
+}
+
+/* Build level n: which cakes are on the menu, the cake stands in the way, a
+   few plates already out, and the first tray. Deterministic per level number,
+   so a restart replays the same opening (the plates after that follow from
+   where you put things). */
+function newLevel(n){
+  const sp = spec(n), rs = { s: seedFor(n, 11) | 0 };
+  const pool = UNLOCK_AT.map((u, f) => u <= n ? f : -1).filter(f => f >= 0);
+  const newest = pool.filter(f => UNLOCK_AT[f] === n && n > 1);
+  const rest = shuffle(pool.filter(f => !newest.includes(f)), rs);
+  const flv = newest.concat(rest).slice(0, sp.K).sort((a, b) => a - b);
+  const cells = Array(CELLS).fill(null);
+  // cake stands: never in the bottom row, never two side by side
+  let tries = 0, placed = 0;
+  while(placed < sp.blocked && tries++ < 200){
+    const c = (rngNext(rs) * (CELLS - COLS)) | 0;
+    if(cells[c] !== null || neighbours(c).some(m => cells[m] === BLOCKED)) continue;
+    cells[c] = BLOCKED; placed++;
+  }
+  // plates already out, none touching another that shares a cake
+  const preSp = Object.assign({}, sp, { help: 0, big: Math.min(.3, sp.big) });
+  tries = 0; placed = 0;
+  while(placed < sp.pre && tries++ < 300){
+    const c = (rngNext(rs) * CELLS) | 0;
+    if(cells[c] !== null) continue;
+    const p = makePlate(cells, preSp, flv, rs);
+    if(neighbours(c).some(m => isPlate(cells[m]) && cells[m].some(f => p.includes(f)))) continue;
+    cells[c] = p; placed++;
+  }
+  const L = { n, sp, flv, cells, tray: Array(TRAY).fill(null), rs, baked: 0, bakedBy: {}, moves: 0 };
+  if(n === 1){
+    // the first level is set: three strawberry slices out, three more in the
+    // tray, so the very first drop finishes a cake
+    cells[9] = [0, 0, 0]; cells[14] = [1, 1, 1, 1];
+    L.tray = [[0, 0, 0], [2, 2, 1], [2, 2]];
+    return L;
+  }
+  deal(L);
+  return L;
+}
+
+/* Put tray plate t on cell c. Returns the steps of the sort that follows, or
+   null if the move isn't legal. Deals a new tray once all three are used. */
+function place(L, t, c){
+  if(!L.tray[t] || L.cells[c] !== null) return null;
+  L.cells[c] = L.tray[t]; L.tray[t] = null; L.moves++;
+  const steps = resolve(L.cells, c);
+  for(const s of steps) if(s.cake){ L.baked++; L.bakedBy[s.f] = (L.bakedBy[s.f] || 0) + 1; }
+  const dealt = deal(L);
+  return { steps, dealt };
+}
+const isWon = L => L.baked >= L.sp.goal;
+const isStuck = L => !isWon(L) && L.tray.some(Boolean) && !L.cells.includes(null);
+
+/* ---- simulated players, for the balance probe ---- */
+function cloneLevel(L){
+  return Object.assign({}, L, { cells: L.cells.map(p => isPlate(p) ? p.slice() : p), tray: L.tray.map(p => p && p.slice()),
+    rs: { s: L.rs.s }, bakedBy: Object.assign({}, L.bakedBy) });
+}
+// how good a board looks to a player who thinks one plate ahead
+function boardScore(cells){
+  let s = 0;
+  for(let c = 0; c < CELLS; c++){
+    const p = cells[c];
+    if(p === null){ s += 16; continue; }
+    if(!isPlate(p)) continue;
+    const ks = kindsOf(p);
+    s -= (ks.length - 1) * 14;
+    for(const f of ks){ const k = countOf(p, f); s += k * k * 1.4; }
+    for(const n of neighbours(c)) if(isPlate(cells[n]) && n > c && cells[n].some(f => p.includes(f))) s += 3;
+  }
+  return s;
+}
+function candidates(L){
+  const out = [], empty = emptyCells(L.cells);
+  L.tray.forEach((p, t) => { if(p) for(const c of empty) out.push([t, c]); });
+  return out;
+}
+/* skill 1: best move by boardScore after the sort, plus a little noise.
+   skill 0: a casual player, who mostly drops a plate next to one that shares
+   a cake, picking among those at random, and otherwise plays anywhere. */
+function botMove(L, skill, rand){
+  const cs = candidates(L);
+  if(!cs.length) return null;
+  if(skill >= 1){
+    let best = null, bs = -1e9;
+    for(const [t, c] of cs){
+      const X = cloneLevel(L), cells = X.cells;
+      cells[c] = X.tray[t]; X.tray[t] = null;
+      const steps = resolve(cells, c);
+      const cakes = steps.filter(s => s.cake).length;
+      const sc = cakes * 120 + boardScore(cells) + rand() * 6;
+      if(sc > bs){ bs = sc; best = [t, c]; }
+    }
+    return best;
+  }
+  const good = cs.filter(([t, c]) => neighbours(c).some(n => isPlate(L.cells[n]) && L.cells[n].some(f => L.tray[t].includes(f))));
+  const pick = good.length && rand() < .85 ? good : cs;
+  return pick[(rand() * pick.length) | 0];
+}
+// plays level n from its opening; returns plates used, or -1 for a loss
+function playout(n, skill, seed){
+  const L = newLevel(n);
+  L.rs.s = (L.rs.s ^ seed) | 0;                  // a different run of plates each time
+  const rr = { s: seed | 0 }, rand = () => rngNext(rr);
+  for(let k = 0; k < 600; k++){
+    if(isWon(L)) return L.moves;
+    const m = botMove(L, skill, rand);
+    if(!m) return -1;
+    place(L, m[0], m[1]);
+  }
+  return -1;
+}
+function probe(from, to, runs){
+  runs = runs || 24;
+  const rows = [];
+  for(let n = from; n <= to; n++){
+    const sp = spec(n), t0 = Date.now();
+    let casual = 0, skilled = 0, plates = 0, wins = 0;
+    for(let i = 0; i < runs; i++){
+      const a = playout(n, 0, seedFor(n, 500 + i)), b = playout(n, 1, seedFor(n, 900 + i));
+      if(a < 0) casual++;
+      if(b < 0) skilled++; else { plates += b; wins++; }
+    }
+    rows.push({ n, tier: sp.tier, K: sp.K, goal: sp.goal, blocked: sp.blocked, heat: sp.heat,
+      casual: casual / runs, skilled: skilled / runs, fail: (casual + skilled) / (2 * runs),
+      plates: wins ? plates / wins : 0, ms: Date.now() - t0 });
+  }
+  return rows;
+}
+// @engine-end --------------------------------------------------------------
+
+/* ==================== 1. the cakes ==================== */
+/* Ten cakes, told apart by more than colour: each has its own topping, its
+   own layers where it is cut, a frosted or a bare side, and a pattern on top.
+   layers run bottom to top as [colour, share of the height]. */
+const CAKES = [
+  { name: 'Strawberry', note: 'Pink buttercream, vanilla sponge with jam, and a berry on every slice.',
+    top: '#FF8DB3', side: '#FF9BBD', sideStyle: 'frost', pattern: 'glaze', topping: 'strawberry', pipe: '#FFFFFF',
+    layers: [['#FFE6AE', .3], ['#FFFFFF', .09], ['#E8364F', .07], ['#FFE6AE', .3], ['#FF8DB3', .24]] },
+  { name: 'Chocolate', note: 'Dark sponge, ganache dripping down the side, a square of chocolate on top.',
+    top: '#5E2F1A', side: '#55291A', sideStyle: 'frost', drip: '#3B1A0C', pattern: 'swirl', topping: 'choc',
+    layers: [['#74402A', .32], ['#2F150A', .1], ['#74402A', .32], ['#5E2F1A', .26]] },
+  { name: 'Lemon', note: 'A bare-sided sponge with lemon curd, bright glaze and a candied wedge.',
+    top: '#FFDF45', side: '#FFF0A8', sideStyle: 'naked', pattern: 'glaze', topping: 'lemon', pipe: '#FFFBEA',
+    layers: [['#FFF0B0', .3], ['#FFCB12', .08], ['#FFFBEA', .08], ['#FFF0B0', .3], ['#FFDF45', .24]] },
+  { name: 'Matcha', note: 'Green tea sponge dusted with matcha, a swirl of cream and a tea leaf.',
+    top: '#8DC35F', side: '#7DB451', sideStyle: 'frost', pattern: 'dust', topping: 'leaf', pipe: '#F8F4E4',
+    layers: [['#BCDB8E', .3], ['#F8F4E4', .1], ['#BCDB8E', .3], ['#8DC35F', .3]] },
+  { name: 'Blueberry', note: 'Lavender cream over berry jam, crowned with fresh blueberries.',
+    top: '#A887EC', side: '#9878E2', sideStyle: 'frost', pattern: null, topping: 'berries', pipe: '#ECE3FF',
+    layers: [['#F6E7C9', .3], ['#5B3FA8', .08], ['#ECE3FF', .08], ['#F6E7C9', .3], ['#A887EC', .24]] },
+  { name: 'Birthday', note: 'Sky-blue frosting, rainbow sprinkles and a candle on every slice.',
+    top: '#7BCFF5', side: '#68C2EC', sideStyle: 'frost', pattern: 'sprinkles', topping: 'candle', pipe: '#FFFFFF',
+    layers: [['#FFF3D2', .3], ['#FFFFFF', .1], ['#FFF3D2', .3], ['#7BCFF5', .3]] },
+  { name: 'Mango', note: 'A bare-sided sponge with mango cream, glazed and topped with fruit.',
+    top: '#FFA22C', side: '#FFB651', sideStyle: 'naked', pattern: 'glaze', topping: 'cubes', pipe: null,
+    layers: [['#FFE2A4', .3], ['#FF9C1A', .08], ['#FFF5E0', .08], ['#FFE2A4', .3], ['#FFA22C', .24]] },
+  { name: 'Cookies & Cream', note: 'Black cookie sponge, white cream, crumbs and a whole cookie.',
+    top: '#F6F2EB', side: '#3B3431', sideStyle: 'naked', pattern: 'crumbs', crumb: '#2B2523', topping: 'cookie', pipe: null,
+    layers: [['#3B3431', .28], ['#F6F2EB', .12], ['#3B3431', .28], ['#F6F2EB', .32]] },
+  { name: 'Red Velvet', note: 'Deep red sponge, cream cheese frosting, red crumbs and a raspberry.',
+    top: '#FFF5EC', side: '#B5172D', sideStyle: 'naked', pattern: 'crumbs', crumb: '#C31D35', topping: 'raspberry', pipe: null,
+    layers: [['#B5172D', .3], ['#FFF5EC', .1], ['#B5172D', .3], ['#FFF5EC', .3]] },
+  { name: 'Caramel', note: 'Golden caramel coat with drips, a salty drizzle and a hazelnut.',
+    top: '#D9933A', side: '#CA852F', sideStyle: 'frost', drip: '#9C5713', pattern: 'drizzle', drizzle: '#8A4A10', topping: 'nut', pipe: null,
+    layers: [['#F2D59B', .3], ['#B86A1C', .08], ['#F2D59B', .3], ['#D9933A', .32]] }
+];
+
+/* ==================== 2. drawing ==================== */
+const SQ = .68;                        // how flat the counter looks (1 = straight down)
+const SEG = Math.PI / 3;               // one slice
+const TAU = Math.PI * 2;
+const SLOT0 = Math.PI * 7 / 6;         // a plate fills from the back left, clockwise
+const CAKE_R = .8, CAKE_H = .52;       // cake radius on its plate, cake height on its radius
+const RC = .6366;                      // centroid of a sixth of a disc, as a share of the radius
+const slotAngle = i => SLOT0 + i * SEG;
+const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+const easeInOutCubic = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const easeOutBack = t => { const c = 1.6; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const easeInBack = t => 2.7 * t * t * t - 1.7 * t * t;
+
+const toneCache = new Map();
+function tone(hex, amt){                // amt > 0 toward white, < 0 toward black
+  const key = hex + amt.toFixed(2);
+  let v = toneCache.get(key);
+  if(!v){
+    const n = parseInt(hex.slice(1), 16), k = Math.abs(amt), t = amt > 0 ? 255 : 0;
+    const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(x => Math.round(x + (t - x) * k));
+    v = `rgb(${c[0]},${c[1]},${c[2]})`;
+    if(toneCache.size > 4000) toneCache.clear();
+    toneCache.set(key, v);
+  }
+  return v;
+}
+function readTheme(el){
+  const cs = getComputedStyle(el), v = n => cs.getPropertyValue(n).trim();
+  return {
+    cloth: v('--cs-cloth'), check: v('--cs-check'), clothEdge: v('--cs-cloth-edge'), mat: v('--cs-mat'), matEdge: v('--cs-mat-edge'),
+    plate: v('--cs-plate'), plateEdge: v('--cs-plate-edge'), plateWell: v('--cs-plate-well'), plateLine: v('--cs-plate-line'),
+    shadow: v('--cs-shadow'), wood: v('--cs-wood'), wood2: v('--cs-wood-2'), edge: v('--cs-edge'), glass: v('--cs-glass'),
+    accent: v('--cs-accent'), ink: v('--ink'), surface: v('--surface'), muted: v('--muted')
+  };
+}
+function ell(ctx, x, y, rx, ry, rot){ ctx.beginPath(); ctx.ellipse(x, y, Math.max(.01, rx), Math.max(.01, ry), rot || 0, 0, TAU); }
+// the parts of [a, b] that face the viewer (sin > 0 is toward the front)
+function frontArcs(a, b){
+  const out = [];
+  for(let k = Math.floor(a / TAU) - 1; k <= Math.floor(b / TAU) + 1; k++){
+    const s = Math.max(a, k * TAU), e = Math.min(b, k * TAU + Math.PI);
+    if(e - s > 1e-4) out.push([s, e]);
+  }
+  return out;
+}
+
+// spots inside a slice for patterns: [across the slice 0..1, out from the centre 0..1]
+const SPECKS = [[.2, .45], [.55, .3], [.82, .55], [.32, .74], [.64, .66], [.47, .9], [.86, .84], [.14, .88], [.72, .2], [.4, .56], [.9, .36], [.25, .25]];
+const SPRINKLE = ['#FF5A8A', '#FFD23F', '#5AD17F', '#FFFFFF', '#B57BFF', '#FF9A3D'];
+
+/* One slice: a sixth of a cylinder, cake centre (cx, cy) on the plate, radius
+   R, height H, spanning angles [a, a + SEG]. Faces are drawn back to front:
+   the cut faces that face us (showing the layers), the curved outside, then
+   the top with its pattern, piping and topping. */
+function drawSlice(ctx, cx, cy, R, H, a, F, o){
+  const b = a + SEG, ry = R * SQ, lw = Math.max(.6, R * .028);
+  ctx.lineJoin = 'round';
+  // cut faces
+  for(let side = 0; side < 2; side++){
+    const ang = side ? b : a, c = Math.cos(ang);
+    if(side ? c < .02 : c > -.02) continue;
+    const nx = side ? -Math.sin(b) : Math.sin(a);            // light comes from the left
+    const amt = -nx * .16 - .05;
+    const ex = Math.cos(ang) * R, ey = Math.sin(ang) * ry;
+    let z = 0;
+    for(let i = 0; i < F.layers.length; i++){
+      const [col, fr] = F.layers[i], z1 = i === F.layers.length - 1 ? H : z + fr * H + .6;
+      ctx.fillStyle = tone(col, amt);
+      ctx.beginPath(); ctx.moveTo(cx, cy - z); ctx.lineTo(cx + ex, cy + ey - z); ctx.lineTo(cx + ex, cy + ey - z1); ctx.lineTo(cx, cy - z1); ctx.closePath(); ctx.fill();
+      z += fr * H;
+    }
+    if(F.sideStyle === 'frost'){                                // the frosting coat seen in section
+      const k = .9;
+      ctx.fillStyle = tone(F.side, amt);
+      ctx.beginPath(); ctx.moveTo(cx + ex * k, cy + ey * k); ctx.lineTo(cx + ex, cy + ey); ctx.lineTo(cx + ex, cy + ey - H); ctx.lineTo(cx + ex * k, cy + ey * k - H); ctx.closePath(); ctx.fill();
+    }
+    ctx.strokeStyle = o.edge; ctx.lineWidth = lw;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + ex, cy + ey); ctx.lineTo(cx + ex, cy + ey - H); ctx.lineTo(cx, cy - H); ctx.closePath(); ctx.stroke();
+  }
+  // the curved outside
+  const band = (s, e, z0, z1) => { ctx.beginPath(); ctx.ellipse(cx, cy - z0, R, ry, 0, s, e); ctx.ellipse(cx, cy - z1, R, ry, 0, e, s, true); ctx.closePath(); };
+  for(const [s, e] of frontArcs(a, b)){
+    if(F.sideStyle === 'naked'){
+      let z = 0;
+      for(let i = 0; i < F.layers.length; i++){
+        const [col, fr] = F.layers[i], z1 = i === F.layers.length - 1 ? H : z + fr * H + .6;
+        band(s, e, z, z1); ctx.fillStyle = col; ctx.fill();
+        z += fr * H;
+      }
+    } else { band(s, e, 0, H); ctx.fillStyle = F.side; ctx.fill(); }
+    if(F.drip){
+      band(s, e, H * .8, H); ctx.fillStyle = F.drip; ctx.fill();
+      for(let j = 0; j < 3; j++){
+        const t = a + SEG * (j + .5) / 3;
+        if(t < s || t > e) continue;
+        const x = cx + Math.cos(t) * R, y = cy + Math.sin(t) * ry - H * .82;
+        const len = H * (.22 + ((j * 7 + 3) % 5) * .09), w = R * .06 * (.6 + .4 * Math.sin(t) );
+        ctx.beginPath(); ctx.moveTo(x - w, y); ctx.lineTo(x - w, y + len); ctx.arc(x, y + len, w, Math.PI, 0, true); ctx.lineTo(x + w, y); ctx.closePath(); ctx.fill();
+      }
+    }
+    band(s, e, 0, H); ctx.fillStyle = o.sideShade; ctx.fill();
+    ctx.strokeStyle = o.edge; ctx.lineWidth = lw; ctx.stroke();
+  }
+  // the top
+  const topPath = () => { ctx.beginPath(); ctx.moveTo(cx, cy - H); ctx.ellipse(cx, cy - H, R, ry, 0, a, b); ctx.closePath(); };
+  topPath(); ctx.fillStyle = F.top; ctx.fill();
+  if(F.pattern){ ctx.save(); ctx.clip(); drawPattern(ctx, cx, cy - H, R, a, F); ctx.restore(); topPath(); }
+  ctx.strokeStyle = o.edge; ctx.lineWidth = lw * .8; ctx.stroke();
+  // a lit edge along the front of the top
+  for(const [s, e] of frontArcs(a, b)){
+    ctx.beginPath(); ctx.ellipse(cx, cy - H, R * .985, ry * .985, 0, s, e);
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = lw * 1.2; ctx.stroke();
+  }
+  // piping at the rim and the topping inside it; the nearer one is drawn last
+  const m = a + SEG / 2, s = R * .21;
+  const pp = [cx + Math.cos(m) * R * .8, cy + Math.sin(m) * ry * .8 - H];
+  const tp = [cx + Math.cos(m) * R * .5, cy + Math.sin(m) * ry * .5 - H];
+  const front = Math.sin(m) > 0;
+  if(F.pipe && !front) drawPipe(ctx, pp[0], pp[1], s, F.pipe);
+  drawTopping(ctx, F.topping, tp[0], tp[1], s, o.flame);
+  if(F.pipe && front) drawPipe(ctx, pp[0], pp[1], s, F.pipe);
+}
+function drawPattern(ctx, cx, cy, R, a, F){
+  const ry = R * SQ, at = (u, v) => [cx + Math.cos(a + u * SEG) * R * v, cy + Math.sin(a + u * SEG) * ry * v];
+  switch(F.pattern){
+    case 'glaze':                                             // a reflection: fixed on screen, not on the cake
+      ctx.strokeStyle = 'rgba(255,255,255,.42)'; ctx.lineWidth = R * .08; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.ellipse(cx - R * .06, cy - ry * .06, R * .66, ry * .62, 0, Math.PI * 1.08, Math.PI * 1.62); ctx.stroke();
+      break;
+    case 'swirl':
+      ctx.strokeStyle = tone(F.top, .14); ctx.lineWidth = R * .045;
+      for(const k of [.36, .7]){ ctx.beginPath(); ctx.ellipse(cx, cy, R * k, ry * k, 0, 0, TAU); ctx.stroke(); }
+      break;
+    case 'dust':
+      ctx.fillStyle = tone(F.top, -.28);
+      for(const [u, v] of SPECKS){ const [x, y] = at(u, v); ell(ctx, x, y, R * .03, R * .03 * SQ); ctx.fill(); }
+      break;
+    case 'sprinkles':
+      ctx.lineCap = 'round'; ctx.lineWidth = R * .045;
+      SPECKS.forEach(([u, v], i) => {
+        const [x, y] = at(u, v), d = R * .055, r = i * 1.7 + a;
+        ctx.strokeStyle = SPRINKLE[i % SPRINKLE.length];
+        ctx.beginPath(); ctx.moveTo(x - Math.cos(r) * d, y - Math.sin(r) * d * SQ); ctx.lineTo(x + Math.cos(r) * d, y + Math.sin(r) * d * SQ); ctx.stroke();
+      });
+      break;
+    case 'crumbs':
+      ctx.fillStyle = F.crumb;
+      SPECKS.forEach(([u, v], i) => {
+        const [x, y] = at(u, .62 + v * .36), d = R * (.03 + (i % 3) * .012);
+        ctx.fillRect(x - d, y - d * SQ, d * 2, d * 2 * SQ);
+      });
+      break;
+    case 'drizzle': {
+      ctx.strokeStyle = F.drizzle; ctx.lineWidth = R * .05; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for(let k = 0; k <= 8; k++){ const [x, y] = at(k / 8, k % 2 ? .95 : .42); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.stroke();
+      break;
+    }
+  }
+}
+function drawPipe(ctx, x, y, s, col){
+  ctx.fillStyle = tone(col, -.1); ell(ctx, x, y + s * .12, s * .5, s * .36); ctx.fill();
+  ctx.fillStyle = col; ell(ctx, x, y, s * .44, s * .32); ctx.fill();
+  ell(ctx, x, y - s * .2, s * .26, s * .2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.7)'; ell(ctx, x - s * .14, y - s * .22, s * .1, s * .07); ctx.fill();
+}
+function cube(ctx, x, y, s, a, b, c){
+  const h = s * .5;
+  ctx.fillStyle = a; ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s, y - s + h); ctx.lineTo(x, y - s + 2 * h); ctx.lineTo(x - s, y - s + h); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = b; ctx.beginPath(); ctx.moveTo(x - s, y - s + h); ctx.lineTo(x, y - s + 2 * h); ctx.lineTo(x, y + h); ctx.lineTo(x - s, y); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x + s, y - s + h); ctx.lineTo(x, y - s + 2 * h); ctx.lineTo(x, y + h); ctx.lineTo(x + s, y); ctx.closePath(); ctx.fill();
+}
+/* a topping, standing upright at (x, y) on the top of a slice; s is its size */
+function drawTopping(ctx, kind, x, y, s, flame){
+  switch(kind){
+    case 'strawberry': {
+      ctx.fillStyle = '#E3263D';
+      ctx.beginPath(); ctx.moveTo(x, y + s * .55);
+      ctx.bezierCurveTo(x - s * 1.05, y - s * .1, x - s * .8, y - s * 1.15, x, y - s * .9);
+      ctx.bezierCurveTo(x + s * .8, y - s * 1.15, x + s * 1.05, y - s * .1, x, y + s * .55); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.45)'; ell(ctx, x - s * .33, y - s * .45, s * .13, s * .24, -.4); ctx.fill();
+      ctx.fillStyle = '#FFE08A';
+      for(const [dx, dy] of [[-.32, -.2], [.28, -.3], [0, .12], [-.06, -.55], [.36, .02], [-.4, -.62]]){ ell(ctx, x + dx * s, y + dy * s, s * .06, s * .08); ctx.fill(); }
+      ctx.fillStyle = '#3E9E48';
+      for(const r of [-.9, 0, .9]){ ell(ctx, x + Math.sin(r) * s * .3, y - s * .95, s * .3, s * .12, r * .6); ctx.fill(); }
+      break;
+    }
+    case 'choc': {
+      const w = s * .78;
+      ctx.fillStyle = '#2A1207';
+      ctx.beginPath(); ctx.moveTo(x - w, y - s * .1); ctx.lineTo(x + w * .2, y + s * .3); ctx.lineTo(x + w * .2, y - s * .5); ctx.lineTo(x - w, y - s * .9); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#1C0B04';
+      ctx.beginPath(); ctx.moveTo(x + w * .2, y + s * .3); ctx.lineTo(x + w, y - s * .1); ctx.lineTo(x + w, y - s * .9); ctx.lineTo(x + w * .2, y - s * .5); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#5A2C15';
+      ctx.beginPath(); ctx.moveTo(x - w, y - s * .9); ctx.lineTo(x + w * .2, y - s * .5); ctx.lineTo(x + w, y - s * .9); ctx.lineTo(x - w * .2, y - s * 1.25); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,220,190,.35)'; ctx.lineWidth = Math.max(.6, s * .08);
+      ctx.beginPath(); ctx.moveTo(x - w * .45, y - s * .78); ctx.lineTo(x + w * .45, y - s * 1.05); ctx.stroke();
+      break;
+    }
+    case 'lemon': {
+      ctx.save(); ctx.translate(x, y - s * .25); ctx.rotate(-.25);
+      ctx.fillStyle = '#F2BE00'; ctx.beginPath(); ctx.ellipse(0, 0, s * .95, s * .95, 0, Math.PI, TAU); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#FFFBE0'; ctx.beginPath(); ctx.ellipse(0, 0, s * .82, s * .82, 0, Math.PI, TAU); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#FFE765'; ctx.beginPath(); ctx.ellipse(0, 0, s * .72, s * .72, 0, Math.PI, TAU); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#FFFBE0'; ctx.lineWidth = Math.max(.6, s * .09);
+      for(const t of [Math.PI * 1.25, Math.PI * 1.5, Math.PI * 1.75]){ ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(t) * s * .72, Math.sin(t) * s * .72); ctx.stroke(); }
+      ctx.fillStyle = '#E3A800'; ctx.fillRect(-s * .95, -s * .02, s * 1.9, s * .14);
+      ctx.restore();
+      break;
+    }
+    case 'leaf': {
+      drawPipe(ctx, x - s * .2, y, s * 1.3, '#F8F4E4');
+      ctx.save(); ctx.translate(x + s * .18, y - s * .55); ctx.rotate(-.7);
+      ctx.fillStyle = '#3F8A2E'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(s * .5, -s * .45, s * 1.1, 0); ctx.quadraticCurveTo(s * .5, s * .45, 0, 0); ctx.fill();
+      ctx.strokeStyle = '#9FD27C'; ctx.lineWidth = Math.max(.5, s * .07); ctx.beginPath(); ctx.moveTo(s * .08, 0); ctx.lineTo(s * .95, 0); ctx.stroke();
+      ctx.restore();
+      break;
+    }
+    case 'berries':
+      for(const [dx, dy] of [[-.38, .02], [.38, .02], [0, -.42]]){
+        const bx = x + dx * s, by = y + dy * s - s * .2;
+        ctx.fillStyle = '#3B3A97'; ell(ctx, bx, by, s * .4, s * .38); ctx.fill();
+        ctx.fillStyle = '#5E62C9'; ell(ctx, bx - s * .1, by - s * .1, s * .22, s * .2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.55)'; ell(ctx, bx - s * .14, by - s * .16, s * .07, s * .06); ctx.fill();
+        ctx.fillStyle = '#26245E'; ell(ctx, bx + s * .06, by + s * .02, s * .08, s * .06); ctx.fill();
+      }
+      break;
+    case 'candle': {
+      const w = s * .2, h = s * 1.7;
+      ctx.fillStyle = '#FFFFFF'; ctx.fillRect(x - w, y - h, w * 2, h);
+      ctx.save(); ctx.beginPath(); ctx.rect(x - w, y - h, w * 2, h); ctx.clip();
+      ctx.strokeStyle = '#FF5E98'; ctx.lineWidth = w * .8;
+      for(let k = -1; k < 5; k++){ ctx.beginPath(); ctx.moveTo(x - w * 1.5, y - k * h / 4); ctx.lineTo(x + w * 1.5, y - k * h / 4 - w * 2); ctx.stroke(); }
+      ctx.restore();
+      ctx.strokeStyle = '#3B2A20'; ctx.lineWidth = Math.max(.6, s * .07);
+      ctx.beginPath(); ctx.moveTo(x, y - h); ctx.lineTo(x, y - h - s * .18); ctx.stroke();
+      const fl = flame == null ? 1 : flame, fy = y - h - s * .5;
+      ctx.fillStyle = 'rgba(255,190,60,.28)'; ell(ctx, x, fy, s * .55, s * .62); ctx.fill();
+      ctx.fillStyle = '#FFA21F';
+      ctx.beginPath(); ctx.moveTo(x, fy - s * .5 * fl); ctx.quadraticCurveTo(x + s * .3, fy + s * .05, x, fy + s * .28); ctx.quadraticCurveTo(x - s * .3, fy + s * .05, x, fy - s * .5 * fl); ctx.fill();
+      ctx.fillStyle = '#FFF2A8'; ell(ctx, x, fy + s * .08, s * .1, s * .16); ctx.fill();
+      break;
+    }
+    case 'cubes':
+      cube(ctx, x - s * .38, y + s * .05, s * .42, '#FFD06A', '#FFA21C', '#E68400');
+      cube(ctx, x + s * .4, y - s * .1, s * .38, '#FFC24A', '#FF9910', '#DB7A00');
+      cube(ctx, x + s * .02, y - s * .42, s * .36, '#FFD978', '#FFAA2E', '#EA8A06');
+      break;
+    case 'cookie': {
+      const cy = y - s * .55, rx = s * .36, ry = s * .74;
+      ctx.fillStyle = '#231E1C'; ell(ctx, x + s * .2, cy, rx, ry); ctx.fill();
+      ctx.fillStyle = '#FFFFFF'; ell(ctx, x + s * .07, cy, rx, ry * .95); ctx.fill();
+      ctx.fillStyle = '#2B2523'; ell(ctx, x - s * .08, cy, rx, ry); ctx.fill();
+      ctx.strokeStyle = '#4A4441'; ctx.lineWidth = Math.max(.5, s * .06);
+      ell(ctx, x - s * .08, cy, rx * .7, ry * .7); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,.18)'; ell(ctx, x - s * .18, cy - ry * .4, rx * .3, ry * .18); ctx.fill();
+      break;
+    }
+    case 'raspberry': {
+      const pts = [[0, -.15], [-.3, -.02], [.3, -.02], [-.16, -.4], [.16, -.4], [0, -.65], [-.34, -.32], [.34, -.32]];
+      for(const [dx, dy] of pts){
+        ctx.fillStyle = '#D3164F'; ell(ctx, x + dx * s, y + dy * s, s * .2, s * .2); ctx.fill();
+        ctx.fillStyle = '#FF5C8E'; ell(ctx, x + dx * s - s * .05, y + dy * s - s * .06, s * .08, s * .07); ctx.fill();
+      }
+      break;
+    }
+    case 'nut': {
+      const ny = y - s * .3;
+      ctx.fillStyle = '#9A5A28'; ell(ctx, x, ny, s * .5, s * .58); ctx.fill();
+      ctx.fillStyle = '#B87338'; ell(ctx, x - s * .12, ny + s * .05, s * .22, s * .36); ctx.fill();
+      ctx.fillStyle = '#6A3814'; ell(ctx, x, ny - s * .4, s * .48, s * .2); ctx.fill();
+      ctx.fillStyle = '#6A3814'; ctx.beginPath(); ctx.moveTo(x - s * .07, ny - s * .55); ctx.lineTo(x, ny - s * .8); ctx.lineTo(x + s * .07, ny - s * .55); ctx.fill();
+      break;
+    }
+  }
+}
+/* side shading: darker toward both edges of the cake, a little light on the left */
+function sideShade(ctx, x, R){
+  const g = ctx.createLinearGradient(x - R, 0, x + R, 0);
+  g.addColorStop(0, 'rgba(0,0,0,.2)'); g.addColorStop(.3, 'rgba(255,255,255,.06)');
+  g.addColorStop(.6, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.3)');
+  return g;
+}
+/* a porcelain plate centred at (x, y) */
+function drawPlate(ctx, x, y, pr, th){
+  const ry = pr * SQ;
+  ctx.fillStyle = th.shadow; ell(ctx, x + pr * .05, y + ry * .26, pr * 1.02, ry * 1.02); ctx.fill();
+  ctx.fillStyle = th.plateEdge; ell(ctx, x, y + pr * .075, pr, ry); ctx.fill();
+  ctx.fillStyle = th.plate; ell(ctx, x, y, pr, ry); ctx.fill();
+  ctx.strokeStyle = th.plateLine; ctx.lineWidth = Math.max(1, pr * .035); ell(ctx, x, y, pr * .87, ry * .87); ctx.stroke();
+  ctx.fillStyle = th.plateWell; ell(ctx, x, y + pr * .02, pr * .72, ry * .72); ctx.fill();
+}
+/* slices given as [cake, start angle], drawn back to front */
+function drawSlices(ctx, x, y, R, list, th, flame){
+  const H = R * CAKE_H;
+  list.sort((p, q) => Math.sin(p[1] + SEG / 2) - Math.sin(q[1] + SEG / 2));
+  const o = { edge: th.edge, sideShade: sideShade(ctx, x, R), flame };
+  for(const [f, a] of list) drawSlice(ctx, x, y, R, H, a, CAKES[f], o);
+}
+/* a glass cloche on a stand, with a cupcake inside: a cell nothing can go on */
+function drawCloche(ctx, x, y, pr, th){
+  const ry = pr * SQ;
+  ctx.fillStyle = th.shadow; ell(ctx, x + pr * .05, y + ry * .2, pr * .86, ry * .86); ctx.fill();
+  ctx.fillStyle = th.plateEdge; ell(ctx, x, y + pr * .07, pr * .82, ry * .82); ctx.fill();
+  ctx.fillStyle = th.plate; ell(ctx, x, y, pr * .82, ry * .82); ctx.fill();
+  // cupcake
+  const cy = y - pr * .02, w = pr * .3;
+  ctx.fillStyle = '#F6A8C2';
+  ctx.beginPath(); ctx.moveTo(x - w, cy - w * 1.05); ctx.lineTo(x + w, cy - w * 1.05); ctx.lineTo(x + w * .74, cy); ctx.lineTo(x - w * .74, cy); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = Math.max(.6, pr * .025);
+  for(let k = -2; k <= 2; k++){ ctx.beginPath(); ctx.moveTo(x + k * w * .38, cy - w * 1.02); ctx.lineTo(x + k * w * .3, cy - 1); ctx.stroke(); }
+  ctx.fillStyle = '#FFF4F8'; ell(ctx, x, cy - w * 1.15, w * 1.1, w * .5); ctx.fill();
+  ell(ctx, x, cy - w * 1.55, w * .8, w * .42); ctx.fill();
+  ell(ctx, x, cy - w * 1.9, w * .45, w * .3); ctx.fill();
+  ctx.fillStyle = '#E3263D'; ell(ctx, x, cy - w * 2.2, w * .24, w * .24); ctx.fill();
+  // dome
+  const dh = pr * 1.15, dw = pr * .74;
+  ctx.fillStyle = th.glass;
+  ctx.beginPath(); ctx.ellipse(x, y, dw, dh, 0, Math.PI, TAU); ctx.ellipse(x, y, dw, dw * SQ, 0, 0, Math.PI); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = Math.max(1, pr * .04);
+  ctx.beginPath(); ctx.ellipse(x, y, dw, dh, 0, Math.PI, TAU); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = Math.max(1, pr * .07); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.ellipse(x, y, dw * .72, dh * .8, 0, Math.PI * 1.12, Math.PI * 1.38); ctx.stroke();
+  ctx.fillStyle = th.plateEdge; ell(ctx, x, y - dh - pr * .06, pr * .1, pr * .08); ctx.fill();
+  ctx.fillStyle = th.plate; ell(ctx, x, y - dh - pr * .08, pr * .08, pr * .06); ctx.fill();
+}
+/* a whole cake on a plate, for icons and the lobby; rot turns it */
+function drawWholeCake(ctx, x, y, pr, f, th, rot){
+  drawPlate(ctx, x, y, pr, th);
+  const list = [];
+  for(let i = 0; i < 6; i++) list.push([f, slotAngle(i) + (rot || 0)]);
+  drawSlices(ctx, x, y, pr * CAKE_R, list, th);
+}
+function cakeIcon(cv, f, o){
+  o = o || {};
+  const W = cv.clientWidth || o.w || 30, H = cv.clientHeight || o.h || 26, dpr = Math.min(3, window.devicePixelRatio || 1);
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  const th = o.th || readTheme(document.documentElement);
+  const pr = Math.min(W / 2.15, H / (2 * SQ + .62));
+  const y = H - pr * SQ - pr * .12;
+  if(o.locked){
+    ctx.globalAlpha = .9;
+    drawPlate(ctx, W / 2, y, pr, th);
+    const R = pr * CAKE_R, h = R * CAKE_H;
+    ctx.fillStyle = th.plateEdge;
+    ctx.beginPath(); ctx.ellipse(W / 2, y, R, R * SQ, 0, 0, Math.PI); ctx.ellipse(W / 2, y - h, R, R * SQ, 0, Math.PI, 0, true); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = tone('#888888', 0); ell(ctx, W / 2, y - h, R, R * SQ); ctx.fill();
+    ctx.fillStyle = '#FFFFFF'; ctx.font = `800 ${Math.round(R * .9)}px ${o.font || 'sans-serif'}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('?', W / 2, y - h);
+    ctx.globalAlpha = 1;
+    return;
+  }
+  drawWholeCake(ctx, W / 2, y, pr, f, th, o.rot || 0);
+}
+
+/* ==================== 3. sound ==================== */
+function makeSfx(A){
+  const penta = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28];
+  const note = (base, semi) => base * Math.pow(2, semi / 12);
+  return {
+    pick(){ A.tone({ f: 1760, dur: .05, gain: .05, type: 'triangle' }); A.tone({ f: 520, f1: 780, dur: .08, gain: .1 }); },
+    drop(){ A.tone({ f: 640, f1: 420, dur: .08, gain: .08 }); },
+    // porcelain on the counter: a bright knock with a short ring
+    place(){
+      A.noise({ f: 2600, dur: .05, gain: .16, q: 3 });
+      A.tone({ f: 340, f1: 230, dur: .1, gain: .18 });
+      A.tone({ f: 2350, dur: .22, gain: .035, type: 'triangle', at: .01 });
+    },
+    // a slice takes off: a soft rising whoosh
+    whoosh(at){ A.noise({ filter: 'bandpass', f: 500, f1: 2600, dur: .26, gain: .06, q: 1.2, at, attack: .05 }); },
+    // and lands: a plucked note that climbs as the plate fills
+    land(k, at){
+      const f = note(392, penta[clamp(k, 0, penta.length - 1)]);
+      A.tone({ f, f1: f * 1.01, dur: .16, gain: .13, type: 'triangle', at });
+      A.tone({ f: f * 2, dur: .08, gain: .04, at });
+      A.noise({ filter: 'lowpass', f: 900, dur: .05, gain: .05, at });
+    },
+    // the turntable spins
+    spin(at){ A.tone({ f: 260, f1: 620, dur: .3, gain: .035, type: 'triangle', at, attack: .04 }); },
+    cake(combo){
+      const base = note(523.25, penta[clamp(combo, 0, 6)]);
+      [0, 4, 7, 12].forEach((s, i) => A.bell(note(base, s), i * .06, .12));
+      A.noise({ filter: 'highpass', f: 6000, dur: .5, gain: .05, at: .05, attack: .04 });
+    },
+    served(){ A.tone({ f: 1318.5, dur: .06, gain: .05, type: 'square', filter: 'lowpass', ff: 3800 }); A.tone({ f: 1975.5, dur: .12, gain: .05, type: 'square', at: .05, filter: 'lowpass', ff: 3800 }); },
+    empty(at){ A.tone({ f: 980, f1: 340, dur: .07, gain: .08, at }); },
+    deal(){ [0, 1, 2].forEach(i => { A.noise({ f: 1400 + i * 300, f1: 2400, dur: .07, gain: .05, q: 2, at: i * .07 }); A.tone({ f: 700 + i * 90, dur: .05, gain: .04, at: i * .07 + .02 }); }); },
+    bonk(){ A.tone({ f: 190, f1: 105, dur: .18, gain: .2, type: 'square', filter: 'lowpass', ff: 650 }); },
+    smash(){
+      A.tone({ f: 150, f1: 55, dur: .22, gain: .3 });
+      for(let k = 0; k < 6; k++) A.noise({ filter: 'highpass', f: 3500 + k * 600, dur: .05 + k * .015, gain: .1, at: k * .025 });
+      A.noise({ filter: 'lowpass', f: 900, dur: .2, gain: .14 });
+    },
+    undo(){ A.noise({ f: 2600, f1: 480, dur: .22, gain: .12, q: 1.4 }); A.tone({ f: 700, f1: 420, dur: .14, gain: .06 }); },
+    refresh(){ [0, 1, 2].forEach(i => A.noise({ f: 900, f1: 2600, dur: .12, gain: .07, q: 1.5, at: i * .08 })); },
+    win(){
+      [0, 4, 7, 12, 16, 19].forEach((s, i) => A.bell(note(523.25, s), i * .085, .15));
+      A.noise({ filter: 'highpass', f: 5500, dur: .9, gain: .04, at: .4, attack: .1 });
+      A.tone({ f: 130.8, f1: 131, dur: .9, gain: .12, type: 'triangle', at: .5 });
+    },
+    full(){ [7, 4, 0].forEach((s, i) => A.tone({ f: note(330, s), dur: .22, gain: .08, type: 'triangle', at: i * .12 })); },
+    coin(i){
+      A.tone({ f: 1318.5, dur: .06, gain: .05, type: 'square', at: i * .055, filter: 'lowpass', ff: 3800 });
+      A.tone({ f: 1975.5, dur: .12, gain: .05, type: 'square', at: i * .055 + .05, filter: 'lowpass', ff: 3800 });
+    },
+    unlock(){ [0, 7, 12, 16, 19, 24].forEach((s, i) => A.bell(note(659.25, s), i * .07, .1)); },
+    hard(tier){
+      A.tone({ f: 140, f1: 48, dur: .4, gain: .4 }); A.noise({ filter: 'lowpass', f: 400, dur: .2, gain: .2 });
+      A.tone({ f: 140, f1: 48, dur: .4, gain: .35, at: .22 }); A.noise({ filter: 'lowpass', f: 400, dur: .2, gain: .18, at: .22 });
+      const chord = tier === 2 ? [0, 3, 6, 10] : [0, 3, 7];
+      chord.forEach((s, i) => A.tone({ f: note(196, s), dur: 1.1, gain: .07, type: 'sawtooth', filter: 'lowpass', ff: 900, at: .44 + i * .02, attack: .08 }));
+    }
+  };
+}
+
+/* ==================== 4. the game ==================== */
+const IC = {
+  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg>',
+  undo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>',
+  hammer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 7.5l-9 9a2 2 0 0 0 3 3l9-9"/><path d="M11.5 5.5l4-3 6 6-3 4z"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 3.5V8h4.5"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20.5V16h-4.5"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>'
+};
+const TIER_NAME = ['', 'Hard', 'Super hard'];
+const UNDOS_PER_TRY = 3;
+const PRICES = { undo: 30, hammer: 60, refresh: 40 };
+const FLIGHT = 470, STAGGER = 75;                 // ms a slice is in the air; gap between slices
+
+const TEMPLATE = `
+<section class="cs-lobby" data-ref="lobby" aria-label="Cake Sort">
+  <header class="cs-bar">
+    <button class="icon-btn" data-act="home" aria-label="Back to Playbox">${IC.back}</button>
+    <span class="cs-spacer"></span>
+    <span class="pill"><i class="coin"></i><b data-bind="coins">0</b></span>
+    <button class="icon-btn" data-act="settings" aria-label="Settings">${IC.menu}</button>
+  </header>
+  <div class="cs-lobby-body">
+    <h1 class="cs-word" aria-label="Cake Sort">Cake <i style="--c:#FF6F9F">S</i><i style="--c:#8B4A2B">o</i><i style="--c:#F2BE00">r</i><i style="--c:#7DB451">t</i></h1>
+    <div class="cs-next">
+      <div class="cs-next-top">
+        <canvas class="cs-next-art" data-ref="nextArt" aria-hidden="true"></canvas>
+        <div class="cs-next-meta">
+          <div class="cs-next-eyebrow" data-ref="nextEyebrow">Up next</div>
+          <div class="cs-next-title" data-bind="nextTitle">Level 1</div>
+          <div class="cs-next-sub" data-bind="nextSub"></div>
+        </div>
+      </div>
+      <div class="cs-menu" data-ref="nextMenu" aria-label="Cakes on this level's menu"></div>
+      <button class="btn btn-primary btn-wide cs-go" data-act="play" data-ref="go">Play</button>
+    </div>
+    <div class="cs-shelf">
+      <div class="cs-shelf-head"><span class="cs-shelf-title">Cake collection</span><span class="cs-shelf-count" data-bind="shelfCount"></span></div>
+      <div class="cs-shelf-grid" data-ref="shelf"></div>
+    </div>
+    <p class="cs-lobby-note" data-bind="lobbyNote"></p>
+  </div>
+</section>
+<section class="cs-play" data-ref="play" hidden aria-label="Cake Sort level">
+  <canvas class="cs-cv" data-ref="cv" role="application" tabindex="0"
+    aria-label="The counter. Drag a plate from the tray onto an empty spot. Keys 1 to 3 pick a plate, arrows move, Enter puts it down."></canvas>
+  <header class="cs-bar">
+    <button class="icon-btn" data-act="lobby" aria-label="Back to the bakery">${IC.back}</button>
+    <div class="cs-lvl"><span data-bind="lvl">Level 1</span><span class="cs-tier" data-ref="tier" hidden></span></div>
+    <span class="cs-spacer"></span>
+    <span class="pill"><i class="coin"></i><b data-bind="coins">0</b></span>
+    <button class="icon-btn" data-act="menu" aria-label="Menu">${IC.menu}</button>
+  </header>
+  <div class="cs-goal" data-ref="goal">
+    <div class="cs-goal-row">
+      <span class="cs-goal-t">Bake <span data-bind="goal">8</span> cakes</span>
+      <span class="cs-meter" role="progressbar" aria-label="Cakes baked" data-ref="meterBar"><i data-ref="meter"></i></span>
+      <span class="cs-goal-n"><b data-bind="baked">0</b><span>/<span data-bind="goal">8</span></span></span>
+    </div>
+    <div class="cs-menu" data-ref="menuRow" aria-label="Cakes on the menu"></div>
+  </div>
+  <div class="cs-coach" data-ref="coach" aria-live="polite"></div>
+  <div class="cs-field" data-ref="field"></div>
+  <nav class="cs-tools" aria-label="Boosters">
+    <div class="cs-bar-msg" data-ref="msg" role="status" hidden>
+      <span class="cs-bar-t" data-ref="msgT"></span>
+      <span data-ref="msgBtns" style="display:contents"></span>
+    </div>
+    <button class="cs-tool" data-act="undo"><span class="ic">${IC.undo}</span><b class="n" data-ref="undoN">3</b><span class="lb">Undo</span></button>
+    <button class="cs-tool" data-act="hammer" data-ref="hammerTool"><span class="ic">${IC.hammer}</span><b class="n" data-ref="hammerN">2</b><span class="lb">Hammer</span></button>
+    <button class="cs-tool" data-act="refresh"><span class="ic">${IC.refresh}</span><b class="n" data-ref="refreshN">2</b><span class="lb">New plates</span></button>
+  </nav>
+  <canvas class="cs-fx" data-ref="fx" aria-hidden="true"></canvas>
+  <div class="cs-floats" data-ref="floats"></div>
+  <div class="cs-intro" data-ref="intro" hidden>
+    <div class="cs-intro-card">
+      <div class="cs-intro-k" data-ref="introK">Hard level</div>
+      <div class="cs-intro-n" data-ref="introN">Level 5</div>
+      <div class="cs-intro-s" data-ref="introS"></div>
+    </div>
+  </div>
+</section>`;
+
+function mount(stage, api){
+  const { h, sheet, closeSheet, toast, toggle } = api.ui;
+  const A = api.audio, sfx = makeSfx(A), buzz = api.buzz;
+  const S = api.save;
+  if(!(S.level >= 1)) S.level = 1;
+  if(!(S.coins >= 0)) S.coins = 100;
+  S.inv = Object.assign({ hammer: 2, refresh: 2 }, S.inv);
+  S.stats = Object.assign({ won: 0, cakes: 0, hard: 0, super: 0 }, S.stats);
+  S.baked = S.baked || {};
+  S.seen = S.seen || {};
+  S.tips = S.tips || {};
+
+  const el = h('div', { class: 'cs', 'data-tier': '0' });
+  el.innerHTML = TEMPLATE;
+  stage.append(el);
+  const ref = n => el.querySelector(`[data-ref="${n}"]`);
+  const bind = (n, v) => el.querySelectorAll(`[data-bind="${n}"]`).forEach(x => { x.textContent = v; });
+  const playEl = ref('play'), cv = ref('cv'), ctx = cv.getContext('2d'), field = ref('field'), floats = ref('floats');
+  const fxCv = ref('fx'), fx = fxCv.getContext('2d');
+  const coachEl = ref('coach'), msgEl = ref('msg');
+  const FONT = getComputedStyle(document.documentElement).getPropertyValue('--f-disp').trim() || 'sans-serif';
+  const now = () => performance.now();
+
+  let view = 'lobby';
+  let L = null;                  // the level (engine state)
+  let vis = [];                  // per cell: null | plate visual {slices, born, dying}
+  let trayVis = [];              // per tray slot: null | plate visual
+  let flyers = [], served = [], parts = [], movers = [];
+  let drag = null, sel = -1, kc = -1, hammer = false, busy = false;
+  let shown = {}, shownTotal = 0;  // cakes the counter shows (they land after the engine has counted them)
+  let undoStack = [];
+  let tut = 0;                   // tutorial step on level 1
+  let combo = 0;
+  let theme = readTheme(el);
+  let W = 0, H = 0, dpr = 1, raf = 0;
+  let cw = 60, rp = 48, pr = 26, bx = 0, by = 0, trayY = 0, trayXs = [], fieldTop = 0, fieldBot = 0;
+  let bg = null;
+  const sprites = new Map();
+  const timers = new Set();
+  const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); return id; };
+
+  /* ---------- geometry ---------- */
+  const cellX = c => bx + (c % COLS + .5) * cw;
+  const cellY = c => by + (((c / COLS) | 0) + .5) * rp;
+  function layout(){
+    const rr = playEl.getBoundingClientRect(), fr = field.getBoundingClientRect();
+    W = rr.width; H = rr.height; dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = fxCv.width = Math.max(1, Math.round(W * dpr)); cv.height = fxCv.height = Math.max(1, Math.round(H * dpr));
+    const fx0 = fr.left - rr.left, fy = fr.top - rr.top, fw = fr.width, fh = fr.height;
+    fieldTop = fy; fieldBot = fy + fh;
+    const RP = .8, TOP = .42, MID = .14, TRAY_H = 1.25;
+    cw = Math.max(36, Math.min((fw - 36) / COLS, fh / (TOP + ROWS * RP + MID + TRAY_H), 116));
+    rp = cw * RP;
+    const used = cw * (TOP + ROWS * RP + MID + TRAY_H);
+    bx = fx0 + (fw - cw * COLS) / 2;
+    by = fy + Math.max(0, (fh - used) / 2) + cw * TOP;
+    pr = cw * .44;
+    trayY = by + rp * ROWS + cw * MID + cw * .58;
+    const gap = Math.min(cw * 1.3, (W - 24) / 3);
+    trayXs = [W / 2 - gap, W / 2, W / 2 + gap];
+    sprites.clear();
+    buildBg();
+    kick();
+  }
+  function buildBg(){
+    if(!L){ bg = null; return; }
+    bg = bg || document.createElement('canvas');
+    bg.width = cv.width; bg.height = cv.height;
+    const g = bg.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    // the tablecloth
+    const x0 = bx - cw * .14, y0 = by - rp * .5 - cw * .06, w = cw * COLS + cw * .28, hh = rp * ROWS + cw * .2;
+    g.save();
+    g.fillStyle = theme.shadow; roundRect(g, x0 + 2, y0 + 6, w, hh, 18); g.fill();
+    g.fillStyle = theme.cloth; roundRect(g, x0, y0, w, hh, 18); g.fill();
+    g.clip();
+    g.fillStyle = theme.check;
+    const st = Math.max(10, cw / 5);
+    for(let x = x0; x < x0 + w; x += st * 2) g.fillRect(x, y0, st, hh);
+    for(let y = y0; y < y0 + hh; y += st * 2) g.fillRect(x0, y, w, st);
+    g.restore();
+    g.strokeStyle = theme.clothEdge; g.lineWidth = 2; roundRect(g, x0, y0, w, hh, 18); g.stroke();
+    // doilies on the free spots, cloches on the blocked ones (back rows first)
+    for(let c = 0; c < CELLS; c++){
+      if(L.cells[c] === BLOCKED) continue;
+      doily(g, cellX(c), cellY(c), pr * 1.06);
+    }
+    // the tray: a wooden board with three spots
+    const tw = Math.min(W - 16, (trayXs[2] - trayXs[0]) + cw * 1.2), th = cw * 1.02;
+    g.fillStyle = theme.shadow; roundRect(g, W / 2 - tw / 2 + 2, trayY - th / 2 + 6, tw, th, 22); g.fill();
+    const wood = g.createLinearGradient(0, trayY - th / 2, 0, trayY + th / 2);
+    wood.addColorStop(0, theme.wood); wood.addColorStop(1, theme.wood2);
+    g.fillStyle = wood; roundRect(g, W / 2 - tw / 2, trayY - th / 2, tw, th, 22); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.08)'; g.lineWidth = 1.4;
+    for(let k = 1; k < 5; k++){
+      const y = trayY - th / 2 + th * k / 5;
+      g.beginPath(); g.moveTo(W / 2 - tw / 2 + 14, y); g.bezierCurveTo(W / 2 - tw / 6, y - 3, W / 2 + tw / 6, y + 3, W / 2 + tw / 2 - 14, y); g.stroke();
+    }
+    g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 2; roundRect(g, W / 2 - tw / 2 + 1, trayY - th / 2 + 1, tw - 2, th - 2, 21); g.stroke();
+    for(const x of trayXs){
+      g.fillStyle = 'rgba(0,0,0,.05)'; ell(g, x, trayY + pr * .1, pr * 1.04, pr * SQ * 1.04); g.fill();
+      g.strokeStyle = 'rgba(255,255,255,.4)'; g.lineWidth = 1.5; g.setLineDash([4, 5]); ell(g, x, trayY + pr * .06, pr * .98, pr * SQ * .98); g.stroke(); g.setLineDash([]);
+    }
+  }
+  function roundRect(g, x, y, w, hh, r){ g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + hh, r); g.arcTo(x + w, y + hh, x, y + hh, r); g.arcTo(x, y + hh, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  function doily(g, x, y, r){
+    const ry = r * SQ, n = 18;
+    g.fillStyle = theme.mat;
+    g.beginPath();
+    for(let k = 0; k < n; k++){ const t = k / n * TAU; g.moveTo(x + Math.cos(t) * r * .93 + r * .11, y + Math.sin(t) * ry * .93); g.ellipse(x + Math.cos(t) * r * .93, y + Math.sin(t) * ry * .93, r * .11, r * .11 * SQ, 0, 0, TAU); }
+    g.fill();
+    ell(g, x, y, r * .95, ry * .95); g.fill();
+    g.strokeStyle = theme.matEdge; g.lineWidth = 1.2; g.setLineDash([2, 3]);
+    ell(g, x, y, r * .78, ry * .78); g.stroke(); g.setLineDash([]);
+  }
+
+  /* ---------- plate visuals ---------- */
+  // a visual slice: angle eases from a0 to a1 between t0 and t0 + dur
+  const vSlice = (f, i) => ({ f, a0: slotAngle(i), a1: slotAngle(i), t0: 0, dur: 0, ghost: false });
+  const angleOf = (s, t) => t >= s.t0 + s.dur ? s.a1 : s.a0 + (s.a1 - s.a0) * (s.spin ? easeOutBack : easeOutCubic)(clamp((t - s.t0) / s.dur, 0, 1));
+  const plateVis = (p, born) => ({ slices: p.map((f, i) => vSlice(f, i)), born: born || 0, dying: 0 });
+  function reslot(pv, t, dur, turns){
+    pv.slices.forEach((s, i) => {
+      const cur = angleOf(s, t), target = slotAngle(i);
+      let d = ((target - cur) % TAU + TAU) % TAU;
+      if(d > Math.PI) d -= TAU;
+      s.a0 = cur; s.a1 = cur + d + turns * TAU; s.t0 = t; s.dur = dur; s.spin = turns > 0;
+    });
+  }
+  const settled = (pv, t) => pv.slices.every(s => !s.ghost && t >= s.t0 + s.dur) && (!pv.born || t > pv.born + 420) && !pv.dying;
+  function syncVis(pop){
+    const t = now();
+    vis = L.cells.map(p => isPlate(p) ? plateVis(p, pop ? t + Math.random() * 120 : 0) : null);
+    trayVis = L.tray.map((p, i) => p ? plateVis(p, pop ? t + i * 70 : 0) : null);
+  }
+
+  /* ---------- drawing ---------- */
+  function spriteFor(fs){
+    const key = fs.join('.');
+    let sp = sprites.get(key);
+    if(!sp){
+      const w = Math.ceil(pr * 2.4), hh = Math.ceil(pr * SQ * 2 + pr * CAKE_R * CAKE_H + pr * .9);
+      const c = document.createElement('canvas'); c.width = Math.ceil(w * dpr); c.height = Math.ceil(hh * dpr);
+      const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const ox = w / 2, oy = hh - pr * SQ - pr * .22;
+      drawPlate(g, ox, oy, pr, theme);
+      drawSlices(g, ox, oy, pr * CAKE_R, fs.map((f, i) => [f, slotAngle(i)]), theme);
+      sp = { c, ox, oy, w, hh };
+      if(sprites.size > 160) sprites.clear();
+      sprites.set(key, sp);
+    }
+    return sp;
+  }
+  function plateScale(pv, t){
+    if(pv.dying){ const u = clamp((t - pv.dying) / 300, 0, 1); return u <= 0 ? 1 : 1 - easeInBack(u) * 1; }
+    if(pv.born && t < pv.born + 420){ const u = clamp((t - pv.born) / 420, 0, 1); return u <= 0 ? 0 : easeOutBack(u); }
+    return 1;
+  }
+  function drawPlateVis(pv, x, y, t, lift, scale){
+    const k = plateScale(pv, t) * (scale || 1);
+    if(k <= .01) return;
+    const lifted = lift || 0;
+    if(settled(pv, t) && k === 1 && !lifted){
+      const sp = spriteFor(pv.slices.map(s => s.f));
+      ctx.drawImage(sp.c, x - sp.ox, y - sp.oy, sp.w, sp.hh);
+      return;
+    }
+    ctx.save();
+    ctx.translate(x, y); ctx.scale(k, k); ctx.translate(-x, -y);
+    if(lifted){ ctx.fillStyle = theme.shadow; ell(ctx, x, y + pr * .25, pr * .95, pr * SQ * .9); ctx.fill(); }
+    const yy = y - lifted;
+    drawPlate(ctx, x, yy, pr, Object.assign({}, theme, lifted ? { shadow: 'rgba(0,0,0,0)' } : null));
+    const list = [];
+    for(const s of pv.slices) if(!s.ghost) list.push([s.f, angleOf(s, t)]);
+    drawSlices(ctx, x, yy, pr * CAKE_R, list, theme);
+    ctx.restore();
+  }
+  function flyerPose(fl, t){
+    const u = clamp((t - fl.t0) / fl.dur, 0, 1), e = easeInOutCubic(u);
+    const R = pr * CAKE_R, gx = cellX(fl.dest), gy = cellY(fl.dest);
+    const ga = angleOf(fl.ghost, t);
+    const c0x = fl.x0 + Math.cos(fl.a0 + SEG / 2) * R * RC, c0y = fl.y0 + Math.sin(fl.a0 + SEG / 2) * R * RC * SQ;
+    const c1x = gx + Math.cos(ga + SEG / 2) * R * RC, c1y = gy + Math.sin(ga + SEG / 2) * R * RC * SQ;
+    const ang = fl.a0 + (ga + fl.turn - fl.a0) * e;               // a full spin on the way over
+    const sc = 1 + Math.sin(Math.PI * u) * .14;
+    const lift = Math.sin(Math.PI * u) * cw * .72;
+    const mx = lerp(c0x, c1x, e), my = lerp(c0y, c1y, e);
+    return { x: mx - Math.cos(ang + SEG / 2) * R * RC * sc, y: my - Math.sin(ang + SEG / 2) * R * RC * SQ * sc - lift, a: ang, sc, mx, my, lift, u };
+  }
+  function draw(t){
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    if(!L || view !== 'play'){ fx.setTransform(1, 0, 0, 1, 0, 0); fx.clearRect(0, 0, fxCv.width, fxCv.height); return; }
+    if(bg) ctx.drawImage(bg, 0, 0, W, H);
+    // where a dragged plate would land, and spots for keyboard play
+    const pulse = .5 + .5 * Math.sin(t * .008);
+    const target = drag ? drag.target : -1;
+    for(let c = 0; c < CELLS; c++){
+      const x = cellX(c), y = cellY(c);
+      if(c === target || (c === kc && sel >= 0)){
+        ctx.fillStyle = theme.accent; ctx.globalAlpha = .18 + .14 * pulse; ell(ctx, x, y, pr * 1.08, pr * SQ * 1.08); ctx.fill();
+        ctx.globalAlpha = 1; ctx.strokeStyle = theme.accent; ctx.lineWidth = 3; ell(ctx, x, y, pr * 1.02, pr * SQ * 1.02); ctx.stroke();
+      } else if(c === kc){
+        ctx.strokeStyle = theme.accent; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ell(ctx, x, y, pr * 1.04, pr * SQ * 1.04); ctx.stroke(); ctx.setLineDash([]);
+      }
+    }
+    // the counter, back row first so cakes in front overlap the ones behind
+    for(let c = 0; c < CELLS; c++){
+      const x = cellX(c), y = cellY(c);
+      if(L.cells[c] === BLOCKED){ drawCloche(ctx, x, y, pr, theme); continue; }
+      const pv = vis[c];
+      if(!pv) continue;
+      if(hammer && pv.slices.length){
+        ctx.strokeStyle = theme.accent; ctx.globalAlpha = .45 + .45 * pulse; ctx.lineWidth = 3; ell(ctx, x, y + 2, pr * 1.08, pr * SQ * 1.08); ctx.stroke(); ctx.globalAlpha = 1;
+      }
+      drawPlateVis(pv, x, y, t);
+    }
+    // the tray
+    for(let i = 0; i < TRAY; i++){
+      const pv = trayVis[i];
+      if(!pv || (drag && drag.t === i) || movers.some(m => m.t === i)) continue;
+      const bob = i === sel ? cw * .16 + Math.sin(t * .007) * cw * .04 : 0;
+      drawPlateVis(pv, trayXs[i], trayY, t, bob);
+    }
+    // slices in the air, with their shadows
+    for(const fl of flyers){
+      const p = flyerPose(fl, t);
+      ctx.fillStyle = theme.shadow; ctx.globalAlpha = .55 * (1 - p.lift / (cw * 1.2));
+      ell(ctx, p.mx, p.my + pr * .1, pr * .42, pr * .42 * SQ); ctx.fill(); ctx.globalAlpha = 1;
+      const R = pr * CAKE_R * p.sc;
+      drawSlices(ctx, p.x, p.y, R, [[fl.f, p.a]], theme);
+    }
+    // plates on their way from the tray to the counter
+    for(const m of movers){
+      const u = clamp((t - m.t0) / m.dur, 0, 1), e = easeOutCubic(u);
+      const x = lerp(m.x0, m.x1, e), y = lerp(m.y0, m.y1, e), lift = lerp(m.lift, m.lift1 || 0, e);
+      drawPlateVis(trayVis[m.t], x, y, t, lift);
+    }
+    // the plate being dragged
+    if(drag && trayVis[drag.t]) drawPlateVis(trayVis[drag.t], drag.x, drag.y, t, cw * .2, 1.06);
+    // tutorial hand
+    if(tut === 1 && !drag && !busy && trayVis[0]) drawHand(t);
+    drawFx(t);
+  }
+  /* the layer above the HUD: finished cakes on their way to the order card, and particles */
+  function drawFx(t){
+    const ctx = fx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    // finished cakes: a fast spin on the spot, then off to the order card
+    for(const sv of served) drawServed(ctx, sv, t);
+    for(const p of parts){
+      const q = p.life / p.max;
+      ctx.globalAlpha = 1 - q * q;
+      ctx.fillStyle = p.c;
+      if(p.kind === 'star'){
+        const s = p.r * (1 - q * .5);
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.spin + p.life * .006);
+        ctx.beginPath();
+        for(let k = 0; k < 8; k++){ const rr = k % 2 ? s * .35 : s, aa = k * Math.PI / 4; k ? ctx.lineTo(Math.cos(aa) * rr, Math.sin(aa) * rr) : ctx.moveTo(rr, 0); }
+        ctx.closePath(); ctx.fill(); ctx.restore();
+      } else if(p.kind === 'shard'){
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.spin + p.life * p.vs);
+        ctx.beginPath(); ctx.moveTo(-p.r, -p.r * .4); ctx.lineTo(p.r, -p.r * .7); ctx.lineTo(p.r * .2, p.r * .8); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      } else { ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2); }
+    }
+    ctx.globalAlpha = 1;
+  }
+  function drawServed(ctx, sv, t){
+    const e1 = clamp((t - sv.t0) / 620, 0, 1), e2 = clamp((t - sv.t0 - 620) / 520, 0, 1);
+    if(e2 >= 1) return;
+    const rot = sv.a + easeOutCubic(e1) * Math.PI * 3 + e2 * Math.PI * 2;
+    let x = sv.x, y = sv.y, k = 1 + Math.sin(Math.PI * Math.min(1, e1 * 1.3)) * .16, lift = Math.sin(Math.PI * e1) * cw * .18;
+    if(e2 > 0){
+      const e = easeInOutCubic(e2);
+      x = lerp(sv.x, sv.tx, e); y = lerp(sv.y, sv.ty, e) - Math.sin(Math.PI * e) * cw * .9;
+      k = lerp(1, .32, e); lift = 0;
+    }
+    // a glow ring while it spins
+    if(e2 === 0){
+      ctx.globalAlpha = (1 - e1) * .55; ctx.strokeStyle = '#FFE38A'; ctx.lineWidth = 4;
+      ell(ctx, x, y - pr * .2, pr * (1 + e1 * .5), pr * SQ * (1 + e1 * .5)); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    const list = [];
+    for(let i = 0; i < 6; i++) list.push([sv.f, rot + i * SEG]);
+    drawSlices(ctx, x, y - lift, pr * CAKE_R * k, list, theme, .8 + .2 * Math.sin(t * .03));
+  }
+  function drawHand(t){
+    const u = (t % 1800) / 1800, e = easeInOutCubic(clamp(u * 1.4, 0, 1));
+    const x = lerp(trayXs[0], cellX(10), e), y = lerp(trayY, cellY(10), e) + cw * .2;
+    ctx.save(); ctx.globalAlpha = u > .85 ? (1 - u) / .15 : 1;
+    ctx.translate(x, y); ctx.rotate(-.35);
+    const s = cw * .32;
+    ctx.fillStyle = theme.surface; ctx.strokeStyle = theme.ink; ctx.lineWidth = 2.2; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(-s * .28, s * .1); ctx.lineTo(-s * .3, s * .95); ctx.quadraticCurveTo(-s * .25, s * 1.35, s * .25, s * 1.4);
+    ctx.lineTo(s * .55, s * 1.3); ctx.quadraticCurveTo(s * .8, s * .9, s * .7, s * .55); ctx.lineTo(s * .62, s * .3); ctx.lineTo(s * .12, s * .3); ctx.lineTo(s * .12, -s * .55);
+    ctx.quadraticCurveTo(s * .12, -s * .78, -s * .08, -s * .78); ctx.quadraticCurveTo(-s * .28, -s * .78, -s * .28, -s * .55); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
+  /* ---------- the loop ---------- */
+  function animating(t){
+    if(flyers.length || served.length || parts.length || movers.length || drag || hammer || sel >= 0 || tut === 1) return true;
+    for(const pv of vis) if(pv && !settled(pv, t)) return true;
+    for(const pv of trayVis) if(pv && !settled(pv, t)) return true;
+    return false;
+  }
+  let lastT = 0;
+  function frame(){
+    raf = 0;
+    const t = now(), dt = Math.min(50, t - (lastT || t)); lastT = t;
+    step(t, dt);
+    draw(t);
+    if(animating(t)) kick(); else lastT = 0;
+  }
+  function kick(){ if(!raf && view === 'play') raf = requestAnimationFrame(frame); }
+  function step(t, dt){
+    for(let i = flyers.length - 1; i >= 0; i--){
+      const fl = flyers[i];
+      if(!fl.launched && t >= fl.t0){ fl.launched = true; sfx.whoosh(0); }
+      if(t >= fl.t0 + fl.dur){
+        flyers.splice(i, 1);
+        fl.ghost.ghost = false;
+        sfx.land(fl.k, 0);
+        const x = cellX(fl.dest), y = cellY(fl.dest) - pr * CAKE_R * CAKE_H;
+        crumbs(x, y, CAKES[fl.f].top, 4);
+      }
+    }
+    for(let i = movers.length - 1; i >= 0; i--){ const m = movers[i]; if(t >= m.t0 + m.dur){ movers.splice(i, 1); m.done(); } }
+    for(let c = 0; c < CELLS; c++){ const pv = vis[c]; if(pv && pv.dying && t > pv.dying + 300) vis[c] = null; }
+    for(let i = served.length - 1; i >= 0; i--){
+      const sv = served[i];
+      if(!sv.burst && t >= sv.t0){ sv.burst = true; sparkle(sv.x, sv.y - pr * .3, CAKES[sv.f].top); }
+      if(t >= sv.t0 + 1140){ served.splice(i, 1); arrive(sv.f); }
+    }
+    for(let k = parts.length - 1; k >= 0; k--){
+      const p = parts[k];
+      p.life += dt;
+      if(p.life >= p.max){ parts.splice(k, 1); continue; }
+      p.vy += p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      if(p.kind === 'star'){ p.vx *= .97; p.vy *= .97; }
+    }
+  }
+  function crumbs(x, y, col, n){
+    for(let k = 0; k < n; k++) parts.push({ kind: 'crumb', x: x + (Math.random() - .5) * pr * .5, y, vx: (Math.random() - .5) * .12, vy: -.08 - Math.random() * .12, g: .0009, life: 0, max: 380, r: pr * (.03 + Math.random() * .03), c: col });
+  }
+  function sparkle(x, y, col){
+    const cols = [col, '#FFE38A', '#FFFFFF'];
+    for(let k = 0; k < 16; k++){
+      const a = k / 16 * TAU + Math.random() * .3, v = .12 + Math.random() * .16;
+      parts.push({ kind: 'star', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * .8 - .05, g: .00012, life: 0, max: 650 + Math.random() * 300, r: pr * (.08 + Math.random() * .08), c: cols[k % 3], spin: Math.random() * 3 });
+    }
+  }
+  function shards(x, y, cols){
+    for(let k = 0; k < 18; k++){
+      const a = Math.random() * TAU, v = .1 + Math.random() * .22;
+      parts.push({ kind: k % 3 ? 'shard' : 'crumb', x, y, vx: Math.cos(a) * v, vy: -Math.abs(Math.sin(a)) * v - .06, g: .0011, life: 0, max: 600 + Math.random() * 300,
+        r: pr * (.07 + Math.random() * .08), c: k % 3 ? theme.plate : cols[k % cols.length], spin: Math.random() * 6, vs: (Math.random() - .5) * .03 });
+    }
+  }
+  function floatText(text, x, y, col, big){
+    const f = h('div', { class: 'cs-float' + (big ? ' big' : ''), style: `left:${x}px;top:${y}px;--c:${col}` }, text);
+    floats.append(f); later(() => f.remove(), 1500);
+  }
+
+  /* ---------- playing a placement back ---------- */
+  function chipFor(f){ return ref('menuRow').querySelector(`[data-f="${f}"]`); }
+  function targetFor(f){
+    const chip = chipFor(f), rr = playEl.getBoundingClientRect();
+    const box = (chip ? chip.querySelector('canvas') || chip : ref('meterBar')).getBoundingClientRect();
+    return [box.left + box.width / 2 - rr.left, box.top + box.height / 2 - rr.top];
+  }
+  function playStep(st){
+    const t = now(), dest = vis[st.d];
+    if(!dest){ return 0; }
+    // spaces for the incoming slices, after the cake they join
+    const total = st.from.reduce((n, x) => n + x[1], 0);
+    const at = dest.slices.map(s => s.f).lastIndexOf(st.f);
+    const ghosts = [];
+    for(let j = 0; j < total; j++) ghosts.push({ f: st.f, a0: 0, a1: 0, t0: 0, dur: 0, ghost: true });
+    if(at < 0) dest.slices.push(...ghosts); else dest.slices.splice(at + 1, 0, ...ghosts);
+    ghosts.forEach(g => { const i = dest.slices.indexOf(g); g.a0 = g.a1 = slotAngle(i); });
+    const span = FLIGHT + STAGGER * (total - 1);
+    reslot(dest, t, span + 90, 1);                // the plate takes one full turn while they fly in
+    sfx.spin(0);
+    let k = 0;
+    const fill0 = dest.slices.length - total;
+    for(const [src, m] of st.from){
+      const sv = vis[src];
+      if(!sv) continue;
+      for(let j = 0; j < m; j++){
+        const idx = sv.slices.map(s => s.f).lastIndexOf(st.f);
+        if(idx < 0) break;
+        const [s] = sv.slices.splice(idx, 1);
+        const a0 = angleOf(s, t), g = ghosts[k];
+        let turn = 0;
+        while(g.a1 + turn - a0 < TAU) turn += TAU;
+        while(g.a1 + turn - a0 >= TAU * 2) turn -= TAU;
+        flyers.push({ f: st.f, x0: cellX(src), y0: cellY(src), a0, ghost: g, turn, dest: st.d, t0: t + k * STAGGER, dur: FLIGHT, k: fill0 + k });
+        k++;
+      }
+      if(!sv.slices.length) sv.dying = t + k * STAGGER;
+      else reslot(sv, t + k * STAGGER, 320, 0);
+    }
+    for(const e of st.emptied) if(vis[e] && !vis[e].dying) vis[e].dying = t + span * .5;
+    if(st.cake){
+      later(() => serve(st.d, st.f), span + 110);
+      return span + 260;
+    }
+    return span + 150;
+  }
+  function serve(c, f){
+    const pv = vis[c];
+    if(!pv) return;
+    const t = now(), [tx, ty] = targetFor(f);
+    const a = pv.slices.length ? angleOf(pv.slices[0], t) : SLOT0;
+    pv.slices = []; pv.dying = t + 620;
+    served.push({ f, x: cellX(c), y: cellY(c), a, t0: t, tx, ty });
+    combo++;
+    sfx.cake(combo); buzz([18, 40, 18]);
+    floatText(combo > 1 ? `${CAKES[f].name}! ×${combo}` : `${CAKES[f].name}!`, cellX(c), cellY(c) - pr * 1.1, CAKES[f].top === '#FFF5EC' || CAKES[f].top === '#F6F2EB' ? CAKES[f].side : CAKES[f].top, combo > 1);
+    kick();
+  }
+  function arrive(f){
+    shown[f] = (shown[f] || 0) + 1; shownTotal++;
+    sfx.served();
+    const chip = chipFor(f);
+    if(chip){ chip.classList.remove('bump'); void chip.offsetWidth; chip.classList.add('bump'); }
+    renderGoal();
+  }
+  function playSteps(steps, done){
+    let i = 0;
+    const next = () => {
+      if(i >= steps.length){ done(); return; }
+      const wait = playStep(steps[i++]);
+      kick();
+      later(next, wait);
+    };
+    next();
+  }
+
+  /* ---------- level state ---------- */
+  function snapshot(){
+    return { cells: L.cells.map(p => isPlate(p) ? p.slice() : p), tray: L.tray.map(p => p && p.slice()), rs: L.rs.s,
+      baked: L.baked, bakedBy: Object.assign({}, L.bakedBy), moves: L.moves };
+  }
+  function persist(){
+    if(L && !L.won){
+      S.cur = { n: L.n, flv: L.flv, cells: L.cells, tray: L.tray, rs: L.rs.s, baked: L.baked, bakedBy: L.bakedBy,
+        moves: L.moves, undos: L.undos, clean: L.clean };
+    }
+    api.persist();
+  }
+  function hydrate(cur){
+    const sp = spec(cur.n);
+    return { n: cur.n, sp, flv: cur.flv.slice(), cells: cur.cells.map(p => isPlate(p) ? p.slice() : p), tray: cur.tray.map(p => p && p.slice()),
+      rs: { s: cur.rs | 0 }, baked: cur.baked | 0, bakedBy: Object.assign({}, cur.bakedBy), moves: cur.moves | 0,
+      undos: cur.undos == null ? UNDOS_PER_TRY : cur.undos, clean: cur.clean !== false, won: false };
+  }
+
+  /* ---------- placing ---------- */
+  function emptyTarget(x, y){
+    let best = -1, bd = cw * .75;
+    for(let c = 0; c < CELLS; c++){
+      if(L.cells[c] !== null) continue;
+      const d = Math.hypot(cellX(c) - x, (cellY(c) - y) / .9);
+      if(d < bd){ bd = d; best = c; }
+    }
+    return best;
+  }
+  function putDown(t, c, x0, y0, lift){
+    if(busy || !L.tray[t] || L.cells[c] !== null) return;
+    busy = true; sel = -1;
+    sfx.drop();
+    movers.push({ t, x0, y0, x1: cellX(c), y1: cellY(c), lift: lift || 0, t0: now(), dur: 150, done: () => commit(t, c) });
+    kick();
+  }
+  function commit(t, c){
+    undoStack.push(snapshot()); if(undoStack.length > 12) undoStack.shift();
+    const pv = trayVis[t]; trayVis[t] = null;
+    pv.born = now() - 200;                   // a little squash as it lands
+    vis[c] = pv;
+    sfx.place(); buzz(8);
+    const res = place(L, t, c);
+    for(const s of res.steps) if(s.cake){ S.stats.cakes++; S.baked[s.f] = (S.baked[s.f] || 0) + 1; }
+    combo = 0;
+    if(tut === 1){ tut = 2; coach(); }
+    persist();
+    playSteps(res.steps, () => {
+      if(res.dealt){ trayVis = L.tray.map((p, i) => p ? plateVis(p, now() + 120 + i * 80) : null); later(() => sfx.deal(), 120); }
+      kick();
+      later(settle, 60);
+    });
+  }
+  function settle(){
+    busy = isWon(L);
+    // the visuals should now match the board exactly; mend them if not
+    let off = false;
+    for(let c = 0; c < CELLS; c++){
+      const p = L.cells[c], pv = vis[c];
+      const a = isPlate(p) ? p.join('.') : '', b = pv && !pv.dying ? pv.slices.map(s => s.f).join('.') : '';
+      if(a !== b){ off = true; vis[c] = isPlate(p) ? plateVis(p, 0) : null; }
+    }
+    if(off) console.warn('cake-sort: visuals re-synced');
+    if(isWon(L)){ later(win, served.length ? 1250 : 250); return; }
+    if(isStuck(L)){ showStuck(); }
+    else hideMsg();
+    if(tut === 2 && L.baked > 0){ tut = 3; coach(); }
+    kick();
+  }
+
+  /* ---------- boosters ---------- */
+  function buyOr(kind, fn){
+    const price = PRICES[kind];
+    if(S.coins < price){ toast(`Not enough coins (${price} needed)`); sfx.bonk(); return; }
+    sheet({ eyebrow: 'Booster', title: kind === 'undo' ? 'Another undo?' : kind === 'hammer' ? 'Buy a hammer?' : 'Buy new plates?',
+      sub: `${price} coins. You have ${S.coins}.`,
+      actions: [{ label: `Buy for ${price}`, onClick: () => { S.coins -= price; L.clean = false; persist(); updateHud(); fn(true); } }, { label: 'Not now', kind: 'ghost' }] });
+  }
+  function undo(){
+    if(!L || busy || L.won) return;
+    if(!undoStack.length){ toast('Nothing to undo'); sfx.bonk(); return; }
+    if(L.undos <= 0){ buyOr('undo', () => doUndo(true)); return; }
+    doUndo(false);
+  }
+  function doUndo(paid){
+    const s = undoStack.pop();
+    if(!s) return;
+    if(!paid) L.undos--;
+    L.clean = false;
+    L.cells = s.cells; L.tray = s.tray; L.rs.s = s.rs; L.baked = s.baked; L.bakedBy = s.bakedBy; L.moves = s.moves;
+    syncVis(false);
+    for(const pv of trayVis) if(pv) pv.born = now();
+    shown = Object.assign({}, L.bakedBy); shownTotal = L.baked;
+    sfx.undo(); hideMsg(); updateHud(); renderGoal(); persist(); kick();
+  }
+  function toggleHammer(){
+    if(!L || busy || L.won) return;
+    if(hammer){ setHammer(false); return; }
+    if(!L.cells.some(isPlate)){ toast('No plates on the counter'); return; }
+    if(S.inv.hammer <= 0){ buyOr('hammer', () => { S.inv.hammer++; persist(); updateHud(); setHammer(true); }); return; }
+    setHammer(true);
+  }
+  function setHammer(on){
+    hammer = on; sel = -1;
+    ref('hammerTool').classList.toggle('on', on);
+    if(on) showMsg('Tap a plate to clear it off the counter', [['Cancel', () => setHammer(false)]]);
+    else if(isStuck(L)) showStuck(); else hideMsg();
+    kick();
+  }
+  function smash(c){
+    const p = L.cells[c];
+    if(!isPlate(p)) return;
+    L.cells[c] = null; S.inv.hammer--; L.clean = false;
+    undoStack = [];
+    const x = cellX(c), y = cellY(c);
+    shards(x, y - pr * .2, p.map(f => CAKES[f].top));
+    if(vis[c]){ vis[c].slices = []; vis[c].dying = now(); }
+    sfx.smash(); buzz([30, 30, 50]);
+    setHammer(false); updateHud(); persist(); kick();
+  }
+  function refresh(){
+    if(!L || busy || L.won) return;
+    if(S.inv.refresh <= 0){ buyOr('refresh', () => { S.inv.refresh++; doRefresh(); }); return; }
+    doRefresh();
+  }
+  function doRefresh(){
+    S.inv.refresh--; L.clean = false; undoStack = [];
+    L.tray = L.tray.map(p => p ? makePlate(L.cells, L.sp, L.flv, L.rs) : null);
+    trayVis = L.tray.map((p, i) => p ? plateVis(p, now() + i * 80) : null);
+    sfx.refresh(); updateHud(); persist(); kick();
+  }
+
+  /* ---------- HUD ---------- */
+  function updateHud(){
+    bind('coins', S.coins);
+    if(!L) return;
+    bind('lvl', `Level ${L.n}`);
+    const tierEl = ref('tier');
+    tierEl.hidden = !L.sp.tier; tierEl.textContent = TIER_NAME[L.sp.tier]; tierEl.dataset.tier = L.sp.tier;
+    const setN = (n, v) => { const b = ref(n); b.textContent = v > 0 ? v : '+'; b.classList.toggle('buy', !(v > 0)); };
+    setN('undoN', L.undos); setN('hammerN', S.inv.hammer); setN('refreshN', S.inv.refresh);
+  }
+  function menuChips(box, flv, counts, size){
+    box.replaceChildren();
+    for(const f of flv){
+      const icon = h('canvas', { 'aria-hidden': 'true' });
+      const chip = h('span', { class: 'cs-chip', 'data-f': f, title: CAKES[f].name, 'aria-label': `${CAKES[f].name}${counts ? `: ${counts[f] || 0}` : ''}` }, icon,
+        counts ? h('span', null, String(counts[f] || 0)) : null);
+      if(size){ icon.style.width = size[0] + 'px'; icon.style.height = size[1] + 'px'; }
+      box.append(chip);
+      requestAnimationFrame(() => cakeIcon(icon, f, { th: theme }));
+    }
+  }
+  function renderGoal(){
+    if(!L) return;
+    bind('goal', L.sp.goal); bind('baked', Math.min(shownTotal, L.sp.goal));
+    ref('meter').style.width = `${Math.min(100, shownTotal / L.sp.goal * 100)}%`;
+    ref('meterBar').setAttribute('aria-valuenow', String(shownTotal));
+    ref('meterBar').setAttribute('aria-valuemax', String(L.sp.goal));
+    ref('menuRow').querySelectorAll('.cs-chip').forEach(ch => {
+      const f = +ch.dataset.f, n = ch.querySelector('span');
+      if(n) n.textContent = shown[f] || 0;
+    });
+  }
+  function coach(){
+    const msg = tut === 1 ? 'Drag the strawberry plate next to the other strawberries.'
+      : tut === 2 ? 'Six slices of one cake make a whole cake.'
+      : tut === 3 ? 'Mixed plates sort themselves when they touch. Bake 3 cakes!'
+      : '';
+    coachEl.textContent = msg;
+    if(tut === 3) later(() => { if(tut === 3){ tut = 0; coach(); } }, 6000);
+  }
+  function showMsg(text, buttons, bad){
+    ref('msgT').textContent = text;
+    const box = ref('msgBtns'); box.replaceChildren();
+    for(const [label, fn] of buttons){
+      const b = h('button', { class: 'btn btn-ghost btn-sm' }, label);
+      b.addEventListener('click', () => { api.click(); fn(); });
+      box.append(b);
+    }
+    msgEl.classList.toggle('bad', !!bad);
+    msgEl.hidden = false;
+  }
+  function hideMsg(){ msgEl.hidden = true; }
+  function showStuck(){
+    sfx.full(); buzz([40, 60, 40]);
+    const btns = [[`Hammer${S.inv.hammer > 0 ? '' : ' · ' + PRICES.hammer}`, toggleHammer]];
+    if(undoStack.length) btns.push(['Undo', undo]);
+    btns.push(['Restart', () => restart(true)]);
+    showMsg('The counter is full', btns, true);
+  }
+
+  /* ---------- screens ---------- */
+  function showView(which){
+    view = which;
+    ref('lobby').hidden = which !== 'lobby';
+    playEl.hidden = which !== 'play';
+    el.dataset.tier = which === 'play' && L ? L.sp.tier : 0;
+    if(which === 'lobby'){ cancelAnimationFrame(raf); raf = 0; renderLobby(); }
+  }
+  function startLevel(n, fresh){
+    closeSheet();
+    busy = false; sel = -1; kc = -1; drag = null; hammer = false; combo = 0;
+    flyers = []; served = []; parts = []; movers = []; undoStack = [];
+    for(const id of timers) clearTimeout(id); timers.clear();
+    floats.replaceChildren(); hideMsg(); ref('hammerTool').classList.remove('on');
+    const resume = !fresh && S.cur && S.cur.n === n;
+    L = resume ? hydrate(S.cur) : Object.assign(newLevel(n), { undos: UNDOS_PER_TRY, clean: true, won: false });
+    shown = Object.assign({}, L.bakedBy); shownTotal = L.baked;
+    tut = n === 1 && !resume ? 1 : 0;
+    coachEl.hidden = !tut;
+    showView('play');
+    el.dataset.tier = L.sp.tier;
+    menuChips(ref('menuRow'), L.flv, shown);
+    updateHud(); renderGoal(); coach();
+    requestAnimationFrame(() => {
+      layout();
+      syncVis(true);
+      kick();
+      persist();
+      const newCakes = L.flv.filter(f => !S.seen[f]);
+      if(n === 1) for(const f of L.flv) S.seen[f] = true;
+      if(!resume && L.sp.tier) intro(L.sp.tier, () => { if(newCakes.length && n > 1) unlock(newCakes); });
+      else if(newCakes.length && n > 1) unlock(newCakes);
+      if(isStuck(L)) showStuck();
+    });
+  }
+  function restart(confirmFirst){
+    if(!L) return;
+    const go = () => { S.cur = null; startLevel(L.n, true); };
+    if(!confirmFirst || L.moves === 0){ go(); return; }
+    sheet({ eyebrow: `Level ${L.n}`, title: 'Start this level again?', sub: 'The counter is cleared and you get the same first plates.',
+      actions: [{ label: 'Restart', onClick: go }, { label: 'Keep playing', kind: 'ghost' }] });
+  }
+  function intro(tier, then){
+    const box = ref('intro');
+    ref('introK').textContent = tier === 2 ? 'Super hard level' : 'Hard level';
+    ref('introN').textContent = `Level ${L.n}`;
+    ref('introS').textContent = `Bake ${L.sp.goal} cakes${L.sp.blocked ? ` around ${L.sp.blocked} cake stand${L.sp.blocked > 1 ? 's' : ''}` : ''}. Worth ${L.sp.reward} coins.`;
+    box.dataset.tier = tier; box.hidden = false;
+    box.classList.remove('on'); void box.offsetWidth; box.classList.add('on');
+    sfx.hard(tier); buzz([30, 60, 30]);
+    const done = () => { if(box.hidden) return; box.hidden = true; box.onclick = null; if(then) then(); };
+    box.onclick = done;
+    later(done, 2100);
+  }
+  /* a new cake on the menu: show it off on a turntable */
+  function unlock(list){
+    const f = list[0];
+    for(const g of list) S.seen[g] = true;
+    persist();
+    const cvs = h('canvas', { 'aria-hidden': 'true' });
+    const body = h('div', { class: 'cs-show' }, cvs);
+    let spin = 0, alive = true;
+    const t0 = now();
+    const turn = () => {
+      if(!alive) return;
+      const W2 = cvs.clientWidth, H2 = cvs.clientHeight;
+      if(W2 && H2){
+        const d = Math.min(3, window.devicePixelRatio || 1);
+        if(cvs.width !== Math.round(W2 * d)){ cvs.width = Math.round(W2 * d); cvs.height = Math.round(H2 * d); }
+        const g = cvs.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.clearRect(0, 0, W2, H2);
+        const p = Math.min(W2 / 2.4, H2 / (2 * SQ + .7)), e = clamp((now() - t0) / 900, 0, 1);
+        const rot = (now() - t0) * .0011 + (1 - easeOutCubic(e)) * Math.PI * 2;
+        const y = H2 - p * SQ - p * .14;
+        drawPlate(g, W2 / 2, y, p, theme);
+        const list2 = [];
+        // slices drop in one by one, then the cake turns
+        for(let i = 0; i < 6; i++){
+          const k = clamp((now() - t0 - i * 90) / 300, 0, 1);
+          if(k <= 0) continue;
+          list2.push([f, slotAngle(i) + rot, k]);
+        }
+        const R = p * CAKE_R, H3 = R * CAKE_H, o = { edge: theme.edge, sideShade: sideShade(g, W2 / 2, R), flame: .85 + .15 * Math.sin(now() * .03) };
+        list2.sort((p1, q1) => Math.sin(p1[1] + SEG / 2) - Math.sin(q1[1] + SEG / 2));
+        for(const [ff, a, k] of list2) drawSlice(g, W2 / 2, y - (1 - easeOutCubic(k)) * p * .5, R, H3, a, CAKES[ff], o);
+      }
+      spin = requestAnimationFrame(turn);
+    };
+    sfx.unlock();
+    sheet({ eyebrow: 'New cake on the menu', title: CAKES[f].name, sub: CAKES[f].note, body,
+      actions: [{ label: list.length > 1 ? `Bake them` : `Bake it` }],
+      onClose: () => { alive = false; cancelAnimationFrame(spin); } });
+    spin = requestAnimationFrame(turn);
+  }
+  function win(){
+    if(!L || L.won) return;
+    L.won = true;
+    shown = Object.assign({}, L.bakedBy); shownTotal = L.baked; renderGoal();
+    const sp = L.sp, bonus = L.clean ? 5 : 0, total = sp.reward + bonus;
+    S.coins += total; S.level = Math.max(S.level, L.n + 1); S.cur = null;
+    S.stats.won++; if(sp.tier === 1) S.stats.hard++; if(sp.tier === 2) S.stats.super++;
+    api.persist(true);
+    sfx.win(); buzz([20, 40, 20, 40, 60]);
+    const next = spec(L.n + 1);
+    const row = h('div', { class: 'cs-menu' });
+    const coinsEl = h('b', null, '+0');
+    const body = h('div', { class: 'cs-win' }, row,
+      h('div', { class: 'cs-win-coins' }, h('i', { class: 'coin' }), coinsEl, h('span', null, bonus ? ' incl. 5 for no boosters' : '')));
+    const baked = L.flv.filter(f => L.bakedBy[f]);
+    later(() => {
+      sheet({ eyebrow: sp.tier ? `${TIER_NAME[sp.tier]} level beaten` : `Level ${L.n} complete`,
+        title: sp.tier === 2 ? 'Showstopper.' : sp.tier === 1 ? 'That was a tough bake.' : ['Order up!', 'Fresh out of the oven.', 'Sweet.', 'Counter cleared.'][L.n % 4],
+        tone: sp.tier === 2 ? 'super' : sp.tier === 1 ? 'hard' : '', body, dismiss: false,
+        actions: [
+          { label: next.tier ? `Next: ${TIER_NAME[next.tier].toLowerCase()} level ${L.n + 1}` : 'Next level', kind: next.tier === 2 ? 'super' : next.tier === 1 ? 'hard' : 'primary', onClick: () => startLevel(S.level, true) },
+          { label: 'Back to the bakery', kind: 'ghost', onClick: () => showView('lobby') }
+        ] });
+      menuChips(row, baked, L.bakedBy, [40, 34]);
+      let shownC = 0; const stepN = Math.max(1, Math.round(total / 12));
+      const tick = () => { shownC = Math.min(total, shownC + stepN); coinsEl.textContent = `+${shownC}`; sfx.coin(0); if(shownC < total) later(tick, 55); };
+      later(tick, 350);
+      updateHud();
+    }, 350);
+  }
+  function menu(){
+    const body = h('div', null,
+      toggle('Sound', 'Clinks, whooshes and chimes', () => api.settings.sound, v => { api.settings.sound = v; api.persist(); if(v) A.ensure(); }),
+      toggle('Vibration', 'On phones that support it', () => api.settings.haptics, v => { api.settings.haptics = v; api.persist(); }));
+    sheet({ eyebrow: `Level ${L ? L.n : S.level}`, title: 'Paused', body,
+      actions: [
+        { label: 'Resume' },
+        { label: 'How to play', kind: 'ghost', onClick: howTo },
+        { label: 'Restart level', kind: 'ghost', onClick: () => restart(true) },
+        { label: 'Back to the bakery', kind: 'ghost', onClick: () => showView('lobby') }
+      ] });
+  }
+  function howTo(){
+    const row = (t, d) => h('div', { class: 'cs-how' }, h('div', { class: 'cs-how-t' }, t), h('div', { class: 'cs-how-d' }, d));
+    sheet({ eyebrow: 'How to play', title: 'Sort the slices',
+      body: h('div', null,
+        row('Drag a plate onto the counter', 'Any empty spot will do. You get three plates at a time, and three more when they are all down.'),
+        row('Slices of the same cake fly together', 'When plates touch side by side (not corner to corner), each kind of cake gathers on the plate that can hold the most of it. Empty plates are cleared away.'),
+        row('Six slices make a whole cake', 'A whole cake is served and counts toward the order at the top. Bake the number on the order to win.'),
+        row('Keep space free', 'If the counter fills up, use the hammer to clear a plate, undo, or start again.'),
+        row('Boosters', `Undo takes back a plate (${UNDOS_PER_TRY} per try). The hammer clears one plate. New plates swaps the ones in your tray.`),
+        row('Hard levels', 'Levels 5 and 10 of every ten are harder, with cake stands in the way. They pay 30 and 60 coins.')),
+      actions: [{ label: 'Got it' }] });
+  }
+
+  /* ---------- lobby ---------- */
+  function renderLobby(){
+    theme = readTheme(el);
+    bind('coins', S.coins);
+    const n = S.level, sp = spec(n), resume = S.cur && S.cur.n === n;
+    const flv = resume ? S.cur.flv : newLevel(n).flv;
+    const eb = ref('nextEyebrow');
+    eb.textContent = sp.tier ? `Up next · ${TIER_NAME[sp.tier]}` : 'Up next'; eb.dataset.tier = sp.tier;
+    bind('nextTitle', `Level ${n}`);
+    bind('nextSub', `Bake ${sp.goal} cakes · ${flv.length} kinds${sp.blocked ? ` · ${sp.blocked} cake stand${sp.blocked > 1 ? 's' : ''}` : ''}`);
+    menuChips(ref('nextMenu'), flv, null);
+    ref('nextMenu').querySelectorAll('.cs-chip').forEach(ch => { ch.append(h('span', null, CAKES[+ch.dataset.f].name)); });
+    const art = ref('nextArt');
+    requestAnimationFrame(() => {
+      const W2 = art.clientWidth, H2 = art.clientHeight, d = Math.min(3, window.devicePixelRatio || 1);
+      if(!W2) return;
+      art.width = W2 * d; art.height = H2 * d;
+      const g = art.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0);
+      const p = Math.min(W2 / 2.3, H2 / (2 * SQ + .62));
+      drawWholeCake(g, W2 / 2, H2 - p * SQ - p * .12, p, flv[(n - 1) % flv.length], theme, 0);
+    });
+    const go = ref('go');
+    go.className = 'btn btn-wide cs-go ' + (sp.tier === 2 ? 'btn-super' : sp.tier === 1 ? 'btn-hard' : 'btn-primary');
+    go.innerHTML = `${IC.play}<span>${resume ? 'Continue' : 'Play'} level ${n}</span>`;
+    // the collection: every cake, with how many you have baked
+    const shelf = ref('shelf'); shelf.replaceChildren();
+    let open = 0;
+    CAKES.forEach((F, f) => {
+      const unlocked = UNLOCK_AT[f] <= n;
+      if(unlocked) open++;
+      const icon = h('canvas', { 'aria-hidden': 'true' });
+      shelf.append(h('div', { class: 'cs-cake' + (unlocked ? '' : ' locked') }, icon,
+        h('div', null, h('b', null, unlocked ? F.name : 'Locked'),
+          h('span', null, unlocked ? `${S.baked[f] || 0} baked` : `Level ${UNLOCK_AT[f]}`))));
+      requestAnimationFrame(() => cakeIcon(icon, f, { th: theme, locked: !unlocked, font: FONT }));
+    });
+    bind('shelfCount', `${open} of ${CAKES.length}`);
+    bind('lobbyNote', S.stats.cakes
+      ? `${S.stats.cakes} cake${S.stats.cakes === 1 ? '' : 's'} baked · ${S.stats.won} level${S.stats.won === 1 ? '' : 's'} cleared`
+      : 'Drag plates of cake slices onto the counter. Matching slices fly together into whole cakes.');
+  }
+
+  /* ---------- input ---------- */
+  const pt = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  function hitTray(x, y){
+    let best = -1, bd = pr * 1.35;
+    trayXs.forEach((tx, i) => { if(!L.tray[i]) return; const d = Math.hypot(tx - x, (trayY - y) / .85); if(d < bd){ bd = d; best = i; } });
+    return best;
+  }
+  function hitCell(x, y){
+    for(let c = 0; c < CELLS; c++){
+      const dx = (x - cellX(c)) / (cw * .5), dy = (y - cellY(c) + pr * .2) / (rp * .5);
+      if(Math.abs(dx) <= 1 && Math.abs(dy) <= 1) return c;
+    }
+    return -1;
+  }
+  cv.addEventListener('pointerdown', e => {
+    if(view !== 'play' || !L || e.button > 0 || L.won) return;
+    A.ensure();
+    const [x, y] = pt(e);
+    if(hammer){
+      const c = hitCell(x, y);
+      if(c >= 0 && isPlate(L.cells[c])) smash(c);
+      return;
+    }
+    if(busy) return;
+    const t = hitTray(x, y);
+    if(t >= 0){
+      kc = -1;
+      drag = { t, x: trayXs[t], y: trayY, sx: x, sy: y, ox: trayXs[t] - x, oy: trayY - y, moved: false, target: -1, wasSel: sel === t };
+      sel = -1;
+      try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+      sfx.pick(); buzz(5); kick();
+      return;
+    }
+    if(sel >= 0){
+      const c = hitCell(x, y);
+      if(c >= 0 && L.cells[c] === null) putDown(sel, c, trayXs[sel], trayY, cw * .16);
+      else { sel = -1; sfx.drop(); }
+      kick();
+    }
+  });
+  cv.addEventListener('pointermove', e => {
+    if(!drag) return;
+    const [x, y] = pt(e);
+    if(!drag.moved && Math.hypot(x - drag.sx, y - drag.sy) > 8) drag.moved = true;
+    if(!drag.moved) return;
+    // the plate rides above the finger so it stays visible
+    drag.x = x + drag.ox * .3; drag.y = y - cw * .45 + drag.oy * .3;
+    const tg = emptyTarget(drag.x, drag.y + cw * .15);
+    if(tg !== drag.target){ drag.target = tg; if(tg >= 0) A.tone({ f: 1200, dur: .03, gain: .025, type: 'triangle' }); }
+    kick();
+  });
+  const endDrag = e => {
+    if(!drag) return;
+    const d = drag; drag = null;
+    try{ cv.releasePointerCapture(e.pointerId); }catch(err){}
+    if(!d.moved){ sel = d.wasSel ? -1 : d.t; if(sel >= 0) kc = -1; kick(); return; }   // a tap picks the plate up
+    if(d.target >= 0) putDown(d.t, d.target, d.x, d.y, cw * .2);
+    else {                                                                              // back to the tray
+      movers.push({ t: d.t, x0: d.x, y0: d.y, x1: trayXs[d.t], y1: trayY, lift: cw * .2, t0: now(), dur: 180, done: () => {} });
+      sfx.drop();
+    }
+    kick();
+  };
+  cv.addEventListener('pointerup', endDrag);
+  cv.addEventListener('pointercancel', endDrag);
+  function onKey(e){
+    if(view !== 'play' || !L || e.metaKey || e.ctrlKey || e.altKey || L.won) return;
+    if(document.querySelector('#sheet.on')) return;
+    const k = e.key.toLowerCase();
+    if(k === '1' || k === '2' || k === '3'){
+      const t = +k - 1;
+      if(L.tray[t] && !busy){ sel = sel === t ? -1 : t; if(sel >= 0){ sfx.pick(); if(kc < 0) kc = L.cells.indexOf(null); } kick(); }
+      e.preventDefault(); return;
+    }
+    if(k.startsWith('arrow')){
+      if(kc < 0) kc = 0;
+      else {
+        const x = kc % COLS, y = (kc / COLS) | 0;
+        if(k === 'arrowleft' && x > 0) kc--; if(k === 'arrowright' && x < COLS - 1) kc++;
+        if(k === 'arrowup' && y > 0) kc -= COLS; if(k === 'arrowdown' && y < ROWS - 1) kc += COLS;
+      }
+      kick(); e.preventDefault(); return;
+    }
+    if((k === 'enter' || k === ' ') && kc >= 0){
+      if(hammer){ if(isPlate(L.cells[kc])) smash(kc); }
+      else if(sel >= 0 && L.cells[kc] === null) putDown(sel, kc, trayXs[sel], trayY, cw * .16);
+      e.preventDefault(); return;
+    }
+    if(k === 'u') undo(); else if(k === 'h') toggleHammer(); else if(k === 'n') refresh();
+    else if(k === 'escape'){ if(hammer) setHammer(false); else if(sel >= 0){ sel = -1; kick(); } }
+  }
+  document.addEventListener('keydown', onKey);
+  el.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if(!b) return;
+    const act = b.dataset.act;
+    A.ensure();
+    api.click();
+    switch(act){
+      case 'home': api.exit(); break;
+      case 'settings': api.ui.openSettings(h('button', { class: 'btn btn-ghost btn-sm btn-wide', style: 'margin-top:12px', onclick: () => { api.click(); howTo(); } }, 'How to play Cake Sort')); break;
+      case 'play': startLevel(S.level, false); break;
+      case 'lobby': persist(); showView('lobby'); break;
+      case 'menu': menu(); break;
+      case 'undo': undo(); break;
+      case 'hammer': toggleHammer(); break;
+      case 'refresh': refresh(); break;
+    }
+  });
+  const ro = new ResizeObserver(() => { if(view === 'play' && L){ layout(); } });
+  ro.observe(playEl); ro.observe(field);
+  const offTheme = api.on('theme', () => {
+    theme = readTheme(el); sprites.clear();
+    if(view === 'play' && L){ buildBg(); menuChips(ref('menuRow'), L.flv, shown); kick(); } else renderLobby();
+  });
+  const offWipe = api.on('wipe', () => { api.exit(); });
+  const onVis = () => { if(!document.hidden) kick(); };
+  document.addEventListener('visibilitychange', onVis);
+
+  window.__cs = Object.assign(window.__cs || {}, {
+    state: () => L && { cells: L.cells.map(p => isPlate(p) ? p.slice() : p), tray: L.tray.map(p => p && p.slice()), baked: L.baked, goal: L.sp.goal },
+    level: () => L && L.n, view: () => view, won: () => !!(L && L.won),
+    idle: () => (!busy || !!(L && L.won)) && !flyers.length && !served.length && !movers.length,
+    place: (t, c) => { if(L && !busy && L.tray[t] && L.cells[c] === null){ putDown(t, c, trayXs[t], trayY, 0); return true; } return false; },
+    undo, hammer: c => { if(L && isPlate(L.cells[c])){ smash(c); } }, refresh,
+    where: () => ({ tray: trayXs.map(x => [x, trayY]), cells: L ? L.cells.map((_, c) => [cellX(c), cellY(c)]) : [] }),
+    save: () => JSON.parse(JSON.stringify({ level: S.level, coins: S.coins, inv: S.inv, stats: S.stats, baked: S.baked })),
+    play: n => { if(n){ S.level = Math.max(1, n); S.cur = null; } startLevel(S.level, !!n); }
+  });
+
+  showView('lobby');
+  return {
+    unmount(){
+      persist();
+      cancelAnimationFrame(raf); raf = 0;
+      for(const id of timers) clearTimeout(id);
+      ro.disconnect(); offTheme(); offWipe();
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('visibilitychange', onVis);
+    }
+  };
+}
+
+/* ==================== 5. the shelf card ==================== */
+function drawCard(box){
+  const cv = document.createElement('canvas');
+  box.classList.add('cs-card-art');
+  box.append(cv);
+  requestAnimationFrame(() => {
+    const W = box.clientWidth, H = box.clientHeight;
+    if(!W || !H) return;
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const th = readTheme(document.documentElement);
+    // a strip of tablecloth
+    const top = H * .34;
+    ctx.fillStyle = th.cloth; ctx.fillRect(0, top, W, H - top);
+    ctx.fillStyle = th.check;
+    const st = Math.max(8, W / 22);
+    for(let x = 0; x < W; x += st * 2) ctx.fillRect(x, top, st, H - top);
+    for(let y = top; y < H; y += st * 2) ctx.fillRect(0, y, W, st);
+    ctx.fillStyle = 'rgba(0,0,0,.06)'; ctx.fillRect(0, top, W, 3);
+    const pr = Math.min(W / 7.4, H / 3.3);
+    const plates = [
+      [.17, .62, [2, 2, 2, 0]],
+      [.5, .74, [0, 0, 0, 0, 0, 0], true],
+      [.83, .62, [1, 1, 1, 1, 4]],
+    ];
+    for(const [fx, fy, fs] of plates){
+      const x = W * fx, y = H * fy;
+      drawPlate(ctx, x, y, pr, th);
+      drawSlices(ctx, x, y, pr * CAKE_R, fs.map((f, i) => [f, slotAngle(i) + (fs.length === 6 ? .25 : 0)]), th);
+    }
+    // a strawberry slice spinning through the air, with a trail
+    const sx = W * .32, sy = H * .3, R = pr * CAKE_R * 1.08;
+    ctx.strokeStyle = th.accent; ctx.globalAlpha = .45; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.setLineDash([2, 7]);
+    ctx.beginPath(); ctx.moveTo(W * .17 + pr * .5, H * .5); ctx.quadraticCurveTo(W * .2, H * .2, sx - R * .3, sy - R * .2); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.arc(sx + R * .2, sy - R * .3, R * 1.05, Math.PI * 1.05, Math.PI * 1.6); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; ctx.stroke();
+    drawSlices(ctx, sx - R * .35, sy, R, [[2, -2.2]], th);
+    // sparkles over the whole cake
+    ctx.fillStyle = '#FFD45A';
+    for(const [dx, dy, s] of [[.36, .4, 1], [.64, .36, .8], [.57, .26, .55]]){
+      const x = W * dx, y = H * dy, r = pr * .14 * s;
+      ctx.beginPath();
+      for(let k = 0; k < 8; k++){ const rr = k % 2 ? r * .35 : r, a = k * Math.PI / 4; k ? ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr) : ctx.moveTo(x + rr, y); }
+      ctx.closePath(); ctx.fill();
+    }
+  });
+}
+
+/* ==================== 6. register ==================== */
+window.__cs = Object.assign(window.__cs || {}, { spec, newLevel, place, resolve, probe });
+window.Playbox.register({
+  id: 'cake-sort',
+  title: 'Cake Sort',
+  tagline: 'Slide plates together until every slice joins a whole cake.',
+  order: 4,
+  status: s => s.level > 1 ? `Level ${s.level} · ${(s.stats && s.stats.cakes) || 0} cakes` : 'New · 10 cakes to discover',
+  cta: s => s.level > 1 || s.cur ? 'Continue' : 'Play',
+  card: drawCard,
+  mount
+});
+})();
+</script>
+
+<style>
 /* ---------- Car Loop: Roundabout Rush (../roundabout) running inside Playbox ---------- */
 /* The game is a night scene, so the board's art uses its palette in both
    themes; the board's chrome follows Playbox's light/dark tokens. */

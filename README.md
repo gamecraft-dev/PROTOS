@@ -5,7 +5,7 @@ can open in a browser — no build step, no dependencies, no assets.
 
 | Prototype | What it is | Status |
 | --- | --- | --- |
-| **[playbox](playbox/)** | A multi-game app: a home screen of game boards with shared saving, settings and sound. Plays **Paint Sort** (pour paint between vials until each holds one colour, levels generated on a sawtooth difficulty curve), **Hex Tile Sort** (Hexa Stack) and **Car Loop** (Roundabout Rush), the last two running inside the app from their own folders below. | Current |
+| **[playbox](playbox/)** | A multi-game app: a home screen of game boards with shared saving, settings and sound. Plays **Paint Sort** (pour paint between vials until each holds one colour, levels generated on a sawtooth difficulty curve), **Cake Sort** (drag plates of cake slices together until six make a whole cake, ten different cakes), **Hex Tile Sort** (Hexa Stack) and **Car Loop** (Roundabout Rush), the last two running inside the app from their own folders below. | Current |
 | **[roundabout](roundabout/)** | Roundabout Rush: tap to merge your cars into a busy roundabout before the clock runs out. Full publishing shell: boosters, garage economy, mocked ads and store, Unity asset list. Appears in Playbox as Car Loop. | Current |
 | **[hexa-stack](hexa-stack/)** | Hexa Stack: endless hex-tile stacking. Drop stacks so matching colours flip across; ten of a colour clear. Appears in Playbox as Hex Tile Sort. | Playable |
 | **[backfire](backfire/)** | Bouncing-ball breaker where blocks you cut loose fall, flip, and slam back up into the ceiling. | Playable |
@@ -14,7 +14,7 @@ can open in a browser — no build step, no dependencies, no assets.
 
 Each folder has a `DESIGN.md` with the market rationale, the balance numbers, and
 the risks. For Unity, `playbox/PLAYBOX_UNITY_PLAN.md` is one build plan for the
-whole Playbox app with all three of its games, and `playbox/PLAYBOX_ASSETS.md`
+whole Playbox app with its first three games (not Cake Sort yet), and `playbox/PLAYBOX_ASSETS.md`
 lists, per game, the assets you supply yourself (fonts). (Roundabout's own `ASSETS.md`
 predates them and covers that game on its own.)
 

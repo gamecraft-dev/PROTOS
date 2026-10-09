@@ -14,14 +14,15 @@ below it.
 | **Paint Sort** | Pour paint between glass vials until every vial holds one colour. Levels are generated on the device with a sawtooth difficulty curve: the 5th and 10th level of every ten are hard. | Playable |
 | **Hex Tile Sort** | Hexa Stack ([`../hexa-stack`](../hexa-stack/)): drag stacks of hex tiles onto a 19-cell board; matching colours flip across and ten of a colour clear. Endless, with a best score. | Playable |
 | **Car Loop** | Roundabout Rush ([`../roundabout`](../roundabout/)): tap to merge cars into a busy roundabout before the clock runs out. | Playable |
+| **Cake Sort** | Drag plates of cake slices onto a counter; matching slices spin across to the plate next door until six make a whole cake. Ten cakes, each with its own look, and the same sawtooth of hard levels as Paint Sort. | Playable |
 
 Hex Tile Sort and Car Loop are standalone games that live in their own folders;
 Playbox runs their finished pages inside the app (see *A game built elsewhere*
 below) and adds a back button to each.
 
 **Play it:** open `index.html` in any browser. No build step, no dependencies.
-Best on a phone, portrait. `index.html#paint-sort`, `#hex-tile-sort` and
-`#car-loop` open straight into a game.
+Best on a phone, portrait. `index.html#paint-sort`, `#hex-tile-sort`,
+`#car-loop` and `#cake-sort` open straight into a game.
 
 Why Paint Sort is built the way it is, and the measured difficulty curve:
 **[DESIGN.md](DESIGN.md)**.
@@ -29,12 +30,12 @@ Why Paint Sort is built the way it is, and the measured difficulty curve:
 **Building it in Unity.** Two documents cover the whole app:
 
 - **[PLAYBOX_UNITY_PLAN.md](PLAYBOX_UNITY_PLAN.md)**: one brief for an AI agent
-  (or a developer) to build Playbox and all three games in Unity 6 (URP,
+  (or a developer) to build Playbox and its first three games in Unity 6 (URP,
   Universal 3D): the rules of each game, the architecture and code hierarchy,
   shared services (save, settings, audio, haptics, ads, purchases, analytics),
   the home screen of boards, every engine as C# to port, the 3D Hex Tile Sort,
   every asset the agent generates in code, tests, milestones and golden values
-  from the web engines.
+  from the web engines. Cake Sort is not in it yet.
 - **[PLAYBOX_ASSETS.md](PLAYBOX_ASSETS.md)**: the assets you supply for each
   game's gameplay (just fonts; the agent generates everything else).
 
@@ -61,6 +62,36 @@ fits. Fill a vial with four units of one colour and it gets corked.
 Progress (level, coins, boosters, and the board you're partway through) is
 saved on the device after every pour.
 
+## Cake Sort: how to play
+
+Drag a plate from the tray onto any empty spot on the counter (or tap a plate,
+then tap a spot). Each plate holds up to six slices.
+
+- When plates sit side by side (not corner to corner), slices of the same cake
+  fly over to whichever plate can hold the most of that cake, spinning on the
+  way, and the plate they land on turns to make room. Sorting chains: a plate
+  that changes looks at its own neighbours next.
+- Six slices of one cake make a whole cake. It spins, then flies up to the
+  order card. Bake the number of cakes on the order to win the level.
+- Empty plates are cleared away. If the counter fills up, use the hammer to
+  clear one plate, undo, or start again.
+- You get three plates at a time and three more once all three are down.
+- **Ten cakes**, each told apart by more than colour: Strawberry, Chocolate,
+  Lemon, Matcha, Blueberry, Birthday, Mango, Cookies & Cream, Red Velvet and
+  Caramel. Each has its own topping (a berry, a square of chocolate, a lemon
+  wedge, a tea leaf, blueberries, a candle, mango cubes, a cookie, a raspberry,
+  a hazelnut), its own layers where it is cut, a frosted or bare side, and a
+  pattern on top. New cakes join the menu as you go (all ten by level 27), each
+  shown off on a turntable the first time.
+- **Boosters:** Undo (3 per try), Hammer (clears one plate), New plates (swaps
+  the plates in your tray). Coins buy more.
+- **Levels 5 and 10 of every ten are hard and super hard**, with glass cake
+  stands blocking spots. They pay 30 and 60 coins; a normal level pays 10, plus
+  5 more if you used no boosters.
+
+The level in progress, coins, boosters and your collection are saved after
+every plate.
+
 ## What's in the build
 
 - Hub: home shelf, shared settings (sound, vibration, light/dark/auto theme,
@@ -78,6 +109,14 @@ saved on the device after every pour.
   hint and undo, tutorial on level 1, level road showing the sawtooth
 - Light and dark themes, keyboard controls (number keys pick vials, arrows and
   Enter, U undo, H hint, R restart)
+- Cake Sort: a pure rules engine (the sort, the plate dealer, the level curve)
+  checked by simulated players; ten drawn cakes cut in six, in a 3D view where
+  each slice shows its layers when cut; slices that spin as they fly, plates
+  that turn to make room, finished cakes that spin and fly to the order card;
+  a pitched pluck for every slice that lands (it climbs as the plate fills),
+  chimes that climb with each cake in a chain; a cake collection; hard-level
+  intros; a tutorial on level 1; keyboard controls (1 to 3 pick a plate, arrows
+  and Enter put it down, U undo, H hammer, N new plates)
 
 ## Files
 
@@ -87,11 +126,13 @@ src/shell.html           the hub: home, settings, save, audio, sheets, game regi
 src/games/paint-sort.html  Paint Sort: styles + script, registers itself with the shell
 src/games/hex-tile-sort.html  Hex Tile Sort: board art + runs ../hexa-stack/index.html
 src/games/car-loop.html  Car Loop: board art + runs ../roundabout/index.html
+src/games/cake-sort.html  Cake Sort: styles + script, registers itself with the shell
 build.sh                 inlines every src/games/*.html into the shell -> index.html,
                          embedding the two pages above
 tools/probe.mjs          prints the difficulty of each generated level (node tools/probe.mjs 1 60)
+tools/cake-probe.mjs     the same for Cake Sort (node tools/cake-probe.mjs 1 60)
 DESIGN.md                why Paint Sort works the way it does, with numbers
-PLAYBOX_UNITY_PLAN.md    the brief for building Playbox and all three games in Unity
+PLAYBOX_UNITY_PLAN.md    the brief for building Playbox and its first three games in Unity
 PLAYBOX_ASSETS.md        the assets you supply for each game (fonts)
 ```
 
@@ -183,9 +224,38 @@ At the top of the engine section in `src/games/paint-sort.html`:
 Run `node tools/probe.mjs 1 60` after any change. It regenerates every level,
 checks each one is solvable, and prints the curve.
 
+## Tuning Cake Sort
+
+At the top of the engine section in `src/games/cake-sort.html`:
+
+- `RAMP` and `BLOCK_STEP` are the sawtooth, as in Paint Sort.
+- `spec()` turns a level's heat into the number of cakes on the menu (`K`,
+  capped per tier by `K_CAP`), the order size (`goal`, capped by `GOAL_CAP`),
+  the cake stands in the way (`blocked`), the plates already out (`pre`), and
+  how plates are dealt: `mix` and `mix3` (chance of a second and third cake on
+  one plate), `help` (chance a plate's cake is one already on the counter) and
+  `big` (chance of a 4- or 5-slice plate).
+- `UNLOCK_AT` is the level each cake joins the menu.
+- `PRICES`, `UNDOS_PER_TRY` and `spec().reward` are the economy; `FLIGHT` and
+  `STAGGER` time the slices in the air.
+
+Run `node tools/cake-probe.mjs 1 60` after any change. It plays every level
+with a casual and a skilled simulated player and prints how often each fails.
+Measured over levels 1 to 100 (16 runs each): normal levels fail almost never
+before level 30 and climb slowly to a block average of about 0.4 by level 100;
+hard levels go from 0.13 at level 5 to 0.5 to 0.75 from level 35 on, and
+super-hard ones from 0.41 at level 10 to 0.6 to 0.75. In every block of ten,
+both spikes sit above all of its normal levels.
+
 ## Headless hooks
 
 `window.__ps` exposes `spec(n)`, `generate(n)`, `solve(state, cap, budget)`,
 `probe(from, to)` and, while the game is open, `state()`, `level()`, `tap(i)`,
 `undo()`, `hint()`, `addVial()`, `restart()`, `solveNow()`, `idle()` and
 `play(n)` (jump to level n).
+
+`window.__cs` does the same for Cake Sort: `spec(n)`, `newLevel(n)`,
+`place(level, tray, cell)`, `resolve(cells, cell)` and `probe(from, to, runs)`
+at any time, and while the game is open `state()`, `level()`, `place(tray, cell)`,
+`undo()`, `hammer(cell)`, `refresh()`, `idle()`, `won()`, `where()` (screen
+positions of the tray and cells) and `play(n)`.
