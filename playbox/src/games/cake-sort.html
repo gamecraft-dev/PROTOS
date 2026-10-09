@@ -515,9 +515,13 @@ function probe(from, to, runs){
    own layers where it is cut, a frosted or a bare side, and a pattern on top.
    layers run bottom to top as [colour, share of the height]. */
 const CAKES = [
-  { name: 'Strawberry', note: 'Pink buttercream, vanilla sponge with jam, and a berry on every slice.',
-    top: '#FF8DB3', side: '#FF9BBD', sideStyle: 'frost', pattern: 'glaze', topping: 'strawberry', pipe: '#FFFFFF',
-    layers: [['#FFE6AE', .3], ['#FFFFFF', .09], ['#E8364F', .07], ['#FFE6AE', .3], ['#FF8DB3', .24]] },
+  { name: 'Strawberry', note: 'Pink glaze over vanilla sponge and cream, with a berry on every slice.',
+    top: '#F98BAA', side: '#F785A8', sideStyle: 'frost', pattern: null, topping: 'strawberry', pipe: null,
+    // gloss: drawn in the polished look (drawSliceGloss); drips are [where, how far, how wide]; the
+    // third entry of a layer is its kind
+    gloss: { ink: '#62192B', crust: '#E39349', drips: [[.2, .06, .1], [.5, .1, .13], [.8, .07, .1]] },
+    layers: [['#F3CC88', .26, 'sponge'], ['#FFF4E0', .1, 'cream'], ['#F3CC88', .2, 'sponge'], ['#FFF4E0', .09, 'cream'],
+      ['#F3CC88', .15, 'sponge'], ['#F98BAA', .2, 'glaze']] },
   { name: 'Chocolate', note: 'Dark sponge, ganache dripping down the side, a square of chocolate on top.',
     top: '#5E2F1A', side: '#55291A', sideStyle: 'frost', drip: '#3B1A0C', pattern: 'swirl', topping: 'choc',
     layers: [['#74402A', .32], ['#2F150A', .1], ['#74402A', .32], ['#5E2F1A', .26]] },
@@ -604,6 +608,7 @@ const SPRINKLE = ['#FF5A8A', '#FFD23F', '#5AD17F', '#FFFFFF', '#B57BFF', '#FF9A3
    the cut faces that face us (showing the layers), the curved outside, then
    the top with its pattern, piping and topping. */
 function drawSlice(ctx, cx, cy, R, H, a, F, o){
+  if(F.gloss) return drawSliceGloss(ctx, cx, cy, R, H, a, F, o);
   const b = a + SEG, ry = R * SQ, lw = Math.max(.6, R * .028);
   ctx.lineJoin = 'round';
   // cut faces
@@ -670,6 +675,228 @@ function drawSlice(ctx, cx, cy, R, H, a, F, o){
   if(F.pipe && !front) drawPipe(ctx, pp[0], pp[1], s, F.pipe);
   drawTopping(ctx, F.topping, tp[0], tp[1], s, o.flame);
   if(F.pipe && front) drawPipe(ctx, pp[0], pp[1], s, F.pipe);
+}
+/* ---- the polished look ----
+   A cake with a `gloss` entry is drawn like a glossy illustration. Its cut
+   faces come from a texture made once per cake (wavy cream between the sponge
+   layers, crumb grain, a baked crust, the glaze rolling over the top edge with
+   a few drips) mapped onto each face; the glaze on top has a soft gradient, a
+   lit rim and a sheen; the topping is a sprite drawn once; and the slice has a
+   dark outline in the cake's own colour, stroked under the faces so only its
+   outer half shows (between slices it reads as the cut). */
+const CUT_W = 448, CUT_H = 240;                  // cut-face texture: t (centre to rim) across, v (bottom to top) up
+const cutCache = new Map();
+function cutTexture(F){
+  let cv = cutCache.get(F.name);
+  if(cv) return cv;
+  cv = document.createElement('canvas'); cv.width = CUT_W; cv.height = CUT_H;
+  const g = cv.getContext('2d'), G = F.gloss, rs = { s: 7919 }, N = 72;
+  const Y = v => (1 - v) * CUT_H;
+  const drip = t => { let d = 0; for(const [c, len, w] of G.drips) d = Math.max(d, len * Math.exp(-Math.pow(Math.abs((t - c) / w), 2.2))); return d; };
+  // the line under each layer, as v at t: every layer rides the same slow wave (so the filling
+  // keeps its thickness), with a little of its own; the glaze hangs in drips instead
+  const lines = [];
+  let v = 0;
+  F.layers.forEach(([, fr, kind], i) => {
+    const v0 = v, k = i * 2.3;
+    lines.push(i === 0 ? () => -.02 : kind === 'glaze' ? t => v0 - drip(t) + .01 * Math.sin(t * 11 + k)
+      : t => v0 + .034 * Math.sin(t * 7.2 + .9 + i * .3) + .007 * Math.sin(t * 19 + k));
+    v += fr;
+  });
+  const top = () => 1.02;
+  const curve = (f, dy, start) => { for(let j = 0; j <= N; j++){ const t = j / N; (j || !start) ? g.lineTo(t * CUT_W, Y(f(t)) + dy) : g.moveTo(0, Y(f(0)) + dy); } };
+  const band = (lo, hi) => {
+    g.beginPath(); curve(lo, 0, true);
+    for(let j = N; j >= 0; j--){ const t = j / N; g.lineTo(t * CUT_W, Y(hi(t))); }
+    g.closePath();
+  };
+  const last = F.layers.length - 1;
+  F.layers.forEach(([col, , kind], i) => {
+    if(kind === 'glaze') return;
+    const lo = lines[i], hi = i < last ? lines[i + 1] : top;
+    band(lo, hi); g.fillStyle = col; g.fill();
+    if(kind === 'sponge'){
+      g.save(); band(lo, hi); g.clip();
+      // lighter in the middle of each band, darker where it meets the filling
+      const y0 = Y(lo(.5)), y1 = Y(hi(.5)), sg = g.createLinearGradient(0, y0, 0, y1);
+      sg.addColorStop(0, 'rgba(214,140,50,.22)'); sg.addColorStop(.45, 'rgba(255,248,225,.18)'); sg.addColorStop(1, 'rgba(214,140,50,.14)');
+      g.fillStyle = sg; g.fillRect(0, Math.min(y0, y1) - 20, CUT_W, Math.abs(y0 - y1) + 40);
+      if(i === 0){                                            // the baked crust at the bottom
+        const gr = g.createLinearGradient(0, CUT_H, 0, Y(.17)), cr = parseInt(G.crust.slice(1), 16);
+        gr.addColorStop(0, tone(G.crust, -.1)); gr.addColorStop(.5, G.crust);
+        gr.addColorStop(1, `rgba(${cr >> 16},${(cr >> 8) & 255},${cr & 255},0)`);     // fade in the same colour, not to black
+        g.fillStyle = gr; g.fillRect(0, Y(.18), CUT_W, CUT_H);
+      }
+      for(let n = 0; n < 900; n++){                            // crumb: pores and light flecks
+        const x = rngNext(rs) * CUT_W, y = rngNext(rs) * CUT_H, r = .9 + rngNext(rs) * 2.2, light = rngNext(rs) < .28;
+        g.fillStyle = light ? 'rgba(255,248,226,.65)' : `rgba(200,${118 + (rngNext(rs) * 30) | 0},40,${(.22 + rngNext(rs) * .22).toFixed(2)})`;
+        ell(g, x, y, r, r * (.5 + rngNext(rs) * .4)); g.fill();
+      }
+      g.restore();
+    } else {                                                   // cream: shaded underside, lit upper edge
+      g.lineWidth = 2.6; g.strokeStyle = 'rgba(150,95,45,.3)';
+      g.beginPath(); curve(lo, -1.5, true); g.stroke();
+      g.lineWidth = 2.2; g.strokeStyle = 'rgba(255,255,255,.85)';
+      g.beginPath(); curve(hi, 2.5, true); g.stroke();
+    }
+  });
+  // the frosting coat seen in section at the rim
+  g.fillStyle = F.side; g.fillRect(CUT_W * .97, 0, CUT_W * .04, CUT_H);
+  g.fillStyle = 'rgba(120,30,50,.16)'; g.fillRect(CUT_W * .97, 0, 2, CUT_H);
+  // the glaze: its shadow on the cake below, then the glaze, lit along the rolled top edge
+  const gi = F.layers.findIndex(l => l[2] === 'glaze');
+  if(gi >= 0){
+    const col = F.layers[gi][0], lo = lines[gi];
+    g.save(); g.translate(0, CUT_H * .035); band(lo, top); g.fillStyle = 'rgba(110,40,30,.24)'; g.fill(); g.restore();
+    band(lo, top);
+    const gr = g.createLinearGradient(0, 0, 0, Y(1 - F.layers[gi][1] - .08));
+    gr.addColorStop(0, tone(col, .42)); gr.addColorStop(.2, tone(col, .12)); gr.addColorStop(.7, col); gr.addColorStop(1, tone(col, -.12));
+    g.fillStyle = gr; g.fill();
+    g.strokeStyle = tone(col, -.22); g.lineWidth = 3;
+    g.beginPath(); curve(lo, -1.5, true); g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = CUT_H * .022; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(CUT_W * .05, CUT_H * .045); g.lineTo(CUT_W * .9, CUT_H * .045); g.stroke();
+  }
+  cutCache.set(F.name, cv);
+  return cv;
+}
+// one cut face: the texture mapped onto the face (it is a parallelogram on screen), then its light
+function drawCutFace(ctx, cx, cy, R, H, ang, ry, F, amt){
+  const ex = Math.cos(ang) * R, ey = Math.sin(ang) * ry;
+  ctx.save();
+  ctx.imageSmoothingQuality = 'high';
+  ctx.transform(ex / CUT_W, ey / CUT_W, 0, H / CUT_H, cx, cy - H);
+  ctx.drawImage(cutTexture(F), 0, 0);
+  ctx.restore();
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + ex, cy + ey); ctx.lineTo(cx + ex, cy + ey - H); ctx.lineTo(cx, cy - H); ctx.closePath();
+  ctx.fillStyle = amt < 0 ? `rgba(70,25,20,${(-amt * .8).toFixed(3)})` : `rgba(255,255,255,${(amt * .7).toFixed(3)})`;
+  ctx.fill();
+}
+function drawSliceGloss(ctx, cx, cy, R, H, a, F, o){
+  const b = a + SEG, ry = R * SQ, arcs = frontArcs(a, b), faces = [];
+  for(let side = 0; side < 2; side++){
+    const ang = side ? b : a, c = Math.cos(ang);
+    if(side ? c >= .02 : c <= -.02) faces.push([ang, side]);
+  }
+  const quad = ang => { const ex = Math.cos(ang) * R, ey = Math.sin(ang) * ry;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + ex, cy + ey); ctx.lineTo(cx + ex, cy + ey - H); ctx.lineTo(cx, cy - H); ctx.closePath(); };
+  const band = (s, e, z0, z1) => { ctx.beginPath(); ctx.ellipse(cx, cy - z0, R, ry, 0, s, e); ctx.ellipse(cx, cy - z1, R, ry, 0, e, s, true); ctx.closePath(); };
+  const topPath = () => { ctx.beginPath(); ctx.moveTo(cx, cy - H); ctx.ellipse(cx, cy - H, R, ry, 0, a, b); ctx.closePath(); };
+  ctx.save();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  // 1. the outline, under everything
+  ctx.strokeStyle = F.gloss.ink; ctx.lineWidth = Math.max(1.2, R * .032);
+  for(const [ang] of faces){ quad(ang); ctx.stroke(); }
+  for(const [s, e] of arcs){ band(s, e, 0, H); ctx.stroke(); }
+  topPath(); ctx.stroke();
+  // 2. the cut faces
+  for(const [ang, side] of faces) drawCutFace(ctx, cx, cy, R, H, ang, ry, F, -(side ? -Math.sin(b) : Math.sin(a)) * .16 - .05);
+  // 3. the outside: darker toward the counter, the usual side shading, the glaze's rolled edge lit under the rim
+  for(const [s, e] of arcs){
+    band(s, e, 0, H); ctx.fillStyle = F.side; ctx.fill();
+    const vg = ctx.createLinearGradient(0, cy + ry, 0, cy - H);
+    vg.addColorStop(0, 'rgba(90,15,35,.14)'); vg.addColorStop(.5, 'rgba(90,15,35,0)'); vg.addColorStop(1, 'rgba(255,255,255,.18)');
+    ctx.fillStyle = vg; ctx.fill();
+    ctx.globalAlpha = .7; ctx.fillStyle = o.sideShade; ctx.fill(); ctx.globalAlpha = 1;
+    ctx.save(); ctx.clip();
+    ctx.beginPath(); ctx.ellipse(cx, cy - H * .92, R * .995, ry * .995, 0, s, e);
+    ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = Math.max(.8, H * .07); ctx.stroke();
+    ctx.restore();
+  }
+  // 4. the top: glaze lit from the upper left, a screen-fixed sheen, lit rims along the front edges
+  topPath();
+  const tg = ctx.createLinearGradient(cx - R, cy - H - ry, cx + R * .6, cy - H + ry);
+  tg.addColorStop(0, tone(F.top, .24)); tg.addColorStop(.5, F.top); tg.addColorStop(1, tone(F.top, -.06));
+  ctx.fillStyle = tg; ctx.fill();
+  ctx.save(); ctx.clip();
+  ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = R * .07;
+  ctx.beginPath(); ctx.ellipse(cx - R * .05, cy - H - ry * .05, R * .7, ry * .66, 0, Math.PI * 1.06, Math.PI * 1.5); ctx.stroke();
+  // the glaze's rounded edge: lit all round, brightest along the front
+  ctx.lineWidth = Math.max(.8, R * .032);
+  for(const [s, e, al] of [[a, b, .3], ...arcs.map(([s, e]) => [s, e, .4])]){
+    ctx.strokeStyle = `rgba(255,255,255,${al})`;
+    ctx.beginPath(); ctx.ellipse(cx, cy - H, R * .962, ry * .962, 0, s, e); ctx.stroke();
+  }
+  for(let side = 0; side < 2; side++){
+    const ang = side ? b : a, lit = faces.some(f => f[1] === side);
+    const d = R * .036, ox = (side ? Math.sin(ang) : -Math.sin(ang)) * d, oy = (side ? -Math.cos(ang) : Math.cos(ang)) * d * SQ;
+    ctx.strokeStyle = `rgba(255,255,255,${lit ? .7 : .3})`;
+    ctx.beginPath(); ctx.moveTo(cx + ox, cy - H + oy);
+    ctx.lineTo(cx + Math.cos(ang) * R * .962 + ox, cy - H + Math.sin(ang) * ry * .962 + oy); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.restore();
+  // 5. the topping, standing at the middle of the slice
+  const m = a + SEG / 2;
+  drawToppingGloss(ctx, F.topping, cx + Math.cos(m) * R * .56, cy + Math.sin(m) * ry * .56 - H, R * .235, o.flame);
+}
+// toppings in the polished look are drawn once into a sprite and scaled
+const SPR_S = 64, spriteCache = new Map();
+function drawToppingGloss(ctx, kind, x, y, s, flame){
+  if(kind !== 'strawberry') return drawTopping(ctx, kind, x, y, s, flame);
+  let sp = spriteCache.get(kind);
+  if(!sp){
+    const cv = document.createElement('canvas'), ax = SPR_S * 1.2, ay = SPR_S * 2.3;
+    cv.width = SPR_S * 2.4; cv.height = SPR_S * 2.75;
+    const g = cv.getContext('2d');
+    drawCream(g, ax, ay, SPR_S);
+    drawBerry(g, ax + SPR_S * .06, ay - SPR_S * .92, SPR_S);
+    sp = { cv, ax, ay }; spriteCache.set(kind, sp);
+  }
+  const k = s / SPR_S;
+  ctx.save(); ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(sp.cv, x - sp.ax * k, y - sp.ay * k, sp.cv.width * k, sp.cv.height * k);
+  ctx.restore();
+}
+// piped whipped cream sitting at (x, y): three coils, each a soft tube lit from the upper left
+function drawCream(g, x, y, s){
+  g.fillStyle = 'rgba(120,30,50,.22)'; ell(g, x + s * .06, y + s * .06, s * .74, s * .3); g.fill();
+  for(const [dy, rx, ryy] of [[0, .72, .36], [-.27, .57, .32], [-.5, .4, .26]]){
+    const cy = y + dy * s;
+    g.strokeStyle = '#A9775C'; g.lineWidth = s * .06;
+    ell(g, x, cy, rx * s, ryy * s); g.stroke();
+    const gr = g.createLinearGradient(0, cy - ryy * s, 0, cy + ryy * s);
+    gr.addColorStop(0, '#FFFFFF'); gr.addColorStop(.45, '#FFF6E6'); gr.addColorStop(.8, '#F4DEC4'); gr.addColorStop(1, '#E2BE9C');
+    g.fillStyle = gr; g.fill();
+    // the coil's lit top and the groove where it turns
+    g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = s * .07; g.lineCap = 'round';
+    g.beginPath(); g.ellipse(x, cy, rx * s * .78, ryy * s * .62, 0, Math.PI * 1.08, Math.PI * 1.55); g.stroke();
+    g.strokeStyle = 'rgba(170,115,80,.4)'; g.lineWidth = s * .035;
+    g.beginPath(); g.ellipse(x + rx * s * .1, cy + ryy * s * .05, rx * s * .82, ryy * s * .72, 0, Math.PI * .1, Math.PI * .55); g.stroke();
+  }
+}
+// a strawberry, its middle at (x, y), size s
+function drawBerry(g, x, y, s){
+  g.save(); g.translate(x, y); g.rotate(.2);
+  const body = () => {
+    g.beginPath(); g.moveTo(0, .62 * s);
+    g.bezierCurveTo(-.4 * s, .52 * s, -.66 * s, .06 * s, -.58 * s, -.28 * s);
+    g.bezierCurveTo(-.5 * s, -.58 * s, -.14 * s, -.6 * s, 0, -.5 * s);
+    g.bezierCurveTo(.14 * s, -.6 * s, .5 * s, -.58 * s, .58 * s, -.28 * s);
+    g.bezierCurveTo(.66 * s, .06 * s, .4 * s, .52 * s, 0, .62 * s);
+    g.closePath();
+  };
+  body(); g.strokeStyle = '#5E0A1C'; g.lineWidth = s * .1; g.lineJoin = 'round'; g.stroke();
+  const gr = g.createRadialGradient(-.2 * s, -.22 * s, .04 * s, 0, 0, .78 * s);
+  gr.addColorStop(0, '#FF7686'); gr.addColorStop(.45, '#EC2B45'); gr.addColorStop(1, '#AE1029');
+  body(); g.fillStyle = gr; g.fill();
+  for(const [u, v] of [[-.3, -.22], [.02, -.3], [.32, -.2], [-.4, .04], [-.12, -.02], [.17, -.04], [.42, .06], [-.24, .26], [.06, .22], [.3, .3], [-.06, .46], [.14, .44]]){
+    g.fillStyle = 'rgba(120,5,25,.45)'; ell(g, u * s, v * s + .015 * s, .06 * s, .07 * s); g.fill();
+    g.fillStyle = '#FFE7A1'; ell(g, u * s, v * s - .005 * s, .032 * s, .045 * s); g.fill();
+  }
+  g.fillStyle = 'rgba(255,255,255,.65)'; ell(g, -.33 * s, -.18 * s, .08 * s, .19 * s, -.45); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.9)'; ell(g, -.25 * s, -.38 * s, .045 * s, .04 * s); g.fill();
+  // the leaves and the stalk
+  g.strokeStyle = '#2E7A35'; g.lineWidth = s * .08; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(0, -.5 * s); g.quadraticCurveTo(.02 * s, -.7 * s, .1 * s, -.8 * s); g.stroke();
+  for(const t of [2.75, -2.55, -1.75, -.75, .35]){
+    g.save(); g.translate(0, -.5 * s); g.rotate(t);
+    g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(.22 * s, -.14 * s, .44 * s, 0); g.quadraticCurveTo(.22 * s, .14 * s, 0, 0); g.closePath();
+    g.strokeStyle = '#1E5426'; g.lineWidth = s * .05; g.stroke();
+    g.fillStyle = '#4DB257'; g.fill();
+    g.restore();
+  }
+  g.restore();
 }
 function drawPattern(ctx, cx, cy, R, a, F){
   const ry = R * SQ, at = (u, v) => [cx + Math.cos(a + u * SEG) * R * v, cy + Math.sin(a + u * SEG) * ry * v];
