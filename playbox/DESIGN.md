@@ -48,9 +48,11 @@ every added rule costs some of it.
    solution from the current position, not a guess. If there is no solution, the
    hint booster tells you so and is not spent.
 4. **Levels are generated, not authored, and every one is checked.** See §3.
-5. **Difficulty follows a sawtooth, and you can see it.** The level road in the
-   lobby plots the ten levels of the current block at their real difficulty, so
-   a player can see the spikes at 5 and 10 coming and the breather after them.
+5. **Difficulty follows a sawtooth, fitted to the player, and you can see it.**
+   Every level is mixed when it starts, as hard as suits this player (§4), and
+   the level road in the lobby plots the ten levels of the current block by how
+   often each is meant to be lost, so a player can see the spikes at 5 and 10
+   coming and the breather after them.
 
 ### What I deliberately left out
 Timers, lives, energy, move limits and ads. The prototype has coins and a
@@ -78,76 +80,119 @@ level 37 to someone else.
    pour one move deep (finish a vial, move whole runs, don't spend empty vials,
    uncover paint that has somewhere to go) and adds a little noise. Each plays
    the board 14–20 times; difficulty is their combined failure rate.
-5. Sort the candidates by difficulty and keep the one at the level's `PICK`
-   position: the easiest for the breather levels, the hardest for the spikes.
+5. Sort the candidates by difficulty and keep the one the level's heat picks
+   (§4): the fraction of the heat runs from the easiest candidate to the
+   hardest.
 6. Choose the palette and the hidden layers from the same seed.
 
 Generation takes 33 ms on average for levels 1–30 and never more than about
 350 ms up to level 120 (Node, one core). The next level is mixed while the win
 screen is showing, so the player never waits.
 
-## 4. The sawtooth
+## 4. The sawtooth, and fitting it to each player
 
-Levels come in blocks of ten. Inside a block the heat climbs, spikes at the 5th
-level (**hard**), drops back, climbs again and spikes harder at the 10th
-(**super hard**). Each block starts `BLOCK_STEP` (1.15) higher than the last.
+Every level is made at a **heat**. The whole part of the heat sets the colours
+(`3 + floor(heat)`, up to 12); the fraction picks which generated candidate to
+keep, from the most forgiving to the most punishing (10 candidates are made for
+a super-hard level, 8 for a hard one, 5 otherwise). The same level number and
+heat always give the same board.
+
+**The typical curve.** Levels come in blocks of ten. Inside a block the heat
+climbs, spikes at the 5th level (**hard**), drops back, climbs again and spikes
+harder at the 10th (**super hard**). Each of the first four blocks starts
+`BLOCK_STEP` (1.15) higher than the last; after that the curve stops climbing,
+and how hard a level gets is up to the player's skill.
 
 ```
 RAMP (in-block heat):  0  .45  .9  1.35  [2.5]  .6  1.05  1.5  1.95  [3.6]
-PICK (candidate kept): 0  .35  .55 .7    [1  ]  0   .45   .6   .75   [1  ]
-colours = round(3 + heat), capped at 10 / 11 / 12 for normal / hard / super hard
+heat = RAMP[pos] + 1.15 × min(block, 4)
 ```
 
-Measured with `node tools/probe.mjs 1 30`. *Difficulty* is the share of
-simulated games lost; *moves* is the solver's solution length.
+That curve is what a new player starts on, and what the probe measures:
+`node tools/probe.mjs 1 30`. *Difficulty* is the share of simulated games lost;
+*moves* is the solver's solution length.
 
 ```
  lvl  tier  colours hidden moves  difficulty
-   1             3       0      9  ........................  0.00
-   2             3       0     10  ........................  0.00
-   3             4       0     12  ........................  0.00
-   4             4       0     13  ........................  0.00
-   5   HARD      6       0     20  ########................  0.35
-   6             4       0     13  ........................  0.00
-   7             4       0     13  ........................  0.00
-   8             5       0     16  ######..................  0.25
-   9             5       0     15  ###.....................  0.11
-  10   SUPER     7       0     25  ################........  0.68
-  11             4       0     12  ........................  0.00
-  12             5       0     17  ###.....................  0.11
-  13             5       2     16  ##......................  0.07
-  14             6       0     21  #####...................  0.21
-  15   HARD      7      10     25  ####################....  0.85
-  16             5       0     16  ........................  0.00
-  17             5       0     16  #.......................  0.04
-  18             6       5     20  #######.................  0.29
-  19             6       0     18  #######.................  0.29
-  20   SUPER     8      16     28  #######################.  0.97
-  21             5       0     16  ........................  0.00
-  22             6       0     20  ######..................  0.25
-  23             6       4     22  ##########..............  0.43
-  24             7       0     25  ##########..............  0.43
-  25   HARD      8      16     25  #################.......  0.72
-  26             6       0     17  ###.....................  0.14
-  27             6       0     22  ####....................  0.18
-  28             7       9     23  ##############..........  0.57
-  29             7       0     24  #############...........  0.54
-  30   SUPER     9      16     35  #######################.  0.97
+   1              3       0      9  ........................  0.00
+   2              3       0     10  ........................  0.00
+   3              3       0     12  ........................  0.00
+   4              4       0     13  ........................  0.00
+   5   HARD       5       0     18  #.......................  0.05
+   6              3       0     11  ........................  0.00
+   7              4       0     12  ........................  0.00
+   8              4       0     14  ........................  0.00
+   9              4       0     15  ........................  0.00
+  10   SUPER      6       0     22  ######..................  0.23
+  11              4       0     13  ........................  0.00
+  12              4       0     15  ........................  0.00
+  13              5       2     15  ........................  0.00
+  14              5       0     15  #.......................  0.04
+  15   HARD       6       9     21  ######..................  0.25
+  16              4       0     13  #.......................  0.04
+  17              5       0     16  #.......................  0.04
+  18              5       5     16  ##......................  0.07
+  19              6       0     18  ##......................  0.07
+  20   SUPER      7      15     23  #############...........  0.53
+  21              5       0     18  #.......................  0.04
+  22              5       0     17  #####...................  0.21
+  23              6       4     21  ###.....................  0.14
+  24              6       0     21  ###########.............  0.46
+  25   HARD       7      15     22  ###############.........  0.63
+  26              5       0     17  ####....................  0.18
+  27              6       0     18  ........................  0.00
+  28              6       9     20  #######.................  0.29
+  29              7       0     23  ###.....................  0.14
+  30   SUPER      8      11     27  #################.......  0.72
+                                      
 
-mean difficulty   normal 0.16 · hard 0.64 · super 0.87
+mean difficulty   normal 0.07 · hard 0.31 · super 0.49
 ```
 
-The shape is what was asked for: two teeth per block, the 10th sharper than the
-5th, a real drop straight after each one, and every block starting above the
-last.
+Two teeth per block, the 10th sharper than the 5th, a real drop straight after
+each one, and every block starting above the last.
 
-**Where the measurement runs out.** From about level 45 (10+ colours) both
-simulated players lose almost every game, so the difficulty column saturates
-near 1.0. The sawtooth doesn't disappear: the spikes still have more colours
-(11 and 12 against 10), more hidden paint and longer solutions (≈44 moves
-against ≈33 at level 100). But the probe can no longer rank boards precisely at
-that end. A stronger simulated player (two-move lookahead) is the fix if late
-levels need finer tuning.
+**Fitting it to the player.** A fixed curve is too easy for some players and
+too hard for others. Playbox keeps a Bayesian estimate of each player's skill
+on the heat scale: a normal distribution with a mean and an uncertainty (the
+model is shared by every game, in `src/shell.html`).
+
+- Each slot of a block of ten has a **target win rate**: about .9 falling to
+  .78 on the run-up, **.5 on the hard 5th**, .88 falling to .76 after it, and
+  **.36 on the super-hard 10th**. A level is made at the heat this player beats
+  with that chance, given what the model knows. The spikes stay spikes, measured
+  against the player rather than against an average.
+- The heat stays within a range around the level's block (never below 2.5 under
+  the block's start, never more than 4 over its hardest level), so a late level
+  never turns into a first one.
+- **Every attempt is read once.** A finished board is a win, and how close the
+  pours came to the solver's says how easy it was (undo, hint or the extra vial
+  count against that); a proven dead end, or giving up after 3 or more pours, is
+  a loss. A win or loss updates the estimate with the moment-matched probit
+  update TrueSkill uses; the ease of a win is a softer second reading.
+- **Mercy.** Each lost try at a level eases its target for the next try. A
+  restart keeps the same board (players expect to retry the same puzzle), but
+  after two lost tries the restart sheet also offers to mix a gentler one.
+
+With idealised players (`node tools/adaptive-sim.mjs model`, levels 21–60,
+first-try win rates on ordinary / hard / super-hard levels against targets
+.83 / .50 / .36):
+
+| Player | Fixed curve | Adaptive |
+| --- | --- | --- |
+| Weak | .14 / .01 / .00 | .81 / .46 / .32 |
+| Typical | .51 / .11 / .02 | .82 / .47 / .32 |
+| Strong | .99 / .89 / .67 | .83 / .47 / .33 |
+
+`node tools/adaptive-sim.mjs paint` runs the same check with Paint Sort's own
+generator and simulated players (slow, because every level is solved).
+
+**Where the measurement runs out.** Above about heat 7 (10 or more colours)
+both simulated players lose almost every game, so the probe's difficulty column
+saturates near 1.0. The spikes still have more colours, more hidden paint and
+longer solutions, but the probe can't rank boards precisely at that end, and
+only players the model rates highly get there. A stronger simulated player
+(two-move lookahead) is the fix if those levels need finer tuning.
 
 ## 5. The pour
 
@@ -204,6 +249,9 @@ Starting inventory is 3 hints and 2 extra vials.
 - **No human has played past level 10.** The curve is measured with bots. The
   bots agree with each other, but a round of real playtests on levels 5, 10, 15
   and 20 is the first thing to do.
+- **The model's noise (β 1.8) and targets are first estimates.** They come from
+  the bots. The analytics to refit them from real players (heat, outcome and
+  the model's estimate on every attempt) are listed in the Unity plan.
 - **Hidden paint isn't measured.** The simulated players see through the
   question marks, so hidden levels are harder for people than the table says.
   That's intended on the spikes, but it may make levels 13, 18 and 23 heavier

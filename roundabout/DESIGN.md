@@ -95,15 +95,19 @@ and the real collisions will drift apart.
 
 ### Generator, level 11 onward
 
-Seeded per level number (mulberry32), so level 37 is the same for everyone:
+Seeded per level number (mulberry32), so level 37 has the same shape,
+direction, pattern, entrances and rush hour for everyone. How fast and full its
+ring is, and how tight the clock, come from an **effective level** `x` that the
+adaptive model picks for each player (see *Adaptive difficulty* below); on the
+fixed curve `x` is the level number itself.
 
 | Parameter | Rule |
 | --- | --- |
 | Shape | random from 10: circle, big circle, rounded square, rounded rect, tall / wide stadium, tall rect, triangle, hexagon, pentagon |
 | Direction | counter-clockwise 38% of the time |
 | Traffic pattern | even, pairs, threes, random (random twice as likely) |
-| Speed | `148 + 0.75·(n−10)`, capped at 185, ±5% random after level 60; hard levels +6 |
-| Cars in total | sized to the ring: `capacity = 2 × ringLength / (47 + 0.3·speed)` (a cautious player needs a gap of about `47 + 0.3·speed` units to merge). Each level fills `55% → 88%` of capacity on a square-root curve by level 80, ±8% random, +8% on hard levels, −10% on rush hour; at least 7 cars |
+| Speed | `148 + 0.75·(x−10)`, capped at 185, ±5% random after level 60; hard levels +6 |
+| Cars in total | sized to the ring: `capacity = 2 × ringLength / (47 + 0.3·speed)` (a cautious player needs a gap of about `47 + 0.3·speed` units to merge). Each level fills `55% → 88%` of capacity on a square-root curve by `x` = 80, ±8% random, +8% on hard levels, −10% on rush hour; at least 7 cars |
 | Your cars | half the total (±0.6), clamped 5–10; the rest is traffic, at least 2 |
 | Hard | every level ending in 0, and in 5 after level 20 |
 | Two entrances | levels 16, 21, 26, … (n mod 5 = 1) |
@@ -129,21 +133,49 @@ is generated while the level-complete panel is on screen. Then:
 
 ```
 clock = ceil( max( referenceTime × slack + 2 ,  cars × 1.2 + 3 ) )
-slack = 2.2 for levels 1–3, then 2.0 → 1.4 across levels 4–64
+slack = 2.2 for levels 1–3, then 2.0 → 1.4 as x goes from 4 to 64
         × 0.95 on hard levels, × 1.15 on two-entrance levels
 ```
 
 Level 1 is fixed at 30 s. Clocks land between 9 and 34 s.
 
+### Adaptive difficulty
+
+A fixed curve bores strong players and loses weak ones. The game keeps a
+Bayesian estimate of the player's skill on the scale of `x`: a normal
+distribution, mean 20 and spread 14 to start, saved with the rest of the
+progress. It is the same model Playbox uses for every game.
+
+- **Picking `x`.** Each level has a target first-try win rate: the hard levels
+  ending in 0 aim at .36 and those ending in 5 (after level 20) at .50; the
+  rest follow the Playbox sawtooth (about .9 down to .78, then .88 down to
+  .76). `x` is the effective level this player clears with that chance, given
+  what the model knows, rounded to 0.5 and kept between `max(10, 0.3·n)` and
+  `n + 40`. A hard level starts 10 lower (`HARD_WORTH`) because its own +6
+  speed, +8% cars and ×0.95 clock make up about ten levels.
+- **Reading each attempt once.** The first crash or time-out is a loss (a
+  revive continues the attempt but doesn't undo it). A clear is a win, and the
+  share of the clock left (less 0.1 for each booster used) says how easy it was.
+- **Mercy.** Each lost try at a level eases its target, so a retry is a gentler
+  version of the same level.
+- Levels 1–10 stay hand-made; they still read the player, at `x = n`.
+
+The model's noise (12 levels: going 12 levels harder takes a player who wins
+half the time down to about 16%) and the targets are first estimates; the
+`level_start` event carries `e`, `mu` and `sd` so they can be refitted from
+real players.
+
 **For Unity:** port `rawDef`, `levelDef`, `greedySolve`, `refSolve` and
-`planTap` as they are, then bake levels 1–300 to data (ScriptableObject or
-JSON) with a script. Baked levels stay identical across app updates and can be
-hand-edited or remotely tuned per level; generate at runtime only past the baked set.
+`planTap` as they are. Bake the fixed curve (levels 1–300) to data as the
+reference for the port; adaptive levels are generated at runtime on a worker
+thread, the next one while the level-complete panel is up. The Playbox plan
+(`../playbox/PLAYBOX_UNITY_PLAN.md`, §35) has the details.
 
 ## 5. Measured balance
 
-Two simulated humans played levels 1–100, six attempts each, through the real
-game code. Both plan taps ahead like the reference player and add timing noise:
+Two simulated humans played levels 1–100 of the fixed curve (`x = n`, as
+before the adaptive model), six attempts each, through the real game code. Both
+plan taps ahead like the reference player and add timing noise:
 
 - **Skilled:** 0.35 s ahead, ±0.10 s margin, σ 0.06 s timing error.
 - **Casual:** 0.45 s ahead, ±0.15 s margin, σ 0.09 s timing error, slower taps.
@@ -160,9 +192,11 @@ game code. Both plan taps ahead like the reference player and add timing noise:
 Average traffic grows from 3.9 cars (levels 1–10) to about 6, and your cars from
 5.4 to 6.5.
 
-That is the intended curve: almost nobody fails the first 20 levels, casual
-players start needing a second try in the 40s and 50s, and three stars stay
-attainable for good players throughout. The spikes are where they should be:
+That was the intended fixed curve: almost nobody fails the first 20 levels,
+casual players start needing a second try in the 40s and 50s, and three stars
+stay attainable for good players throughout. It also shows why the model was
+added: the skilled bot wins 97–99% of levels throughout, so for good players the
+game never got hard. The spikes are where they should be:
 the casual bot's hardest levels are 70, 81, 85, 65 and 88, nearly all hard,
 two-entrance or counter-clockwise. Those are the levels where boosters and
 revives earn their keep.
@@ -321,7 +355,7 @@ Every panel in the prototype, for the UI build:
 The prototype logs these to `window.__rr.log`; wire the same names to
 Firebase or GameAnalytics:
 
-`level_start`, `level_complete`, `level_fail` (reason, cars in), `level_reward`
+`level_start` (with `e`, `mu`, `sd`), `level_complete`, `level_fail` (reason, cars in), `level_reward`
 (coins, multiplier), `revive`, `booster_used`, `booster_bought`,
 `ad_impression`, `ad_start`, `ad_reward`, `ad_skipped`, `ad_failed`, `iap_view`,
 `iap_purchase`, `car_unlocked`, `car_bought`, `car_equipped`, `daily_claim`,
@@ -338,7 +372,7 @@ cadence.
 | `resample()` loop table | Unity Splines package for authoring; bake to a 1-unit distance table at load |
 | `stepWorld()` with ≤1.5-unit substeps | the same loop inside `Update`, fixed substeps; no Rigidbodies |
 | `computeDanger()` | run once per feeder on level load (a few ms) |
-| Level generator + bots | editor script that bakes levels to ScriptableObjects; runtime fallback past the baked set |
+| Level generator + bots | editor script that bakes the fixed curve as a reference; adaptive levels generated at runtime on a worker thread |
 | `ECON`, `ADS`, `BOOSTERS`, `CARS`, `IAP` | ScriptableObjects, overridable by Remote Config |
 | Save (`roundabout-rush-v1`) | JSON in `Application.persistentDataPath`, same fields; cloud save later |
 | Mock ads | AppLovin MAX, Unity LevelPlay or AdMob mediation; one wrapper with `ShowRewarded(placement, callback)` and `MaybeInterstitial(reason)` |
@@ -368,3 +402,5 @@ phones from 360 × 640 up and tablets.
 5. **The clock is the main fail state for careful players.** If playtests
    show frustration at time-outs, raise `slack`; if levels feel solved, lower it.
    Both are one-line changes in `levelDef()`.
+6. **The adaptive model is tuned on bots.** Its noise and targets need
+   refitting from live `level_start` / `level_fail` data before launch.

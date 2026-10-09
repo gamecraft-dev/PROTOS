@@ -46,7 +46,7 @@ bake the shipped levels from this page's own generator.
 | Area | Contents |
 | --- | --- |
 | Core | 10 track shapes, clockwise and counter-clockwise flow, offset and twin entrances, rush-hour speed surges, hard levels, crash physics with wrecks |
-| Levels | 10 hand-tuned levels, then an endless seeded generator; every level is proven clearable by three bots before it ships |
+| Levels | 10 hand-tuned levels, then an endless seeded generator whose speed, traffic and clock adapt to the player (a Bayesian skill estimate, keeping the hard spikes); every level is proven clearable by three bots before it ships |
 | Boosters | Slow-Mo, Green Light, Tow Truck, Autopilot: unlock intros, inventory, buy with coins or a rewarded ad |
 | Economy | Coins from clears, stars, hard levels, close calls and car bonuses; 12 cars in 4 rarities bought with coins, ads or level milestones; free-car progress bar |
 | Panels | Splash, home, level select, garage, shop, pause, settings, level complete (with ×2–×5 multiplier needle), crash / time's up (with revive countdown), booster intro, booster purchase, not enough coins, new car, starter pack, rate us, daily reward, store confirm |
@@ -79,10 +79,14 @@ All in the config block at the top of the script in `src/app.html`:
 - `BOOSTERS`, `CARS`, `DAILY`, `IAP`: the content tables.
 - `HAND` and `rawDef()`: the hand-made levels and the generator curves.
   `levelDef()` holds the validation and the clock formula; see DESIGN.md §4.
+- `SKILL`, `HARD_WORTH`, `heatRange()` and `levelTarget()`: the adaptive
+  difficulty (the model's prior and noise, the range it may move a level, and
+  each level's target win rate).
 
 ## Headless hooks
 
 `window.__rr` exposes `startLevel(n)`, `tap(f)`, `step(dt)`, `turbo(k)`,
-`plan(f, lead, margin)`, `light(f)`, `levelDef(n)`, `state()`, every panel under
+`plan(f, lead, margin)`, `light(f)`, `levelDef(n, e)`, `rawDef(n, e)`,
+`heatFor(n)`, `skill()`, `setSkill(mu, sd)`, `state()`, every panel under
 `open.*`, the ad mock under `ads`, and the analytics log under `log`. The balance
 tables in DESIGN.md were measured through these with Playwright.

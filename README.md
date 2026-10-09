@@ -5,7 +5,7 @@ can open in a browser — no build step, no dependencies, no assets.
 
 | Prototype | What it is | Status |
 | --- | --- | --- |
-| **[playbox](playbox/)** | A multi-game app: a home screen of game boards with shared saving, settings and sound. Plays **Paint Sort** (pour paint between vials until each holds one colour, levels generated on a sawtooth difficulty curve), **Cake Sort** (drag plates of cake slices together until six make a whole cake, ten different cakes), **Hex Tile Sort** (Hexa Stack) and **Car Loop** (Roundabout Rush), the last two running inside the app from their own folders below. | Current |
+| **[playbox](playbox/)** | A multi-game app: a home screen of game boards with shared saving, settings and sound. Plays **Paint Sort** (pour paint between vials until each holds one colour, levels generated on the device), **Cake Sort** (drag plates of cake slices together until six make a whole cake, ten different cakes), **Hex Tile Sort** (Hexa Stack) and **Car Loop** (Roundabout Rush), the last two running inside the app from their own folders below. Every game sets each level's difficulty from a Bayesian estimate of the player's skill, keeping a hard 5th and super-hard 10th in every ten. | Current |
 | **[roundabout](roundabout/)** | Roundabout Rush: tap to merge your cars into a busy roundabout before the clock runs out. Full publishing shell: boosters, garage economy, mocked ads and store, Unity asset list. Appears in Playbox as Car Loop. | Current |
 | **[hexa-stack](hexa-stack/)** | Hexa Stack: endless hex-tile stacking. Drop stacks so matching colours flip across; ten of a colour clear. Appears in Playbox as Hex Tile Sort. | Playable |
 | **[backfire](backfire/)** | Bouncing-ball breaker where blocks you cut loose fall, flip, and slam back up into the ceiling. | Playable |
@@ -14,7 +14,7 @@ can open in a browser — no build step, no dependencies, no assets.
 
 Each folder has a `DESIGN.md` with the market rationale, the balance numbers, and
 the risks. For Unity, `playbox/PLAYBOX_UNITY_PLAN.md` is one build plan for the
-whole Playbox app with its first three games (not Cake Sort yet), and `playbox/PLAYBOX_ASSETS.md`
+whole Playbox app with all four games, and `playbox/PLAYBOX_ASSETS.md`
 lists, per game, the assets you supply yourself (fonts). (Roundabout's own `ASSETS.md`
 predates them and covers that game on its own.)
 
@@ -45,6 +45,11 @@ Three patterns are worth reusing:
   player and a cautious player can all clear it; the clock comes from the
   reference player's time. A clock based on the frame-perfect bot alone made
   every level from 7 onward unwinnable for human-like play.
+- **Difficulty that adapts to the player.** Playbox's games make each level at
+  a "heat" chosen from a Bayesian estimate of the player's skill (a normal
+  distribution updated after every attempt), aiming each slot of a block of ten
+  at a target win rate. `playbox/tools/adaptive-sim.mjs` checks it with
+  simulated players of different skill.
 
 ### Note on sparkweave
 

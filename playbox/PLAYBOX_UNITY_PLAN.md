@@ -1,23 +1,29 @@
-# Playbox in Unity: the build plan for the app and all three games
+# Playbox in Unity: the build plan for the app and all four games
 
 This plan is for an AI coding agent building **Playbox** in Unity: one app whose
-home screen shows every game as a board, with three games inside it.
+home screen shows every game as a board, with four games inside it.
 
 | Game | What it is | Part |
 | --- | --- | --- |
-| **Paint Sort** | Pour paint between glass vials until each holds one colour. Levels are generated on the device with a sawtooth difficulty curve, and a painting fills in as colours are sorted. | II |
+| **Paint Sort** | Pour paint between glass vials until each holds one colour. Levels are generated on the device with a sawtooth of hard levels, fitted to each player, and a painting fills in as colours are sorted. | II |
 | **Hex Tile Sort** | Drop stacks of hex tiles onto a 19-cell board; matching colours flip across, ten of a colour clear. Endless, with a best score. Built in 3D. | III |
-| **Car Loop** | Tap to merge your cars into a busy roundabout before the clock runs out. 300 baked levels, boosters, a garage, ads and a shop. | IV |
+| **Car Loop** | Tap to merge your cars into a busy roundabout before the clock runs out. Generated levels proven by bots, boosters, a garage, ads and a shop. | IV |
+| **Cake Sort** | Drag plates of cake slices onto a counter; matching slices spin across to the plate next door until six make a whole cake. Ten cakes, each with its own look. Built in 3D. | V |
+
+Every game picks the difficulty of each level as it starts, from a Bayesian
+estimate of the player's skill (§4.9), so strong players are kept busy and
+struggling players are not left failing, while the 5th and 10th levels of every
+ten still spike.
 
 Part I is the app every game sits in: project setup, code hierarchy, shared
 services (save, settings, audio, haptics, ads, purchases, analytics), the home
-screen of boards, theme and tooling. Part V covers tests, milestones and the
-manifest of every generated asset.
+screen of boards, adaptive difficulty, theme and tooling. Part VI covers tests,
+milestones, the manifest of every generated asset and the golden fixtures.
 
 The plan covers the rules of each game, the architecture, the code, and every
 asset the agent **generates through code**: meshes, shaders, textures,
-paintings, car sprites, icons, particles, sounds, music, prefabs, scenes and UI
-layouts. The only gameplay assets the agent cannot make are the fonts, listed per
+paintings, cakes, car sprites, icons, particles, sounds, music, prefabs, scenes
+and UI layouts. The only gameplay assets the agent cannot make are the fonts, listed per
 game in **`PLAYBOX_ASSETS.md`**. Store art, accounts and ad/store ids come from
 whoever publishes the app; nothing in this plan waits on them except where §1
 says so.
@@ -34,13 +40,15 @@ port it exactly; where it gives numbers, use them as written.
 
 | File | What it is |
 | --- | --- |
-| `playbox/src/shell.html` | The hub: save store, the Web Audio synth (`tone`, `noise`, `bell`, compressor), sheets, toasts, settings, the home screen of game boards. |
+| `playbox/src/shell.html` | The hub: save store, the Web Audio synth (`tone`, `noise`, `bell`, compressor), sheets, toasts, settings, the home screen of game boards, and the adaptive-difficulty model (`skill*`, between the `@skill-start` and `@skill-end` markers; §4.9). |
 | `playbox/src/games/paint-sort.html` | The whole of Paint Sort: CSS, engine, painting, vial drawing, sounds, game logic, lobby. **The main reference for Part II.** |
-| `playbox/src/games/hex-tile-sort.html`, `playbox/src/games/car-loop.html` | The boards for the other two games (artwork, colours, text, status chip) and how the web embeds their pages. |
+| `playbox/src/games/cake-sort.html` | The whole of Cake Sort: CSS, engine (between the engine markers), the cakes and their drawing, sounds, the placement queue and every animation, lobby and sheets. **The main reference for Part V.** |
+| `playbox/src/games/hex-tile-sort.html`, `playbox/src/games/car-loop.html` | The boards for Hex Tile Sort and Car Loop (artwork, colours, text, status chip) and how the web embeds their pages. |
 | `hexa-stack/index.html` | The whole of Hex Tile Sort ("Hexa Stack"). **The main reference for Part III.** |
 | `roundabout/src/app.html` | The whole of Car Loop ("Roundabout Rush"): track geometry, level generator and bots, simulation, rendering, boosters, economy, ads, shop, garage. **The main reference for Part IV.** |
 | `roundabout/DESIGN.md` | Why Car Loop works the way it does, with measured balance. Background reading; where it disagrees with this plan, this plan wins. |
-| `playbox/tools/probe.mjs` | Runs the Paint Sort engine in Node and prints the difficulty table. Use it to produce extra golden fixtures. |
+| `playbox/tools/probe.mjs`, `playbox/tools/cake-probe.mjs` | Run the Paint Sort and Cake Sort engines in Node and print each game's difficulty table on the typical curve. Use them to produce extra golden fixtures. |
+| `playbox/tools/adaptive-sim.mjs` | Runs the skill model with idealised players and with Paint Sort's and Cake Sort's real engines and bots (§4.9). |
 | `playbox/index.html`, `roundabout/index.html` | Built outputs. Open them in a browser to see and hear the target; don't read them for code (they duplicate the sources). |
 
 ### 0.2 Which one wins
@@ -55,7 +63,7 @@ port it exactly; where it gives numbers, use them as written.
    animation detail, a colour in an edge case, a string). Port what the HTML
    does, converted to the plan's conventions.
 3. **For engine output, the HTML is ground truth.** The golden fixtures
-   (Appendices B, C and D) were produced by it. If the C# port and the plan's
+   (Appendices B to F) were produced by it. If the C# port and the plan's
    listing ever disagree with the HTML's output, match the HTML and report the
    difference.
 
@@ -73,12 +81,13 @@ Find code by name; line numbers will drift.
 | §4.2 Settings | `openSettings` |
 | §5 Home screen and boards | `renderHome`, `boardFor`, the `.board*` rules in its `<style>`; board art: `drawCard` in `paint-sort.html`, `draw` in `hex-tile-sort.html` and in `car-loop.html` |
 | §6.1 Theme tokens | CSS custom properties at the top of the file |
+| §4.9 Adaptive difficulty | `SKILL_TARGET`, `SKILL_MERCY`, `skillPhi`, `skillPhiInv`, `skillNew`, `skillChance`, `skillTarget`, `skillHeat`, `skillObserve`, `skillObserveQuality` |
 
 **Paint Sort** (`playbox/src/games/paint-sort.html`)
 
 | Plan section | HTML source |
 | --- | --- |
-| §10 Engine | Between the `// @engine-start` and `// @engine-end` markers: `rng32`, `seedFor`, `shuffle`, `RAMP`, `PICK`, `K_CAP`, `spec`, `isFull`, `isSolved`, `runLen`, `listMoves`, `applyMove`, `heur`, `keyOf`, `solve`, `playout`, `rateMove`, `playoutSkilled`, `deal`, `generate`, `probe` |
+| §10 Engine | Between the `// @engine-start` and `// @engine-end` markers: `rng32`, `seedFor`, `shuffle`, `RAMP`, `BLOCK_STEP`, `BASE_BLOCKS`, `baseHeat`, `heatRange`, `spec`, `isFull`, `isSolved`, `runLen`, `listMoves`, `applyMove`, `heur`, `keyOf`, `solve`, `playout`, `rateMove`, `playoutSkilled`, `deal`, `generate`, `probe` |
 | §10.9 Painting composition | `makeShape`, `buildArt` |
 | §11 Level state and rules | inside `mount`: `freshLevel`, `hydrate`, `persist`, `canPour`, `revealTops`, `bandsOf`, `refreshDone`, `pour`, `finishPour`, `celebrate`, `onSolved`, `winSequence` |
 | §11.4 Input | `tapVial`, `hitVial`, `onKey`, the `pointerdown` listener |
@@ -93,6 +102,7 @@ Find code by name; line numbers will drift.
 | §19 UI | `TEMPLATE` (markup), the `<style>` block (sizes, colours, animations), `renderLobby`, `renderRoad`, `showWin`, `intro`, `menu`, `howTo`, `updateHud`; icons: the `ICONS` object |
 | §20 Pigments | `PIGMENTS`, `mix`, `glyph` |
 | §21.1 Save section | `persist`, `hydrate` |
+| §4.9, §11.11 Difficulty | `baseHeat`, `heatRange` (engine); `heatFor`, `observe`, `failsAt` inside `mount` |
 
 **Hex Tile Sort** (`hexa-stack/index.html`)
 
@@ -106,6 +116,7 @@ Find code by name; line numbers will drift.
 | §28 Input | `cellUnder`, `slotUnder`, `previewGlow`, the pointer listeners, `endPointer`, the `keydown` listener |
 | §29 UI | the markup in `<body>` and the `<style>` block; `syncHUD`, `tickScore`, `hideHint` |
 | §30 Sound | the `Sound` object |
+| §24.5 Stages, §4.9 | the adaptive-difficulty block (`SKILL`, `stageTier`, `stageHeat`), `observeStage`, `startStage`, `checkTier`, `loadSkill`, `saveSkill` |
 
 **Car Loop** (`roundabout/src/app.html`)
 
@@ -123,6 +134,20 @@ Find code by name; line numbers will drift.
 | §43 UI | the `<style>` block, the `<svg>` symbol sheet (icons), the markup, every `open…` panel function, `renderLevels`, `renderBoosters`, `renderCarsLeft`, `toast`, `Modal` |
 | §44 Sound and music | the `AU` object (`fx`, music `PROG`/`ARP`/`sched`), `buzz` calls |
 | §45 Save section | `SAVE_KEY`, `defaults`, `save` |
+| §35.3, §4.9 Adaptive levels | the adaptive-difficulty block above `// ---------- save`: `SKILL`, `HARD_WORTH`, `heatRange`, `levelTarget`, `heatFor`, `observe` |
+
+**Cake Sort** (`playbox/src/games/cake-sort.html`)
+
+| Plan section | HTML source |
+| --- | --- |
+| §48 Engine | Between the engine markers: `CAP` … `UNLOCK_AT`, `rngNext`, `seedFor`, `shuffle`, `RAMP`, `baseHeat`, `heatRange`, `spec`, `neighbours`, `countOf`, `kindsOf`, `isCake`, `takeSlices`, `addSlices`, `bestGather`, `resolve`, `makePlate`, `deal`, `newLevel`, `place`, `isWon`, `isStuck`, the bots and `probe` |
+| §51, §55 Cakes | `CAKES`, `drawSlice`, `drawPattern`, `drawPipe`, `drawTopping`, `cube`, `sideShade`, `drawPlate`, `drawSlices`, `drawCloche`, `drawWholeCake`, `cakeIcon` |
+| §49 Game flow | inside `mount`: `heatFor`, `observe`, `startLevel`, `restart`, `putDown`, `commit`, `enqueue`, `pump`, `stopPlayback`, `settle`, `undo`, `toggleHammer`, `smash`, `refresh`, `win`, `coach` |
+| §50 Layout and input | `layout`, `buildBg`, `doily`, `emptyTarget`, `free`, `hitTray`, `hitCell`, the pointer listeners, `onKey` |
+| §52 Animations | `vSlice`, `angleOf`, `reslot`, `settled`, `plateScale`, `playStep`, `flyerPose`, `serve`, `drawServed`, `arrive`, `step`, `crumbs`, `sparkle`, `shards`, `drawHand`, `unlock` |
+| §53 Sound | `makeSfx` |
+| §54 UI | `TEMPLATE`, the `<style>` block, `renderLobby`, `menuChips`, `renderGoal`, `showMsg`, `showStuck`, `menu`, `howTo`, `intro`, `win` |
+| §5 Board art | `drawCard` |
 
 ### 0.4 Converting while you read
 
@@ -135,6 +160,8 @@ Find code by name; line numbers will drift.
     the presentation layer converts, with `unity = (x, −y)` and z-rotation
     `−a` (§33).
   - *Hex Tile Sort:* the board is 3D; web screen y maps to world −z (§23).
+  - *Cake Sort:* positions are computed in screen dp as on the web and then
+    placed on a 3D counter seen by a pitched orthographic camera (§47).
 - **Canvas pixels = Unity world units (dp)** for Paint Sort's board and for
   every screen-space effect. Velocities in the HTML are px/ms or px/s as noted:
   multiply px/ms by 1000 for units per second, and px/ms² by 1,000,000.
@@ -144,8 +171,8 @@ Find code by name; line numbers will drift.
 - **Don't port the web-only parts:** Google Fonts links, `localStorage`,
   `history.replaceState` and the `#hash` deep links, `window.claude.hot`,
   `window.storage`, `ResizeObserver`, DOM building, the debug hooks
-  (`window.__ps`, `window.__rr`; the Unity equivalents are the tests and the
-  probe CLIs), `framedGame`/`exitButton` and the build's `@embed-base64` step
+  (`window.__ps`, `window.__cs`, `window.__rr`, `window.__hx`; the Unity
+  equivalents are the tests and the probe CLIs), `framedGame`/`exitButton` and the build's `@embed-base64` step
   (the web runs Hex Tile Sort and Car Loop by embedding their finished pages; in
   Unity they are ordinary scenes), Car Loop's splash screen (Playbox has one
   boot screen), and Car Loop's mock ad creatives and mock store sheet outside
@@ -153,8 +180,8 @@ Find code by name; line numbers will drift.
 
 ### 0.5 Running the web engines in Node (golden fixtures)
 
-All three engines run in Node with `node:vm`, which is how the appendices were
-produced. Use the same approach to dump any value you want to test against.
+All four engines and the skill model run in Node with `node:vm`, which is how
+the appendices were produced. Use the same approach to dump any value you want to test against.
 
 *Paint Sort* (`probe.mjs` does this): read `paint-sort.html`, take the text
 between the engine markers, evaluate it.
@@ -166,7 +193,7 @@ const src = readFileSync('playbox/src/games/paint-sort.html', 'utf8');
 const eng = src.match(/\/\/ @engine-start[^\n]*\n([\s\S]*?)\/\/ @engine-end/)[1];
 const ctx = {}; vm.createContext(ctx);
 vm.runInContext(eng + '\nthis.e = { generate, solve, spec };', ctx);
-const g = ctx.e.generate(+process.argv[2]);
+const g = ctx.e.generate(+process.argv[2]);   // generate(n, h) for a given heat
 console.log(JSON.stringify({ vials: g.vials, palette: g.palette, hidden: g.hidden, len: g.len, fail: g.fail }));
 ```
 
@@ -175,8 +202,8 @@ CLI (§21.3) must print the same numbers.
 
 *Car Loop:* everything from `// ---------- utils ----------` up to
 `// ---------- car art` is DOM-free (the save loader is wrapped in `try`, the
-audio only starts on a call). This script also **bakes the level set** the
-Unity build ships (§35.5):
+audio only starts on a call). This script dumps the **typical-curve level set**
+(no model, `e` left out) that the parity tests compare against (§35.5):
 
 ```js
 // node carloop-levels.mjs 1 300 > Assets/_Project/Config/CarLoop/CarLoopLevels.json   (about 30 s, 87 KB)
@@ -195,6 +222,14 @@ for (let n = from; n <= to; n++) {
 console.log(JSON.stringify({ version: 1, levels: out }, null, 1));
 ```
 
+*Cake Sort* (`cake-probe.mjs` and `adaptive-sim.mjs` do this): the slice between
+the engine markers of `cake-sort.html` is pure; evaluate it, add the skill block
+from `shell.html` if needed, and call `spec`, `newLevel`, `place`, `resolve`,
+`makePlate` or `playout`. Appendix E was made this way.
+
+*Skill model:* the text between `// @skill-start` and `// @skill-end` in
+`shell.html` is pure; Appendix F was made by evaluating it.
+
 *Hex Tile Sort:* the config, utils, hex maths, state and board sections (from
 `/* ----- config` up to `/* ----- layout`) plus `scoreMerge` and `bestMerge`
 run in a context with `window = { matchMedia: () => ({ matches: false }) }`.
@@ -211,7 +246,7 @@ Build a board by filling `G.cells[i].stack`, set `G.lastPlaced`, and call
 1. Ground rules for the agent
 2. Project setup
 3. Code hierarchy, scenes and navigation
-4. Core services (save, settings, audio, haptics, ads, purchases, analytics, shared UI)
+4. Core services (save, settings, audio, haptics, ads, purchases, analytics, shared UI, adaptive difficulty)
 5. Home screen: game boards
 6. Theme tokens and app strings
 7. Editor tooling (generators, builders, RasterCanvas, icons)
@@ -248,7 +283,7 @@ Build a board by filling `G.cells[i].stack`, set `G.lastPlaced`, and call
 32. Rules
 33. Units, coordinates and scene
 34. Track geometry
-35. Levels: hand-made, generated, validated, baked
+35. Levels: hand-made, generated, validated, adaptive
 36. Simulation
 37. Game flow
 38. Boosters
@@ -260,13 +295,28 @@ Build a board by filling `G.cells[i].stack`, set `G.lastPlaced`, and call
 44. Sound, music and haptics
 45. Save section, board status and performance
 
-**Part V: Shipping**
-46. Tests
-47. Milestones and acceptance checks
-48. Appendix A: generated asset manifest
-49. Appendix B: Paint Sort golden fixtures
-50. Appendix C: Car Loop golden fixtures
-51. Appendix D: Hex Tile Sort fixtures
+**Part V: Cake Sort**
+46. Rules
+47. Units, camera and scene
+48. Engine (pure C#, full source)
+49. Level state, the placement queue and game flow
+50. Board layout and input
+51. Cakes: meshes, materials and toppings
+52. Animations and effects
+53. Sound and haptics
+54. UI layouts
+55. Cakes and strings
+56. Save section, probe and analytics
+
+**Part VI: Shipping**
+57. Tests
+58. Milestones and acceptance checks
+59. Appendix A: generated asset manifest
+60. Appendix B: Paint Sort golden fixtures
+61. Appendix C: Car Loop golden fixtures
+62. Appendix D: Hex Tile Sort fixtures
+63. Appendix E: Cake Sort fixtures
+64. Appendix F: skill model fixtures
 
 ---
 
@@ -286,22 +336,23 @@ Build a board by filling `G.cells[i].stack`, set `G.lastPlaced`, and call
      configured, the mock services run (§4.5–4.7).
    - **Optional art** (UI skin, illustrations, car art, music): every slot has a
      generated stand-in, and the user's file replaces it when assigned.
-2. **Each engine must match its web prototype.** Paint Sort level *n* must
-   produce the same board, palette and hidden layers as on the web (§10.10,
-   Appendix B). Car Loop's level generator and bots must reproduce the web's
-   level definitions (Appendix C); the shipped levels 1–300 are baked from the
-   web engine itself (§35.5). Hex Tile Sort's merge choice and scoring must
-   reproduce Appendix D.
-3. **Keep engines pure.** `Playbox.PaintSort.Engine`, `Playbox.HexTileSort.Engine`
-   and `Playbox.CarLoop.Engine` have no `UnityEngine` references, so they run in
-   EditMode tests, on worker threads and from command-line probes.
-4. **Build in milestone order (§47).** Don't start a milestone until the
+2. **Each engine must match its web prototype.** Paint Sort level *n* at heat
+   *h* must produce the same board, palette and hidden layers as on the web
+   (§10.10, Appendix B). Car Loop's level generator and bots must reproduce the
+   web's level definitions (Appendix C). Hex Tile Sort's merge choice and scoring
+   must reproduce Appendix D. Cake Sort's sort, dealing and levels must reproduce
+   Appendix E, and the skill model Appendix F.
+3. **Keep engines pure.** `Playbox.PaintSort.Engine`, `Playbox.HexTileSort.Engine`,
+   `Playbox.CarLoop.Engine`, `Playbox.CakeSort.Engine` and the skill model in
+   `Playbox.Common` have no `UnityEngine` references, so they run in EditMode
+   tests, on worker threads and from command-line probes.
+4. **Build in milestone order (§58).** Don't start a milestone until the
    previous one's acceptance checks pass.
 5. Times are **milliseconds** unless marked `s`. Distances marked `w` are
    multiples of the current vial width (Paint Sort), `s` multiples of the hex
    size on screen (Hex Tile Sort), and plain numbers in Car Loop are track
    units.
-6. **One project, one app.** All three games ship in one binary, share one save
+6. **One project, one app.** All four games ship in one binary, share one save
    file, one settings model, one audio mixer and one set of store products.
    A game never reads or writes another game's save section.
 
@@ -320,7 +371,7 @@ Build a board by filling `G.cells[i].stack`, set `G.lastPlaced`, and call
 | Target frame rate | `Application.targetFrameRate = 60` |
 | Platforms | Android (min API 24, IL2CPP, ARM64), iOS 13+ |
 | Packages | `com.unity.render-pipelines.universal`, `com.unity.inputsystem`, `com.unity.ugui` (includes TextMeshPro), `com.unity.nuget.newtonsoft-json`, `com.unity.test-framework`, `com.unity.purchasing` (Unity IAP, §4.6) |
-| Layers | `Board` (8), `Painting` (9), `CardArt` (10), `HexBoard` (11), `CarLoop` (12), `Fx2D` (13), `HexHeld` (14) |
+| Layers | `Board` (8), `Painting` (9), `CardArt` (10), `HexBoard` (11), `CarLoop` (12), `Fx2D` (13), `HexHeld` (14), `CakeSort` (15), `CakeFx` (16) |
 | Sorting layers | `Background`, `Board`, `Fx` |
 
 Canvas Scaler on every UI canvas: *Scale With Screen Size*, reference
@@ -336,6 +387,7 @@ its own assemblies, sharing the Core services (§4):
 | Paint Sort | orthographic, 1 world unit = 1 dp | y-up 2D board of meshes (§9) |
 | Hex Tile Sort | perspective, 30° FOV, pitched 60° down | 3D: hex prisms on a ground plane (§23) |
 | Car Loop | orthographic, fitted to the track | track units, web coordinates flipped at the view (§33) |
+| Cake Sort | orthographic, pitched 42.84° down (circles squash to 0.68), plus an overlay camera for cakes flying over the HUD | 3D: plates and cakes on a counter plane, laid out in screen dp (§47) |
 
 Sprites, sorting layers, sorting groups and uGUI all work with the Universal
 Renderer. Screen-space effects that the web draws in canvas pixels (Hex Tile
@@ -349,8 +401,8 @@ sRGB hex value, as on the web. In Linear space:
   convert sRGB to linear automatically. Use them wherever possible.
 - `SetVector`, `SetVectorArray`, vertex colours and colours computed by hand are
   **not** converted: pass `color.linear`, except to the shaders listed next.
-- `Liquid.shader`, `Gradient.shader`, `HexTile.shader`, `HexSocket.shader` and
-  `RadialFill.shader` take **sRGB** values and do their blending maths in sRGB
+- `Liquid.shader`, `Gradient.shader`, `HexTile.shader`, `HexSocket.shader`,
+  `RadialFill.shader`, `CakeSlice.shader` and `CakeGlass.shader` take **sRGB** values and do their blending maths in sRGB
   (gloss, seams, meniscus, hatch, gradient stops, lighten/darken), then convert
   with `SRGBToLinear` on output, so colours match the browser exactly.
 - Colour textures (cork, frame, board art, car sprites, icons with colour)
@@ -374,13 +426,14 @@ Assets/_Project/
 ├─ Scripts/
 │  ├─ Common/                                 asmdef Playbox.Common (noEngineReferences: true)
 │  │  ├─ Mulberry32.cs                        the shared RNG (§10.2), used by every engine and by the editor synth
-│  │  └─ JsMath.cs                            JsRound (JavaScript Math.round), JsMod, Clamp, Lerp, Imul helpers
+│  │  ├─ JsMath.cs                            JsRound (JavaScript Math.round), JsMod, Clamp, Lerp, Imul helpers
+│  │  └─ SkillModel.cs                        the Bayesian skill model shared by every game (§4.9)
 │  ├─ Core/                                   asmdef Playbox.Core (refs Common)
 │  │  ├─ Boot/Bootstrap.cs                    creates Services, loads save, initialises ads/IAP/analytics, opens Hub
 │  │  ├─ Boot/Services.cs                     DontDestroyOnLoad holder; static access to the services below
 │  │  ├─ Boot/Navigator.cs                    OpenGame(id), BackToHub(); scene loading + transition fade (§3.2)
 │  │  ├─ Games/GameDefinition.cs              ScriptableObject: id, title, tagline, order, soon, sceneName, board colours, board art, status provider (§5)
-│  │  ├─ Games/GameRegistry.cs                ScriptableObject: the three GameDefinitions
+│  │  ├─ Games/GameRegistry.cs                ScriptableObject: the four GameDefinitions
 │  │  ├─ Games/IGameStatus.cs                 Status(save) for the board chip, Cta(save) for the big board's button
 │  │  ├─ Games/GameScene.cs                   base MonoBehaviour for each game's root: OnEnter, OnPause(bool), OnExit, RequestExit()
 │  │  ├─ Save/SaveService.cs                  load/save playbox.json, debounced, atomic, migration (§4.1)
@@ -434,10 +487,11 @@ Assets/_Project/
 │  │  │  ├─ HexConfig.cs                      constants and the colour table (§24.1)
 │  │  │  ├─ HexBoard.cs                       cells, axial map, neighbours, top-run helpers (§24.2)
 │  │  │  ├─ MergeChooser.cs                   ScoreMerge, BestMerge (§24.3)
-│  │  │  ├─ StackFactory.cs                   StackHeight, PickColour, GenStack, SeedBoard (§24.4)
-│  │  │  └─ Tiers.cs                          tier and colour count from clears (§24.5)
+│  │  │  ├─ StackFactory.cs                   StackHeight, PickColour, GenStack (from the stage's heat), SeedBoard (§24.4)
+│  │  │  └─ Tiers.cs                          colour tier, stage, stage tone and progress from clears (§24.5)
 │  │  ├─ Runtime/                             asmdef Playbox.HexTileSort (refs Core, Common, Engine)
 │  │  │  ├─ HexController.cs                  run lifecycle, HUD wiring, game over, best score (§25)
+│  │  │  ├─ HexDirector.cs                    stage heat and skill readings (§4.9, §24.6)
 │  │  │  ├─ HexResolver.cs                    the resolver coroutine and Pump (§25)
 │  │  │  ├─ HexTray.cs                        three slots, refill slide (§27.8)
 │  │  │  ├─ HexLayout.cs                      dp layout, camera fit, tray placement (§23)
@@ -467,7 +521,8 @@ Assets/_Project/
 │  │  │  └─ Sim.cs                            WorldSpeed, SafeAt, LightState, Release, StepWorld, CheckCollisions (§36)
 │  │  ├─ Runtime/                             asmdef Playbox.CarLoop (refs Core, Common, Engine)
 │  │  │  ├─ CarLoopController.cs              screens, game state machine, update loop (§37)
-│  │  │  ├─ LevelSource.cs                    baked JSON for 1–300, generator past it, background build (§35.5)
+│  │  │  ├─ LevelSource.cs                    LevelDef(n, e) on a worker thread, cached by (n, e) (§35.5)
+│  │  │  ├─ CarLoopDirector.cs                effective level and skill readings (§4.9, §35.7)
 │  │  │  ├─ Boosters.cs                       (§38)
 │  │  │  ├─ Economy.cs, Garage.cs, Daily.cs   (§39)
 │  │  │  ├─ CarLoopAds.cs                     placements and the interstitial gate on top of IAdService (§40)
@@ -486,12 +541,34 @@ Assets/_Project/
 │  │     │  BoosterBuyPanel.cs, NoCoinsPanel.cs, CarRewardPanel.cs, StarterPanel.cs, RatePanel.cs, DailyPanel.cs
 │  │     ├─ Widgets/CoinPill.cs, CoinFlyer.cs, RaisedButton.cs, StarRow.cs, MultiplierBar.cs, ReviveRing.cs, Turntable.cs
 │  │     └─ BannerSlot.cs                     reserves the 58 dp banner area (§40.1)
+│  ├─ CakeSort/
+│  │  ├─ Engine/                              asmdef Playbox.CakeSort.Engine (noEngineReferences; refs Common)
+│  │  │  ├─ CakeRng.cs, Cfg.cs                RNG with int state, constants, unlock levels (§48.1)
+│  │  │  ├─ Difficulty.cs                     BaseHeat, HeatRange, SpecFor (§48.3)
+│  │  │  ├─ Sort.cs                           neighbours, gathering, Resolve (§48.4)
+│  │  │  ├─ Level.cs                          MakePlate, Deal, NewLevel, Place, IsWon, IsStuck (§48.5)
+│  │  │  └─ Bots.cs, Probe.cs                 simulated players and the probe (§48.6)
+│  │  ├─ Runtime/                             asmdef Playbox.CakeSort (refs Core, Common, Engine)
+│  │  │  ├─ CakeSortController.cs             screens, level flow, boosters, win (§49)
+│  │  │  ├─ CakeDirector.cs                   heat and skill readings (§4.9, §49.7)
+│  │  │  ├─ StepQueue.cs                      the placement queue: Enqueue, Pump, Settle, StopPlayback (§49.4)
+│  │  │  ├─ CakeLayout.cs, CakeInput.cs       §50
+│  │  │  ├─ SliceMeshBuilder.cs, PlateMeshBuilder.cs, ClocheBuilder.cs   §51
+│  │  │  ├─ PlateView.cs, SliceView.cs, FlyerView.cs, ServedCake.cs      visual slices, turntable, flights, serving (§52)
+│  │  │  ├─ CakeFx.cs                         crumbs, stars, shards, floats on the CakeFx layer (§52.6)
+│  │  │  ├─ CakeIconRig.cs                    cake icons for chips, lobby and sheets (§51.7)
+│  │  │  ├─ CakeSortSfx.cs, CakeSortHaptics.cs   §53
+│  │  │  └─ CakeSortStatus.cs                 IGameStatus for the board (§56.1)
+│  │  └─ UI/                                  asmdef Playbox.CakeSort.UI
+│  │     ├─ CakeLobbyScreen.cs, CakePlayScreen.cs, OrderCard.cs, MenuChip.cs, MessageBar.cs   §54
+│  │     └─ CakeSheets.cs                     new cake, pause, how to play, win, restart, booster buy (§54.4)
 │  ├─ Editor/                                 asmdef Playbox.Editor (Editor only; refs everything above)
 │  │  ├─ Audio/Synth.cs                       offline Web-Audio-style synth (§4.3)
 │  │  ├─ Audio/Biquad.cs, Audio/Compressor.cs, Audio/WavWriter.cs
 │  │  ├─ Audio/PaintSortRecipes.cs            (§18.1)
 │  │  ├─ Audio/HexRecipes.cs                  (§30.1)
 │  │  ├─ Audio/CarLoopRecipes.cs              sounds and the music loop (§44.1, §44.2)
+│  │  ├─ Audio/CakeSortRecipes.cs             (§53.1)
 │  │  ├─ Audio/GenerateAudio.cs               menu: Playbox/Generate/Audio
 │  │  ├─ Audio/AudioImportRules.cs            AssetPostprocessor for generated WAVs
 │  │  ├─ Textures/Raster.cs                   SDF rasteriser: circles, rounded rects, polygons, capsules (§7.1)
@@ -501,14 +578,17 @@ Assets/_Project/
 │  │  ├─ Textures/HexTextureRecipes.cs        backdrop, socket, blob, board art (§26, Appendix A)
 │  │  ├─ Textures/CarSpriteBaker.cs           port of drawCarShape and the car textures (§42)
 │  │  ├─ Textures/CarLoopTextureRecipes.cs    trees, glows, particles, sign, turntable, board art (§41, Appendix A)
+│  │  ├─ Textures/CakeTextureRecipes.cs       toppings, patterns, cloth, doily, tray, cupcake, hand, board art (§51, Appendix A)
 │  │  ├─ Textures/IconGenerator.cs            rasterises every icon in §7.3 into IconSet.asset
 │  │  ├─ Textures/GenerateTextures.cs         menu: Playbox/Generate/Textures
 │  │  ├─ Build/PrefabBuilder.cs               menu: Playbox/Build/Prefabs
 │  │  ├─ Build/SceneBuilder.cs                menu: Playbox/Build/Scenes
-│  │  ├─ Levels/CarLoopBake.cs                menu: Playbox/Car Loop/Bake Levels; imports and checks the baked JSON (§35.5)
+│  │  ├─ Levels/CarLoopBake.cs                menu: Playbox/Car Loop/Check Levels; compares C# LevelDef(n) with the typical-curve JSON (§35.5)
 │  │  ├─ Probe/ProbeWindow.cs                 menu: Playbox/Paint Sort/Balance Probe
 │  │  ├─ Probe/ProbeCli.cs                    -executeMethod entry point (Paint Sort)
-│  │  └─ Probe/CarLoopProbeCli.cs             -executeMethod entry point (Car Loop level table)
+│  │  ├─ Probe/CarLoopProbeCli.cs             -executeMethod entry point (Car Loop level table)
+│  │  ├─ Probe/CakeProbeCli.cs                -executeMethod entry point (Cake Sort curve, §56.2)
+│  │  └─ Probe/AdaptiveSimCli.cs              -executeMethod entry point (adaptive simulation, §4.9)
 │  └─ Plugins/iOS/PlayboxNative.mm            dark-mode query + impact haptics (§4.4)
 ├─ Shaders/
 │  ├─ UnlitColor.shader                       flat colour, alpha blend, _Tint via MPB, Cull Off
@@ -524,16 +604,20 @@ Assets/_Project/
 │  ├─ HexSocket.shader                        §26.3
 │  ├─ RadialFill.shader                       radial gradient fill of a mesh (island glow, scorch, lamp pools)
 │  ├─ DashedStroke.shader                     ribbon with animated dashes (danger zone, tow reticle)
-│  └─ ScreenBackdrop.shader                   Car Loop's dot grid and vignette; Slow-Mo vignette (§41.1)
+│  ├─ ScreenBackdrop.shader                   Car Loop's dot grid and vignette; Slow-Mo vignette (§41.1)
+│  ├─ CakeSlice.shader                        §51.2
+│  └─ CakeGlass.shader                        the cloche dome (§51.5)
 ├─ Materials/                                 one material per shader; all per-object values go through MaterialPropertyBlock
 ├─ Textures/Generated/                        written by GenerateTextures (Appendix A)
 ├─ Audio/Generated/                           written by GenerateAudio (§18.2, §30.2, §44.3)
 ├─ Fonts/                                     the user's TTFs and their TMP font assets (PLAYBOX_ASSETS.md)
 ├─ Prefabs/                                   written by PrefabBuilder (§9.2, §26.5, §41.5)
-├─ Scenes/Boot.unity, Hub.unity, PaintSort.unity, HexTileSort.unity, CarLoop.unity   written by SceneBuilder (§3.1)
+├─ Scenes/Boot.unity, Hub.unity, PaintSort.unity, HexTileSort.unity, CarLoop.unity, CakeSort.unity   written by SceneBuilder (§3.1)
 ├─ Config/
 │  ├─ GameRegistry.asset
-│  ├─ Games/PaintSort.asset, Games/HexTileSort.asset, Games/CarLoop.asset   GameDefinitions (§5)
+│  ├─ Games/PaintSort.asset, Games/HexTileSort.asset, Games/CarLoop.asset, Games/CakeSort.asset   GameDefinitions (§5)
+│  ├─ Cakes.asset                             values from §55.1
+│  ├─ Difficulty/PaintSort.asset, HexTileSort.asset, CarLoop.asset, CakeSort.asset   SkillConfig, targets and ranges (§4.9)
 │  ├─ ThemePalette.asset                      values from §6.1
 │  ├─ Pigments.asset                          values from §20.1
 │  ├─ SfxLibrary.asset                        filled by GenerateAudio
@@ -541,7 +625,7 @@ Assets/_Project/
 │  ├─ AdConfig.asset                          ad unit ids per platform, test mode flag (§4.5)
 │  ├─ IconSet.asset, FontSet.asset, UiSkin.asset
 │  ├─ HexConfig.asset                         tunables mirrored from §24.1 (read-only at runtime unless Remote Config is added)
-│  └─ CarLoop/CarLoopLevels.json, CarLoop/EconomyConfig.asset, CarLoop/AdsConfig.asset, CarLoop/Boosters.asset, CarLoop/Cars.asset
+│  └─ CarLoop/EconomyConfig.asset, CarLoop/AdsConfig.asset, CarLoop/Boosters.asset, CarLoop/Cars.asset
 └─ Tests/
    ├─ EditMode/                               asmdef Playbox.Tests.EditMode
    └─ PlayMode/                               asmdef Playbox.Tests.PlayMode
@@ -556,6 +640,7 @@ Assets/_Project/
 | `PaintSort` | `BoardRig`, `PaintingRig`, UI canvas with `LobbyScreen` and `PlayScreen` panels, `SheetHost`, `Toast`, and `PaintSortController` wiring it all (§9). |
 | `HexTileSort` | `HexRig` (perspective camera, backdrop, board root, tray root), `Fx2D` overlay camera, UI canvas with `HexHud` and `GameOverVeil`, `HexController` (§23). |
 | `CarLoop` | `CarLoopRig` (orthographic camera, static layer root, car pool, effects), `Fx2D` overlay camera, UI canvas with the four screens, HUD, `ModalHost`, `BannerSlot`, toasts, and `CarLoopController` (§33). |
+| `CakeSort` | `CakeRig` (pitched orthographic camera, counter, tray, pools), `CakeFxRig` (overlay camera), `CakeIconRig`, UI canvas with `CakeLobbyScreen` and `CakePlayScreen`, `SheetHost`, `Toast`, and `CakeSortController` (§47). |
 
 ### 3.2 Navigation and the game lifecycle
 
@@ -566,7 +651,7 @@ Assets/_Project/
 - Each game scene has one root deriving from `GameScene`. `RequestExit()`
   flushes the save, stops the game's music and banner, and calls
   `Navigator.BackToHub()`.
-- **Back buttons.** Paint Sort: the lobby's Back. Hex Tile Sort: a back button
+- **Back buttons.** Paint Sort and Cake Sort: the lobby's Back. Hex Tile Sort: a back button
   first in its header (38×38, radius 12, the header's icon-button style). Car
   Loop: a back button first in its home screen's top-left row (44×44, radius 14,
   the `rbtn` style); inside a level, Pause → Home returns to Car Loop's home, not
@@ -576,7 +661,7 @@ Assets/_Project/
 - **Pause.** `OnApplicationPause(true)` calls the active `GameScene.OnPause(true)`
   (Car Loop opens its pause panel in a level; Paint Sort and Hex Tile Sort freeze
   timers) and flushes the save.
-- A "Coming soon" board (`Soon = true`) never loads anything. All three games are
+- A "Coming soon" board (`Soon = true`) never loads anything. All four games are
   playable in this plan, so `Soon` stays in the code for future games only.
 
 ---
@@ -600,13 +685,14 @@ corrupt or missing file loads defaults.
   "games": {
     "paint-sort":    { "...": "§21.1" },
     "hex-tile-sort": { "...": "§31" },
-    "car-loop":      { "...": "§45.1" }
+    "car-loop":      { "...": "§45.1" },
+    "cake-sort":     { "...": "§56.1" }
   }
 }
 ```
 
 - Each game owns `games[id]` as a `JObject` and reads it through its own typed
-  DTO (`PaintSortSave`, `HexSave`, `CarLoopSave`). Unknown fields are kept when
+  DTO (`PaintSortSave`, `HexSave`, `CarLoopSave`, `CakeSortSave`). Unknown fields are kept when
   the game writes it back, so an older build never drops a newer field.
 - `settings` and `purchases` belong to Core. A game reads them through
   `SettingsService` and `Services.Purchases.Has("noads")`, never from its own
@@ -697,6 +783,7 @@ differently):
 | Paint Sort (`sfx_*`) | mix × 0.7 → compressor | `masterGain .7, compress: true` |
 | Hex Tile Sort (`hex_*`) | straight to the output | `masterGain 1, compress: false` |
 | Car Loop (`cl_*`, sounds and music) | sfx bus .6 and music bus .11 → master .9 | sounds `masterGain .54`, music `masterGain .099`, `compress: false` |
+| Cake Sort (`cs_*`) | the shell's synth, as Paint Sort: mix × 0.7 → compressor | `masterGain .7, compress: true` |
 
 Compressor: threshold −16 dB, knee 14 dB, ratio 5, attack 2 ms, release 160 ms,
 peak detector, soft knee. Every clip is trimmed to the last voice's end + 50 ms
@@ -956,7 +1043,7 @@ fields on each catalog entry, so they can differ per store.
 ### 4.7 Analytics (`IAnalytics`)
 
 `Track(string name, params (string key, object value)[] p)`. Every event gets
-`game` (`hub`, `paint-sort`, `hex-tile-sort`, `car-loop`) added by the service.
+`game` (`hub`, `paint-sort`, `hex-tile-sort`, `car-loop`, `cake-sort`) added by the service.
 `LogAnalytics` keeps the last 300 events in memory (shown in a development-build
 overlay); `FirebaseAnalytics` (with `PLAYBOX_FIREBASE`) forwards to Firebase.
 
@@ -965,12 +1052,12 @@ overlay); `FirebaseAnalytics` (with `PLAYBOX_FIREBASE`) forwards to Firebase.
 | App | `app_open`, `board_tap` (target game), `settings_change` (key, value), `erase_progress` |
 | Ads | `ad_impression` (type), `ad_start` (type, placement), `ad_reward` (placement), `ad_skipped` (placement), `ad_failed` (placement) |
 | Store | `iap_view` (product), `iap_purchase` (product, price), `iap_restore` (count) |
-| Games | Paint Sort §21.4, Hex Tile Sort §31.2, Car Loop §40.4 |
+| Games | Paint Sort §21.4, Hex Tile Sort §31.2, Car Loop §40.4, Cake Sort §56.3; `skill_update` from every game (§4.9) |
 
 ### 4.8 Shared UI: sheets, toasts, theme binding, fonts, icons
 
-uGUI + TextMeshPro. Sizes are dp (§2). Colours in the Hub and Paint Sort are
-theme tokens (§6.1) bound through `ThemedGraphic`, so light/dark switches live.
+uGUI + TextMeshPro. Sizes are dp (§2). Colours in the Hub, Paint Sort and Cake
+Sort are theme tokens (§6.1, §54.1) bound through `ThemedGraphic`, so light/dark switches live.
 All Images take their sprite from `UiSkin`; any empty slot uses the generated
 primitives (`ui_round_24`, `ui_circle`, `ui_soft_shadow`).
 
@@ -986,8 +1073,8 @@ to the TMP default font until its asset is assigned.
 
 | Role | Font | Used by |
 | --- | --- | --- |
-| `AppDisplay` | Lilita One | Hub and Paint Sort display text (titles, buttons, numbers) |
-| `AppBody` | Figtree 500–800 | Hub and Paint Sort body text |
+| `AppDisplay` | Lilita One | Hub, Paint Sort and Cake Sort display text (titles, buttons, numbers) |
+| `AppBody` | Figtree 500–800 | Hub, Paint Sort and Cake Sort body text |
 | `HexDisplay` | Baloo 2 600–800 | Hex Tile Sort numbers, badges, titles, buttons, floats, banner |
 | `HexBody` | Inter 500–700 | Hex Tile Sort labels |
 | `CarDisplay` | Bungee | Car Loop titles, big numbers, level numbers, float texts |
@@ -1004,12 +1091,12 @@ tile detail texture (`HexTile._Detail`, §26.2); Car Loop car and traffic sprite
 textures (§41.4) and UI kit (`cl_*`). Music and sound replacements go in the
 game's music clip and `SfxLibrary.asset`.
 
-**Icons** (`IconSet.asset`): every icon in all three games is generated from the
+**Icons** (`IconSet.asset`): every icon in all four games is generated from the
 SVG in the HTML sources (§7.3) as a white 128×128 sprite tinted at runtime, plus
 full-colour coin, star and hand sprites. A `UiSkin` icon slot, when assigned,
 overrides the generated one.
 
-**Sheets** (`SheetHost`; Hub and Paint Sort): one sheet at a time; the scrim
+**Sheets** (`SheetHost`; Hub, Paint Sort and Cake Sort): one sheet at a time; the scrim
 fades over 260 ms to `--scrim`; the sheet slides up over 360 ms
 (cubic-bezier .2, .9, .25, 1). Radius 28 on top, padding 12/20 + bottom safe
 area, max height 92%, scrolls. Layout: grab handle (42×5) · eyebrow (11.5,
@@ -1017,9 +1104,178 @@ caps, .14em, accent or tone colour) · title (30 display) · sub (15 muted) · b
 · actions (vertical, gap 10; primary 19 display with a 5 dp darker drop; ghost
 16). Tapping the scrim closes it unless the sheet is non-dismissable.
 
-**Toast** (Hub and Paint Sort): pill at the top (76 dp + safe area), ink
+**Toast** (Hub, Paint Sort and Cake Sort): pill at the top (76 dp + safe area), ink
 background, bg-coloured text, 14 bold, visible 1.9 s, fades 200 ms. Hex Tile
 Sort has no toasts; Car Loop has its own toast style (§43.3).
+
+### 4.9 Adaptive difficulty (`SkillModel`, each game's director)
+
+Every game picks the difficulty of each level **when it starts**, from a
+Bayesian estimate of how good this player is, so a strong player is never left
+on easy levels and a struggling one is not left failing. The hard and super-hard
+spikes stay: the sawtooth is now a list of **target win rates**, so the 5th and
+10th level of every ten are hard and super hard *for this player*.
+
+**The model** (`Playbox.Common/SkillModel.cs`, pure, shared by all games; the web
+copy is `skill*` between the `@skill-start` and `@skill-end` markers in
+`shell.html`, and identical copies in `hexa-stack/index.html` and
+`roundabout/src/app.html`).
+
+- Skill `θ` lives on the game's own difficulty scale ("heat"). A player whose
+  skill equals a level's heat `h` wins it half the time:
+  `P(win | θ, h) = Φ((θ − h) / β)`.
+- The belief about θ is a Gaussian `N(μ, σ²)`, starting from a wide prior.
+- **After each attempt** (one reading per attempt): assumed-density filtering,
+  the Gaussian whose mean and variance match prior × probit likelihood exactly
+  (TrueSkill's update). People improve, so σ² first grows by `τ²`.
+- **How cleanly a win went** (`q`, 0..1, 0.5 = "just about") is a second, noisier
+  reading: `x = h + β·Φ⁻¹(q)` folded in by a Kalman step with noise `1.5β`. A
+  reading pinned at either end (`q ≥ .95` below μ, or `q ≤ .05` above μ) only
+  bounds θ, so it is skipped.
+- **Choosing a level.** The posterior predictive chance of winning heat `h` is
+  `Φ((μ − h)/√(β² + σ²))`, so the heat for a target win rate `p` is
+  `h = μ − Φ⁻¹(p)·√(β² + σ²)`, clamped to the game's range for that level.
+  While the model is unsure (large σ) the spread widens both ways: ordinary
+  levels get easier and spikes harder.
+- **Targets** per slot of a block of ten:
+  `[.90, .86, .82, .78, .50, .88, .84, .80, .76, .36]` (slot 4 hard, slot 9
+  super hard). **Mercy:** each failed attempt at a level keeps 60% of the
+  target's miss chance: `p' = 1 − (1 − p)·0.6^fails`.
+
+```csharp
+using System;
+
+namespace Playbox.Common
+{
+    [Serializable] public sealed class SkillState { public double mu, sd; public int n; }   // saved as "skill" in each game's section
+    public readonly struct SkillConfig
+    {
+        public readonly double Beta, Mu0, Sd0, Drift;
+        public SkillConfig(double beta, double mu0, double sd0, double drift) { Beta = beta; Mu0 = mu0; Sd0 = sd0; Drift = drift; }
+    }
+
+    public static class SkillModel
+    {
+        public static readonly double[] Target = { .9, .86, .82, .78, .5, .88, .84, .8, .76, .36 };
+        public const double Mercy = .6;
+
+        /// Standard normal CDF: Abramowitz–Stegun 7.1.26 on erf, exactly as the web (keep it; fixtures depend on it).
+        public static double Phi(double x)
+        {
+            double z = Math.Abs(x) / Math.Sqrt(2), t = 1 / (1 + .3275911 * z);
+            double e = 1 - t * (.254829592 + t * (-.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.Exp(-z * z);
+            return x >= 0 ? .5 * (1 + e) : .5 * (1 - e);
+        }
+        static double Pdf(double x) => Math.Exp(-x * x / 2) / 2.5066282746310002;
+
+        /// Inverse normal CDF (Acklam), p clamped to (1e-9, 1 − 1e-9).
+        public static double PhiInv(double p)
+        {
+            p = Math.Min(1 - 1e-9, Math.Max(1e-9, p));
+            double[] a = { -39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239 };
+            double[] b = { -54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572 };
+            double[] c = { -.007784894002430293, -.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783 };
+            double[] d = { .007784695709041462, .3224671290700398, 2.445134137142996, 3.754408661907416 };
+            if (p < .02425) { double q = Math.Sqrt(-2 * Math.Log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+            if (p > 1 - .02425) { double q = Math.Sqrt(-2 * Math.Log(1 - p)); return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+            double r = p - .5, s = r * r;
+            return (((((a[0] * s + a[1]) * s + a[2]) * s + a[3]) * s + a[4]) * s + a[5]) * r / (((((b[0] * s + b[1]) * s + b[2]) * s + b[3]) * s + b[4]) * s + 1);
+        }
+
+        public static SkillState Create(SkillConfig c) => new SkillState { mu = c.Mu0, sd = c.Sd0, n = 0 };
+        public static bool Valid(SkillState s) => s != null && !double.IsNaN(s.mu) && !double.IsInfinity(s.mu) && s.sd > 0 && !double.IsInfinity(s.sd);
+        public static double Chance(SkillState s, double h, SkillConfig c) => Phi((s.mu - h) / Math.Sqrt(c.Beta * c.Beta + s.sd * s.sd));
+        public static double TargetFor(int pos, int fails) => 1 - (1 - Target[pos]) * Math.Pow(Mercy, fails);
+        public static double Heat(SkillState s, double p, SkillConfig c) => s.mu - PhiInv(p) * Math.Sqrt(c.Beta * c.Beta + s.sd * s.sd);
+
+        public static void Observe(SkillState s, double h, bool won, SkillConfig c)
+        {
+            double v0 = s.sd * s.sd + c.Drift * c.Drift, cc = Math.Sqrt(c.Beta * c.Beta + v0);
+            int y = won ? 1 : -1; double t = y * (s.mu - h) / cc;
+            double P = Phi(t), v = P > 1e-12 ? Pdf(t) / P : -t, w = v * (v + t);
+            s.mu += y * v0 / cc * v;
+            s.sd = Math.Sqrt(v0 * Math.Max(.02, 1 - v0 / (cc * cc) * w));
+            s.n++;
+        }
+
+        public static void ObserveQuality(SkillState s, double h, double q, SkillConfig c)
+        {
+            double x = h + c.Beta * PhiInv(Math.Min(.97, Math.Max(.03, q)));
+            if ((q >= .95 && x < s.mu) || (q <= .05 && x > s.mu)) return;   // pinned at an end: only a bound
+            double nu = 1.5 * c.Beta, v0 = s.sd * s.sd, K = v0 / (v0 + nu * nu);
+            s.mu += K * (x - s.mu); s.sd = Math.Sqrt(v0 * (1 - K));
+        }
+    }
+}
+```
+
+**Per game.** Each game has a small director (`PaintSortDirector`,
+`CakeDirector`, `HexDirector`, `CarLoopDirector`) in its runtime assembly that
+owns the game's `SkillConfig`, its heat range and its readings:
+
+| Game | Heat means | β | μ₀ | σ₀ | τ | Range for level n | Slot targets | A lost attempt | A won attempt, and q |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Paint Sort | 3 + ⌊h⌋ colours; the fraction picks the candidate (§10.3) | 1.8 | 3.2 | 1.8 | .3 | `HeatRange(n)` (§10.3) | `Target[pos]` | a proven dead end, or a restart after ≥ 3 pours | the board finished: `q = Φ((len/pours − .7)/.25) × (helped ? .6 : 1)` |
+| Cake Sort | §48.3 | 1 | 2.5 | 1.8 | .2 | `HeatRange(n)` (§48.3) | `Target[pos]` | the counter fills, or a restart after ≥ 5 plates | the order is filled: §49.7 |
+| Hex Tile Sort | the deal of one stage (§24.4) | 1 | 2.5 | 1.8 | .2 | 0 – 8 | `TargetFor(stage mod 10, 1)` (a lost stage ends the run, so every stage is aimed as a second try: about .94 / .70 / .62) | the run ends during the stage, or a restart with ≥ 13 cells filled | the stage's 7 clears: `q = Φ(((19 − peak)/19 − .25)/.15)`, `peak` = most filled cells during the stage |
+| Car Loop | effective level `e` for the generator (§35.3); levels 1–10 are fixed lessons read at `e = n` | 12 | 20 | 14 | 2 | `[max(10, .3·min(n, 150)), min(140, n + 40)]` | hard x0 levels `Target[9]`; hard x5 levels (n > 20) `Target[4]`; other slot-4 levels `Target[3]`; the rest `Target[pos]` | the first crash or time-out of the attempt (a revive doesn't undo it) | the clear: `q = Φ((timeLeft/clock − .15 − .1·boostersUsed)/.2)` |
+
+The values of β come from the web's bots: in Paint Sort failure rises from 15%
+to 85% over about 3.7 heat; in Cake Sort the casual and the skilled bot win
+half their levels at heat 4.3 and 7.3 with a spread of about 1; Car Loop's and
+Hex Tile Sort's are first estimates, to be refitted from `skill_update` events
+(below).
+
+**The director's flow** (the same in every game):
+
+```
+HeatFor(n):  p = target for n's slot, eased by mercy for tries.fails at n
+             h = clamp(SkillModel.Heat(skill, p, cfg), lo(n), hi(n)), rounded to 0.05 (Car Loop: 0.5)
+StartAttempt(n): fresh → h = HeatFor(n), stored with the level in progress; resume → the stored h
+Observe(won, q): only once per attempt; SkillModel.Observe, then ObserveQuality for a win with q;
+             tries = won ? {n: 0, fails: 0} : {n, fails + 1}; flush the save; track skill_update
+```
+
+- **The heat is fixed per attempt** and saved with the level in progress, so a
+  resumed level is the same level. The lobby's "Up next" card reads `HeatFor` so
+  it shows what Play will start.
+- **Restarts.** Paint Sort's restart keeps the board (players expect the same
+  puzzle); after two lost attempts its restart sheet also offers "Mix a gentler
+  board", which starts a fresh attempt at the eased heat. Cake Sort and Car Loop
+  start every new attempt at the new heat.
+- Nothing about the model is shown as numbers. The lobbies say "Levels adjust to
+  how you play." (Cake Sort) and "Every level is mixed fresh on your device, to
+  suit how you play." (Paint Sort).
+- **Persistence:** `skill {mu, sd, n}` and `tries {n, fails}` in each game's
+  save section (§21.1, §31.1, §45.1, §56.1). An invalid or missing `skill` is
+  recreated from the prior.
+- **Analytics:** `skill_update` (level or stage, heat, won, q, mu, sd) on every
+  reading, and `heat`, `mu`, `sd` on each game's `level_start`. These are what a
+  later refit of β and the targets (by Remote Config, if added) would use.
+
+**Why this approach.** A Bayesian skill filter needs no training data, works from
+the first level, and its uncertainty is useful: it is forgiving while it knows
+little and sharpens as it learns. The update is closed-form (no sampling), so it
+runs instantly on the device. Fixed-step schemes (Elo-style) have no notion of
+uncertainty and move too slowly for new players or too jumpily later;
+reinforcement learning or bandits over level parameters need large amounts of
+live data before they behave well. The targets keep the designed rhythm (easy
+run-up, spike, breather) for everyone.
+
+**Checked against simulated players** (`node playbox/tools/adaptive-sim.mjs`).
+First-try win rates on levels 21–60 for ordinary / hard / super-hard levels
+(targets .83 / .50 / .36):
+
+| Player | Fixed curve (the old design) | Adaptive |
+| --- | --- | --- |
+| Idealised, skill 1.5 (weak) | .14 / .01 / .00 | .81 / .46 / .32 |
+| Idealised, skill 3 (typical) | .51 / .11 / .02 | .82 / .47 / .32 |
+| Idealised, skill 6 (strong) | .99 / .89 / .67 | .83 / .47 / .33 |
+| Cake Sort casual bot (real engine) | .85 / .46 / .29 | .88 / .58 / .33, settling at heat ≈ 3.2 |
+| Cake Sort skilled bot (real engine) | 1.00 / 1.00 / .92 | .83 / .54 / .63, pushed to heat ≈ 6.2 |
+
+The C# `AdaptiveSimCli` (§56.2) must print the same tables (the bot rows
+within ± .05, since the bots' random streams are the web's).
 
 ---
 
@@ -1081,19 +1337,20 @@ values are in brackets.
   70%, 0; rotation −1°, +0.8°, 0), haptic 12, toast "{Title} is coming soon".
 - Tapping a playable board: click sound, then load its scene.
 
-**The three boards** (`GameDefinition` assets):
+**The four boards** (`GameDefinition` assets). With nothing played, Paint Sort
+is featured and the grid holds three boards, the last one wide.
 
-| Field | Paint Sort | Hex Tile Sort | Car Loop |
-| --- | --- | --- | --- |
-| `Id` | `paint-sort` | `hex-tile-sort` | `car-loop` |
-| `Order` | 1 | 2 | 3 |
-| `Title` | Paint Sort | Hex Tile Sort | Car Loop |
-| `Tagline` | Pour paint between vials until each one holds a single colour. | Drop hex stacks so matching colours flip over and clear. | Merge every car into a busy roundabout without a crash. |
-| `Soon` | false | false | false |
-| `SceneName` | `PaintSort` | `HexTileSort` | `CarLoop` |
-| Status | `PaintSortStatus`: `level > 1 ? "Level L · C coins" : "New · 120 coins to start"` | `HexStatus`: `best > 0 ? "Best N" : "New"` (N with en-US thousands separators) | `CarLoopStatus`: `unlocked > 1 ? "Level U · C coins" : "New"` |
-| Cta | `level > 1 \|\| cur != null ? "Continue" : "Play"` | `best > 0 ? "Play again" : "Play"` | `unlocked > 1 ? "Continue" : "Play"` |
-| Art | `CardArtRig` RenderTexture (below) | `tex_board_hex_tile_sort.png` | `tex_board_car_loop.png` |
+| Field | Paint Sort | Hex Tile Sort | Car Loop | Cake Sort |
+| --- | --- | --- | --- | --- |
+| `Id` | `paint-sort` | `hex-tile-sort` | `car-loop` | `cake-sort` |
+| `Order` | 1 | 2 | 3 | 4 |
+| `Title` | Paint Sort | Hex Tile Sort | Car Loop | Cake Sort |
+| `Tagline` | Pour paint between vials until each one holds a single colour. | Drop hex stacks so matching colours flip over and clear. | Merge every car into a busy roundabout without a crash. | Slide plates together until every slice joins a whole cake. |
+| `Soon` | false | false | false | false |
+| `SceneName` | `PaintSort` | `HexTileSort` | `CarLoop` | `CakeSort` |
+| Status | `PaintSortStatus`: `level > 1 ? "Level L · C coins" : "New · 120 coins to start"` | `HexStatus`: `best > 0 ? "Best N" : "New"` (N with en-US thousands separators) | `CarLoopStatus`: `unlocked > 1 ? "Level U · C coins" : "New"` | `CakeSortStatus`: `level > 1 ? "Level L · K cakes" : "New · 10 cakes to discover"` |
+| Cta | `level > 1 \|\| cur != null ? "Continue" : "Play"` | `best > 0 ? "Play again" : "Play"` | `unlocked > 1 ? "Continue" : "Play"` | `level > 1 \|\| cur != null ? "Continue" : "Play"` |
+| Art | `CardArtRig` RenderTexture (below) | `tex_board_hex_tile_sort.png` | `tex_board_car_loop.png` | `tex_board_cake_sort_light.png` / `_dark.png` (below) |
 
 Board colours per game are in §6.1. A future game can get its board before it
 exists: set `Soon` to true and leave `SceneName` empty, and the board shows its
@@ -1110,6 +1367,19 @@ mouths at `y = 0.55w + Hgeo·w` above the bottom; vials at `x/W` = 0.10
 with its lip at `(0.62W − 0.1w, mouth + 0.62w)` holding
 `[Sap Green, Hansa Yellow ×0.7]`, and a Hansa Yellow stream (width 0.2w) from
 that lip into the 0.62 vial's surface with three droplets.
+
+**Cake Sort's board art** (`CakeTextureRecipes`, 1600 × 1000, light and dark
+from the §54.1 tokens; the subject is centred so envelope fit can crop it): a
+port of `drawCard` in `cake-sort.html`. Background: vertical gradient
+`cs-bg-a → cs-bg-b`. From 34% of the height down, a tablecloth (`cs-cloth` with
+`cs-check` gingham bands `max(8, W/22)` wide) with a 3 px rgba(0,0,0,.06) line
+at its top. Plate radius `pr = min(W/7.4, H/3.3)`; plates and slices exactly as
+in §51 at: (17%, 62%) Lemon ×3 + Strawberry, (50%, 74%) a whole Strawberry cake
+turned .25 rad, (83%, 62%) Chocolate ×4 + Blueberry. A Lemon slice mid-air at
+(32%, 30%) − .35R in x, start angle −2.2 rad, radius `1.08 R`, with a dashed
+trail (2 on, 7 off, 2.5 px, `cs-accent` at α .45) curving up from the left
+plate and a white α .7 motion arc; three gold (#FFD45A) 8-point sparkles at
+(36%, 40%), (64%, 36%), (57%, 26%), radius `.14 pr` × 1, .8, .55.
 
 **Hex Tile Sort's and Car Loop's board art** are textures generated by
 `HexTextureRecipes` and `CarLoopTextureRecipes` with `RasterCanvas` (§7.3, Appendix A), drawn in the web's y-down art space exactly as
@@ -1199,7 +1469,8 @@ shifted by `(0, −6u)`; the entry road runs to the bottom edge):
 | ps-frame / ps-frame-2 | #8A5B36 / #5C3A20 | #8F633F / #4C301B |
 
 The board backdrop (`Gradient.shader`) runs from wall-a at the top to wall-b at
-the bottom; hard levels use the hard pair, super hard the super pair.
+the bottom; hard levels use the hard pair, super hard the super pair. Cake
+Sort's tokens (`cs-*`) are in §54.1 and live in the same asset.
 
 **Home-screen board colours** (per `GameDefinition`, light / dark). `b-accent`
 is the play button, `b-deep` the slab under the board and the button's drop,
@@ -1211,8 +1482,9 @@ icon and label.
 | Paint Sort | #2B59F0 / #7090FF | #1B3FB8 / #4A63C9 | #E3EAFE / #1F2A52 | #2B59F0 / #7090FF | #FFFFFF / #0B1024 |
 | Hex Tile Sort | #FFC94A / #FFC94A | #C57C0A / #A86A0A | #FFF3D1 / #3A2A10 | #8A5200 / #FFD27A | #1A0B3B / #1A0B3B |
 | Car Loop | #12935A / #34C771 | #0B6B41 / #1D8A57 | #DDF5E8 / #14301F | #0B6B41 / #6FE3A9 | #FFFFFF / #04210F |
+| Cake Sort | #F0568C / #FF7AA8 | #B8305F / #B8456E | #FFE4EE / #3A1826 | #B8305F / #FF9EC0 | #FFFFFF / #2A0614 |
 
-**Lighten and darken.** All three web games use the same rule, implemented once
+**Lighten and darken.** All four web games use the same rule, implemented once
 as `Hex.Shade(color, k)` in Core: per channel, `k ≥ 0` gives
 `c + (255 − c)·k` and `k < 0` gives `c·(1 + k)`, rounded with `JsRound` and
 clamped to 0–255. (Paint Sort's `mix` toward white or black by `a` is
@@ -1232,7 +1504,7 @@ clamped to 0–255. (Paint Sort's `mix` toward white or black by `a` is
   erased", "Remove Ads restored." / "No purchases to restore on this account.",
   "Purchase complete".
 - Every string lives in a `StringTable` asset per scope (`App`, `PaintSort`,
-  `HexTileSort`, `CarLoop`) keyed by id, English only for now, so translation
+  `HexTileSort`, `CarLoop`, `CakeSort`) keyed by id, English only for now, so translation
   later is a data change.
 
 ---
@@ -1247,8 +1519,8 @@ clamped to 0–255. (Paint Sort's `mix` toward white or black by `a` is
   default, wrap, filter bilinear, no mipmaps for UI, 9-slice borders set in the
   sprite meta).
 - **Icons**: rasterises every icon in §7.3 and fills `IconSet.asset`.
-- **Audio**: renders every recipe (§18.1, §30.1, §44.1–44.2), normalises each
-  group (§4.3), writes WAVs.
+- **Audio**: renders every recipe (§18.1, §30.1, §44.1–44.2, §53.1), normalises
+  each group (§4.3), writes WAVs.
 
 `Raster.cs`: an anti-aliased signed-distance rasteriser for the simple Paint
 Sort and app textures. For each pixel centre, compute the signed distance `d` to
@@ -1259,14 +1531,15 @@ ellipse, rounded rect, capsule (segment + radius), convex/concave polygon
 
 ### 7.2 Builders (`Playbox/Build/...`, `Playbox/Car Loop/...`)
 
-- **Prefabs**: creates every prefab in §9.2, §26.5 and §41.5 with materials,
-  sorting orders, layers and pool sizes.
-- **Scenes**: creates Boot, Hub, PaintSort, HexTileSort and CarLoop (§3.1), with
-  canvases, the hierarchies in §5, §19, §29 and §43, references wired, and adds
-  them to Build Settings in that order.
-- **Car Loop / Bake Levels**: imports `CarLoopLevels.json` (made by the Node
-  script in §0.5), checks it (§35.5), and reports any level whose C# generator
-  output differs from the baked one.
+- **Prefabs**: creates every prefab in §9.2, §26.5, §41.5 and Cake Sort's plate,
+  stand, slice and particle pools (§51) with materials, sorting orders, layers
+  and pool sizes.
+- **Scenes**: creates Boot, Hub, PaintSort, HexTileSort, CarLoop and CakeSort
+  (§3.1), with canvases, the hierarchies in §5, §19, §29, §43 and §54, references
+  wired, and adds them to Build Settings in that order.
+- **Car Loop / Check Levels**: runs the C# `LevelDef(n)` (no model) for levels
+  1–300 and reports any level that differs from the typical-curve JSON made by
+  the Node script in §0.5 (§35.5).
 
 ### 7.3 `RasterCanvas`, SVG icons and the icon set
 
@@ -1318,7 +1591,7 @@ Implementation rules:
 - `Lighter` adds premultiplied colours (clamped); `SourceAtop` paints only where
   the destination is opaque (used for burnt car sprites).
 
-**`SvgIcon`** reads the SVG subset the three games' icons use: `<svg viewBox>`,
+**`SvgIcon`** reads the SVG subset the games' icons use: `<svg viewBox>`,
 `<path d>` (M m L l H h V v C c S s Q q A a Z z, arcs converted with the
 SVG endpoint-to-centre formulas), `<rect x y width height rx>`, `<circle cx cy r>`,
 attributes `fill`, `stroke`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`,
@@ -1368,11 +1641,12 @@ The player sorts paint: tap a vial to pick it up, tap another to pour.
 - **The painting.** Every level has a small generated painting above the
   vials, drawn in pencil. Each colour corked brushes its part of the picture in;
   an undo that un-corks a colour wipes its paint again.
-- **Levels** are generated on the device from the level number (the same level
-  everywhere), solver-checked, and chosen by simulated players to follow a
-  **sawtooth**: within each block of ten, difficulty climbs, the 5th level is
-  **hard** and the 10th **super hard**, and the level after each spike eases
-  off. Every block starts harder than the last.
+- **Levels** are generated on the device when they start, from the level
+  number and a **heat** the adaptive model picks for this player (§4.9): the
+  same (level, heat) gives the same board everywhere. Boards are
+  solver-checked and chosen by simulated players. Within each block of ten the
+  5th level is **hard** and the 10th **super hard** (lower target win rates),
+  and the level after each spike eases off.
 - **Boosters:** Undo (5 per try, then buy 5 more), Hint (points at a pour that
   still wins; never spent on a dead board), Add vial (one extra empty vial, once
   per level). Restart is free.
@@ -1451,7 +1725,7 @@ Assets/_Project/Scripts/
 │  ├─ Engine/                              asmdef Playbox.PaintSort.Engine (noEngineReferences: true)
 │  │  ├─ Move.cs
 │  │  ├─ Seeds.cs                          SeedFor, Shuffle, JsRound (the RNG itself is Common/Mulberry32.cs)
-│  │  ├─ Difficulty.cs                     RAMP, PICK, caps, Spec(n)
+│  │  ├─ Difficulty.cs                     Ramp, BaseHeat, HeatRange, Spec(n, h)
 │  │  ├─ LevelSpec.cs
 │  │  ├─ Rules.cs                          IsFull, IsSolved, RunLen, ListMoves, Apply, Heur, KeyOf
 │  │  ├─ Solver.cs                         weighted A*
@@ -1462,6 +1736,7 @@ Assets/_Project/Scripts/
 │  │  └─ Art/ArtBuilder.cs                 painting composition (pure, doubles only)
 │  ├─ Runtime/                             asmdef Playbox.PaintSort (refs Core + Engine)
 │  │  ├─ PaintSortController.cs            state machine, owns LevelState, wires views
+│  │  ├─ PaintSortDirector.cs              heat per attempt and skill readings (§4.9, §11.11)
 │  │  ├─ LevelState.cs                     ids model, history, reveal set (§11)
 │  │  ├─ LevelCache.cs                     background generation of n and n+1
 │  │  ├─ Economy.cs                        constants (§11.8)
@@ -1601,32 +1876,46 @@ using System;
 
 namespace Playbox.PaintSort.Engine
 {
-    /// The sawtooth. Levels come in blocks of ten: heat climbs, spikes at the 5th
-    /// (hard) and 10th (super hard) level, drops back after each spike, and every
-    /// block starts BlockStep above the last.
+    /// A level's difficulty is one number, its heat h. The whole part sets the
+    /// colours (3 + h), the fraction picks which generated candidate to keep
+    /// (0 = most forgiving, 1 = most punishing), so difficulty rises smoothly
+    /// with h. The adaptive model picks h (§4.9); BaseHeat is the sawtooth a
+    /// typical new player starts on and the heat when none is given.
     public static class Difficulty
     {
         public const int Cap = 4;                       // paint units per vial
         public const int MaxColours = 12;
-        public const double BlockStep = 1.15;
+        public const double BlockStep = 1.15, HeatMax = MaxColours - 2;
+        public const int BaseBlocks = 4;                // the typical curve stops climbing after this many blocks
         public static readonly double[] Ramp = { 0, .45, .9, 1.35, 2.5, .6, 1.05, 1.5, 1.95, 3.6 };
-        public static readonly double[] PickAt = { 0, .35, .55, .7, 1, 0, .45, .6, .75, 1 };
-        public static readonly int[] KCap = { 10, 11, 12 };   // colour ceiling: normal, hard, super hard
 
-        public static LevelSpec Spec(int n)
+        static int BlockOf(int n) => Math.Min(BaseBlocks, (Math.Max(1, n) - 1) / 10);
+        public static double BaseHeat(int n) { n = Math.Max(1, n); return BlockOf(n) * BlockStep + Ramp[(n - 1) % 10]; }
+
+        /// How far the model may move level n: never below 2.5 under the start of
+        /// its block of ten, never above 4 over the block's hardest level.
+        public static (double Lo, double Hi) HeatRange(int n)
+        {
+            double start = BlockOf(n) * BlockStep;
+            return (Math.Max(0, start - 2.5), Math.Min(HeatMax, start + Ramp[9] + 4));
+        }
+
+        public static LevelSpec Spec(int n, double? h = null)
         {
             n = Math.Max(1, n);
             int block = (n - 1) / 10, pos = (n - 1) % 10;
             int tier = pos == 9 ? 2 : pos == 4 ? 1 : 0;
-            double heat = block * BlockStep + Ramp[pos];
-            int k = n == 1 ? 3 : Math.Min(KCap[tier], Seeds.JsRound(3 + heat));
+            double heat = n == 1 ? 0 : Math.Min(HeatMax, Math.Max(0, h ?? BaseHeat(n)));
+            int k = Math.Min(MaxColours, 3 + (int)Math.Floor(heat));
+            // hidden paint is content, keyed to the level number as before
             bool mysteryOn = n >= 13 && (tier > 0 || pos == 2 || pos == 7 || (block >= 6 && pos != 0 && pos != 5));
             double mystery = mysteryOn ? Math.Min(.7, .3 + block * .04 + tier * .12) : 0;
             return new LevelSpec
             {
                 N = n, Block = block, Pos = pos, Tier = tier, Heat = heat, K = k, E = 2, Cap = Cap,
-                Mystery = mystery, Pick = PickAt[pos],
-                Cands = tier == 2 ? 14 : tier == 1 ? 9 : 4,
+                Mystery = mystery,
+                Pick = k == MaxColours ? Math.Min(1, heat - (MaxColours - 3)) : heat - Math.Floor(heat),
+                Cands = tier == 2 ? 10 : tier == 1 ? 8 : 5,
                 Reward = tier == 2 ? 60 : tier == 1 ? 30 : 10
             };
         }
@@ -1981,11 +2270,11 @@ namespace Playbox.PaintSort.Engine
             return full;
         }
 
-        /// Deterministic: the same n gives the same level on every device.
-        public static GeneratedLevel Generate(int n)
+        /// Deterministic: the same (n, heat) gives the same level on every device.
+        public static GeneratedLevel Generate(int n, double? h = null)
         {
-            var sp = Difficulty.Spec(n); int C = sp.Cap;
-            var r = new Mulberry32(Seeds.SeedFor(n, 7));
+            var sp = Difficulty.Spec(n, h); int C = sp.Cap;
+            var r = new Mulberry32(Seeds.SeedFor(n, 7 + Seeds.JsRound(sp.Heat * 20)));
             var cands = new List<Cand>();
             int attempts = 0;
             while (cands.Count < sp.Cands && attempts < sp.Cands * 6)
@@ -2445,6 +2734,26 @@ after the pour ends.
 
 All vials hop (stagger 55 ms); 46 splats in palette colours (§16); win sound;
 haptic [20,60,20,60,40]; after 1250 ms open the Win sheet (§19.6).
+
+### 11.11 Difficulty and skill readings (`PaintSortDirector`, §4.9)
+
+- **A fresh level** is generated at `h = Director.HeatFor(n)` (the board, its
+  heat and its solution length `len` are stored in `cur`). A resumed level keeps
+  its stored heat.
+- **One reading per attempt** (`cur.observed`):
+  - **Lost** when the dead-end watcher (§11.6) proves the board dead (read the
+    moment the stuck bar shows), or when the player restarts after 3 or more
+    pours (giving up).
+  - **Won** when the board is finished, with quality
+    `q = Φ((len / pours − .7) / .25) × (helped ? .6 : 1)`, where `pours` is the
+    net move count and `helped` means an undo, hint or extra vial was used.
+- **Restart keeps the board** and starts a new attempt (`observed = false`).
+  When this level already has 2 lost attempts (counting the one being given up),
+  the restart sheet adds "Mix a gentler board" (ghost button) and its sub gains
+  " Or mix a new board, set a little easier.": that starts a fresh attempt at
+  the eased heat (mercy, §4.9).
+- After a win, the next level is generated in the background at its new
+  `HeatFor` (the reading has already been applied).
 
 ---
 
@@ -3131,11 +3440,11 @@ LobbyScreen (safe area; wall gradient behind)
    ├─ NextCard (radius 22, padding 14, surface, shadow; horizontal gap 16)
    │  ├─ Frame (44% width, 4:3) → RawImage: next level's painting at progress 0
    │  └─ Meta: eyebrow "Up next" / "Up next · Hard" / "Up next · Super hard" (11.5, tier colour)
-   │           title "Study No. N" (24 display) · sub "K colours · K+2 vials[ · some hidden]" (13.5 muted)
+   │           title "Study No. N" (24 display) · sub "K colours · K+2 vials[ · some hidden]" (13.5 muted; K from Spec(n, HeatFor(n)), or the saved level)
    │           pigment dots (blank rings until the level has started)
    ├─ RoadCard (radius 22, padding 14): header "Levels a–b" (19 display) + key (Hard ● Super hard ●) · LevelRoadGraphic (width 100%, aspect 340:136)
    ├─ PlayButton (full width, 19 display): "Play level N" or "Continue level N"; style primary / hard / super by tier
-   └─ Note (13.5 muted, centred): stats line, or "Every level is mixed fresh on your device. Levels 5 and 10 of each ten are the hard ones."
+   └─ Note (13.5 muted, centred): stats line, or "Every level is mixed fresh on your device, to suit how you play. Levels 5 and 10 of each ten are the hard ones."
 ```
 
 ### 19.2 Play screen
@@ -3157,7 +3466,9 @@ PlayScreen (wall gradient by tier)
 ### 19.3 `LevelRoadGraphic`
 
 Custom `Graphic` drawing in a 340 × 136 box, scaled to its rect:
-- `X(p) = 22 + p·296/9`, `Y(p) = 104 − Ramp[p]/3.6·76` (y-down in the box).
+- `X(p) = 22 + p·296/9`, `Y(p) = 104 − (1 − Target[p])/.64·76` (y-down in the
+  box): the road draws how often each slot is meant to be lost (§4.9), which is
+  the same shape for every player.
 - Polyline through all ten nodes (4 dp, `--line`, round joins); overlay polyline
   through completed nodes plus the current one (4 dp, `--accent`).
 - Node radius 9 (normal), 11.5 (hard), 13 (super). Done: filled in accent (hard:
@@ -3254,8 +3565,11 @@ Derived per pigment:
   "symbols": false,
   "tips": { "tut": true, "mystery": false },
   "stats": { "won": 13, "hard": 1, "super": 1 },
+  "skill": { "mu": 4.12, "sd": 0.74, "n": 15 },
+  "tries": { "n": 14, "fails": 1 },
   "cur": {
-    "n": 14, "colorOf": [10, 2], "palette": [10, 2, 4],
+    "n": 14, "h": 3.85, "len": 17, "observed": false,
+    "colorOf": [10, 2], "palette": [10, 2, 4],
     "vials": [[0, 1, 2, 3]], "rev": [3], "init": [[0, 1, 2, 3]], "rev0": [3],
     "hist": [ { "v": [[0, 1, 2, 3]], "m": 0 } ],
     "undos": 5, "moves": 3, "extra": false, "help": false
@@ -3266,7 +3580,8 @@ Derived per pigment:
 The current board (`cur`) is saved after every pour, undo, restart and booster,
 so a killed app resumes on the same board. The Play button says "Continue level
 N" when `cur.n == level`. Defaults for a new save: `level 1`, `coins 120`,
-`inv {hint 3, vial 2}`.
+`inv {hint 3, vial 2}`, `skill` from the prior (§4.9), `tries {n 0, fails 0}`.
+A `cur` without `h` (an older save) resumes at `BaseHeat(n)`.
 
 **Board status** (`PaintSortStatus`): `level > 1 ? "Level {level} · {coins}
 coins" : "New · 120 coins to start"`; Cta `level > 1 || cur != null ?
@@ -3275,8 +3590,8 @@ coins" : "New · 120 coins to start"`; Cta `level > 1 || cur != null ?
 ### 21.2 Threading and performance
 
 - `LevelCache` generates levels on the thread pool (`Task.Run`) and caches
-  `GeneratedLevel` by n. Request `level` when the lobby opens and `level + 1`
-  900 ms after a win. If Play is tapped before the result is ready, show the
+  `GeneratedLevel` by (n, heat). Request `(level, HeatFor(level))` when the lobby
+  opens and `(level + 1, HeatFor(level + 1))` 900 ms after a win. If Play is tapped before the result is ready, show the
   play screen with "Mixing paint…" and start when it arrives.
 - Solver calls (hint 30000, dead end 5000, tutorial 4000) run on the thread
   pool with a state version; results come back through `MainThread` and are
@@ -3292,6 +3607,7 @@ coins" : "New · 120 coins to start"`; Cta `level > 1 || cur != null ?
 - **Window** `Playbox/Paint Sort/Balance Probe`: from/to fields, Run, a table
   (level, tier, colours, hidden, moves, casual, skilled, difficulty bar, ms),
   "all solvable" check (re-solve each board with budget 400000), CSV export.
+  It shows the typical curve (no model); an optional heat column overrides it.
 - **CLI**: `Unity -batchmode -quit -projectPath . -executeMethod
   Playbox.Editor.ProbeCli.Run -from 1 -to 60`, printing the same columns as
   Appendix B.2, then `all solvable: yes|NO (count)` and the mean difficulty per
@@ -3299,9 +3615,10 @@ coins" : "New · 120 coins to start"`; Cta `level > 1 || cur != null ?
 
 ### 21.4 Analytics events
 
-`level_start` (level, tier, colours, hidden), `level_complete` (level, tier,
-moves, clean, reward), `level_restart` (level, moves), `dead_end` (level,
-moves), `booster_used` (id, level), `booster_bought` (id, price). Each carries
+`level_start` (level, tier, colours, hidden, heat, mu, sd), `level_complete`
+(level, tier, moves, clean, reward, heat), `level_restart` (level, moves),
+`gentler_board` (level), `dead_end` (level, moves), `booster_used` (id, level),
+`booster_bought` (id, price), `skill_update` (§4.9). Each carries
 `game` (§4.7).
 
 ---
@@ -3338,10 +3655,16 @@ Hex Tile Sort is an endless run on a 19-cell hex board. Implement exactly:
 - **Score** per pop: `run × 10 × combo + (run > 10 ? (run − 10) × 30 : 0)`, where
   `combo = min(chain, 10)` and `chain` counts pops since the board last went
   quiet (nothing primed). A chain of 2 or more shows "COMBO ×N" when it ends.
-- **Colours and tiers.** A run starts with 4 colours; every 7 clears unlocks
-  one more, up to 7 ("NEW COLOUR"). Tier = `min(3, floor(clears / 7))`.
+- **Colours and stages.** A run starts with 4 colours; every 7 clears unlocks
+  one more, up to 7 ("NEW COLOUR"). Tier = `min(3, floor(clears / 7))`. Every 7
+  clears is also a **stage** (`stage = floor(clears / 7)`, shown from 1), which
+  never stops counting. Stages keep the rhythm of the other games' levels: the
+  5th of every ten is a **hard wave** and the 10th a **super hard wave**, each
+  announced by a banner.
 - **New stacks** (§24.4) are 1–4 tiles in runs of 1–3, leaning toward colours
-  already on top of the board, and get taller after 18 clears.
+  already on top of the board. How tall they are, how short their runs are and
+  how often they match the board follow the stage's **heat**, which the
+  adaptive model picks for this player when the stage starts (§4.9, §24.6).
 - **Start of a run.** Six seed stacks of 1–3 tiles, one colour each, on random
   cells, never giving two neighbours the same top colour.
 - **End.** When every cell holds a stack, nothing is primed, nothing is still
@@ -3349,7 +3672,8 @@ Hex Tile Sort is an endless run on a 19-cell hex board. Implement exactly:
   beats it.
 - **Rotation.** Two buttons turn the board 60° left or right (360 ms). It
   changes only the view (adjacency is fixed) and is blocked while merges run.
-- Restart starts a new run at once (no confirmation), as on the web.
+- Restart starts a new run at once (no confirmation), as on the web. From a
+  board with 13 or more cells filled, it counts as losing the stage (§24.6).
 
 ## 23. World, camera and layout
 
@@ -3600,30 +3924,33 @@ namespace Playbox.HexTileSort.Engine
             return pool;
         }
 
-        public static int PickColour(HexBoard b, int colours, int exclude, IRandom rng)
+        /// How often a new run matches a colour already on top of the board:
+        /// .8 at heat 0, .62 (the original game) near heat 2.5, down to .25.
+        public static int PickColour(HexBoard b, int colours, int exclude, double heat, IRandom rng)
         {
             var pool = BoardTopColours(b, colours).FindAll(c => c != exclude);
-            if (pool.Count > 0 && rng.Next() < 0.62) return pool[Rnd.Int(rng, pool.Count)];   // no draw when the pool is empty
+            double help = Math.Min(0.8, Math.Max(0.25, 0.8 - 0.07 * heat));
+            if (pool.Count > 0 && rng.Next() < help) return pool[Rnd.Int(rng, pool.Count)];   // no draw when the pool is empty
             int col, guard = 0;
             do { col = Rnd.Int(rng, colours); } while (col == exclude && ++guard < 12);
             return col;
         }
 
-        public static int StackHeight(IRandom rng, int clears)
+        /// Taller stacks with heat (the original game's early and late mixes sit near heat 0 and 4).
+        public static int StackHeight(IRandom rng, double heat)
         {
-            double r = rng.Next();
-            if (clears > 18) return r < 0.22 ? 1 : r < 0.58 ? 2 : r < 0.88 ? 3 : 4;
-            return r < 0.30 ? 1 : r < 0.70 ? 2 : r < 0.95 ? 3 : 4;
+            double t = Math.Min(1, Math.Max(0, heat / 7)), r = rng.Next();
+            return r < 0.32 - 0.14 * t ? 1 : r < 0.72 - 0.17 * t ? 2 : r < 0.95 - 0.10 * t ? 3 : 4;
         }
 
-        public static List<int> GenStack(HexBoard b, int colours, int clears, IRandom rng)
+        public static List<int> GenStack(HexBoard b, int colours, double heat, IRandom rng)
         {
-            int left = StackHeight(rng, clears), last = -1;
+            int left = StackHeight(rng, heat), last = -1;
             var tiles = new List<int>();
             while (left > 0)
             {
-                int run = 1 + Rnd.Int(rng, Math.Min(left, 3));
-                int col = PickColour(b, colours, last, rng);
+                int run = 1 + Rnd.Int(rng, Math.Min(left, heat >= 5 ? 2 : 3));   // hot stages break stacks into more colours
+                int col = PickColour(b, colours, last, heat, rng);
                 for (int i = 0; i < run; i++) tiles.Add(col);
                 last = col; left -= run;
             }
@@ -3659,12 +3986,54 @@ namespace Playbox.HexTileSort.Engine
     {
         public static int Tier(int clears) => System.Math.Min(HexConfig.MaxColours - HexConfig.StartColours, clears / HexConfig.ClearsPerTier);
         public static int Colours(int clears) => HexConfig.StartColours + Tier(clears);
-        /// Progress bar fill: full once every colour is unlocked.
-        public static double Into(int clears, int colours) =>
-            colours >= HexConfig.MaxColours ? 1 : (double)(clears % HexConfig.ClearsPerTier) / HexConfig.ClearsPerTier;
+        /// A stage is every 7 clears and never stops counting.
+        public static int Stage(int clears) => clears / HexConfig.ClearsPerTier;
+        /// 0 ordinary, 1 hard wave (the 5th of every ten), 2 super hard wave (the 10th).
+        public static int StageTone(int stage) { int p = stage % 10; return p == 9 ? 2 : p == 4 ? 1 : 0; }
+        /// Progress bar fill: how far into the current stage.
+        public static double Into(int clears) => (double)(clears % HexConfig.ClearsPerTier) / HexConfig.ClearsPerTier;
     }
 }
 ```
+
+### 24.6 Stages and skill readings (`HexDirector`, §4.9)
+
+`HexDirector` lives in the runtime assembly (it saves) and holds the player's
+`skill`, with `SkillConfig(1, 2.5, 1.8, .2)` and heat clamped to 0–8. The run
+keeps `stage`, `heat`, `peak` (the most filled cells seen during the stage) and
+`stageDone`.
+
+```
+StageHeat(st)    = clamp(SkillModel.Heat(skill, SkillModel.TargetFor(st mod 10, 1), cfg), 0, 8)   // not rounded
+StartStage(st):    stage = st; heat = StageHeat(st); peak = filled cells now; stageDone = false
+ObserveStage(won): if stageDone: return
+                   stageDone = true
+                   SkillModel.Observe(skill, heat, won, cfg)
+                   if won: SkillModel.ObserveQuality(skill, heat, Φ(((19 − peak)/19 − .25)/.15), cfg)
+                   save skill (§31.1); track skill_update
+```
+
+- A lost stage ends the run, so every stage is aimed as a second try
+  (`TargetFor(pos, 1)`): about .94 for ordinary stages, .70 for hard waves and
+  .62 for super hard ones. A new player's first stages come out at heat 0
+  (more help than the original game); a strong player reaches heat 5 and more,
+  where stacks are taller and split into more colours.
+- **Where it is called:**
+  - New run: if the old run is not over and `peak ≥ 13`, `ObserveStage(false)`
+    (giving up a crowded board loses the stage); then after the new board is
+    built, `StartStage(0)`; after `SeedBoard`, `peak = filled cells`.
+  - `Place`: after the stack goes into the cell, `peak = max(peak, filled cells)`.
+  - Every pop (§25): `st = Tiers.Stage(clears)`; if `st > stage`:
+    `ObserveStage(true)`, `StartStage(st)`, and for tone 1 or 2 the banner
+    "HARD WAVE" or "SUPER HARD WAVE" (§27.6). Then the colour check: if
+    `Tiers.Colours(clears)` grew, `colours` = it and the banner text gains
+    " · NEW COLOUR" (or is "NEW COLOUR" alone).
+  - Game over: `ObserveStage(false)` before anything else.
+- **Every refill** deals with the heat current at that moment
+  (`GenStack(board, colours, heat, rng)`), so a new stage changes the very next
+  tray. The seed stacks don't use heat.
+- The skill is shared by every run, so a new run starts at the heat the model
+  thinks right for this player, not from scratch.
 
 ## 25. The resolver and its timings
 
@@ -3722,7 +4091,7 @@ resolving = false
 
 ```
 hide the hint line; selected = −1
-cell.Stack = copy of tiles; cell.Dropping = true; lastPlaced = cell; tray[slot] = null; play place
+cell.Stack = copy of tiles; cell.Dropping = true; lastPlaced = cell; peak = max(peak, filled cells); tray[slot] = null; play place
 drop the stack from +3.6 world units to 0 over 170 ms (easeOutQuad)
 cell.Dropping = false; cell.ring = 1; Squash(cell, 0.9, 150 ms) (not awaited)
 dirty = true
@@ -3732,18 +4101,21 @@ if all three tray slots are empty and !refilling: refilling = true; await Refill
 **PopRun(cell, combo):** `run = TopRunLen`, remove it, start the pop animation
 (§27.4), 18 particles, `pts = run×10×combo + (run > 10 ? (run−10)×30 : 0)`,
 `score += pts`, `clears++`, float "+pts", shake `min(9, 4 + combo×1.6)`, clear
-sound for `combo`, tier check (if `Tiers.Colours(clears)` grew: `colours` = it,
-banner "NEW COLOUR"), update the HUD and the best score; then wait 330 ms.
+sound for `combo`, stage and colour check (§24.6), update the HUD and the best
+score; then wait 330 ms.
 
 **Best score** is saved the moment `score > best` (as the web does on every HUD
 update), so quitting mid-run keeps it.
 
-**New run:** clear tweens and effects, `score = clears = chain = 0`,
-`colours = 4`, `over = false`, rotation 0, `lastPlaced = null`; new board;
-`SeedBoard`; show the hint line; `refilling = true`, refill the tray,
+**New run:** if the old run is not over and `peak ≥ 13`, `ObserveStage(false)`;
+clear tweens and effects, `score = clears = chain = 0`, `colours = 4`,
+`over = false`, rotation 0, `lastPlaced = null`; new board; `StartStage(0)`;
+`SeedBoard`; `peak = filled cells`; show the hint line; `refilling = true`,
+refill the tray (`GenStack(board, colours, heat, rng)` three times),
 `refilling = false`.
 
-**Game over:** `over = true`, play over, wait 220 ms, show the veil (§29).
+**Game over:** `over = true`, `ObserveStage(false)`, play over, wait 220 ms,
+show the veil (§29).
 
 ## 26. Meshes and shaders
 
@@ -3896,11 +4268,14 @@ third, else `Shade(face, (rand − 0.4) × 0.4)`. Gravity 1500 dp/s² (downward)
 - **Float** "+pts" at the stack top minus `0.4s`: `vy = −70` dp/s, `vy *= 0.94`
   each frame, life 1.25 minus 1.05/s, alpha = life; size `0.82s` (`1.05s` when
   combo > 1), fill `#FFE38A`, stroke `rgba(10,5,30,.85)` width `max(3, 0.16s)`.
-- **Banner** ("COMBO ×N", life 1.3; "NEW COLOUR", life 1.25) at
-  `(W/2, cy − 3.6s)`: life minus 0.85/s, alpha = life, scale
-  `1 + 0.22 × max(0, 1 − (1 − life) × 4)`; size `0.95s`, stroke
-  `rgba(10,5,30,.9)` width `0.22s`, fill a vertical gradient `#FFF0B0 → #FFB020`
-  (TMP colour gradient).
+- **Banner** ("COMBO ×N", life 1.3; "NEW COLOUR", life 1.25; "HARD WAVE" and
+  "SUPER HARD WAVE", either with " · NEW COLOUR" when a colour unlocks on the
+  same clear, life 1.8) at `(W/2, cy − 3.6s)`: life minus 0.85/s, alpha = life,
+  scale `pop = 1 + 0.22 × max(0, 1 − (1 − life) × 4)`, times
+  `fit = min(1, 0.88W / (textWidth × pop + 0.22s))` so long banners shrink to
+  the width; size `0.95s`, stroke `rgba(10,5,30,.9)` width `0.22s`, fill a
+  vertical gradient (TMP colour gradient): `#FFF0B0 → #FFB020`, or for a hard
+  wave `#FFD9D6 → #FF5C63`, for a super hard wave `#F1DEFF → #B06BFF`.
 
 ### 27.7 Badges and shake
 
@@ -3961,8 +4336,9 @@ HexHud (play column max 520 dp, centred; safe area)
 │  ├─ Sound           38×38 icon button: hex_sound_on / hex_sound_off (toggles the app Sound setting)
 │  └─ Restart         38×38 icon button: hex_restart (new run at once)
 ├─ Ribbon (margin 6/16/0; row, gap 10)
-│  ├─ Label           "Tier N · K colours", 12 HexDisplay 700 caps .12em dim
-│  └─ Bar             height 6, radius 99, fill white α .09; inner fill gradient #8B5CF6 → #22D3EE, width = Tiers.Into, animated 450 ms cubic-bezier(.2,.9,.2,1)
+│  ├─ Label           "Stage N · K colours[ · hard| · super hard]" (N = stage + 1), 12 HexDisplay 700 caps .12em;
+│  │                  colour dim, #FF8A8F on a hard wave, #C99BFF on a super hard wave
+│  └─ Bar             height 6, radius 99, fill white α .09; inner fill gradient #8B5CF6 → #22D3EE, width = Tiers.Into(clears), animated 450 ms cubic-bezier(.2,.9,.2,1)
 ├─ (the board area: everything below the ribbon)
 └─ BottomBar (absolute, bottom = safe-bottom + 6, padding 0/14; row, space-between)
    ├─ RotateLeft      42×42, radius 14, panel + border, hex_rotate_left 19, press scale .9
@@ -4037,19 +4413,22 @@ attack: .012, type, linAttack: true)`.
 ### 31.1 Save (`games["hex-tile-sort"]`)
 
 ```json
-{ "best": 12840, "runs": 7 }
+{ "best": 12840, "runs": 7, "skill": { "mu": 3.41, "sd": 0.62, "n": 23 } }
 ```
 
-`best` is written the moment the score beats it; `runs` counts finished runs.
-A run in progress is not saved (as on the web): leaving the game ends the run.
+`best` is written the moment the score beats it; `runs` counts finished runs;
+`skill` (§4.9, §24.6) is written after every stage reading and outlives runs.
+A run in progress is not saved (as on the web): leaving the game ends the run
+(and, from a board with 13 or more cells filled, counts its stage as lost).
 
 **Board status** (`HexStatus`): `best > 0 ? "Best {best:N0 en-US}" : "New"`;
 Cta `best > 0 ? "Play again" : "Play"`.
 
 ### 31.2 Analytics events
 
-`run_start`; `run_end` (score, clears, tier, best, new_best, duration_s);
-`tier_up` (tier, clears). Like every event, each carries `game` (§4.7).
+`run_start`; `run_end` (score, clears, tier, stage, best, new_best,
+duration_s); `tier_up` (tier, clears); `stage_start` (stage, tone, heat, mu,
+sd); `skill_update` (§4.9). Like every event, each carries `game` (§4.7).
 
 ---
 
@@ -4081,9 +4460,11 @@ Car Loop is a one-tap timing game on a ring road. Implement exactly:
 - **Stars** from the time left: ≥ 40% three, ≥ 15% two, otherwise one.
 - **A close call** (a merge that passed within 17.5 of another car) pays +3 coins.
 - **Levels** 1–10 are hand-made; from 11 they are generated from the level
-  number, then proven playable by three bots, which also set the clock (§35).
-  Variations arrive on a schedule: counter-clockwise rings, two entrances, rush
-  hour, hard levels (×2 coins).
+  number and an **effective level** `e` the adaptive model picks for this
+  player (§4.9, §35.7), then proven playable by three bots, which also set the
+  clock (§35). The level number fixes the layout and the schedule of
+  variations (counter-clockwise rings, two entrances, rush hour, hard levels
+  with ×2 coins); `e` sets how fast and full the ring is and how tight the clock.
 - **Boosters:** Slow-Mo, Green Light, Tow Truck, Autopilot (§38).
 - **Economy:** coins from clears, close calls, a ×2–×5 rewarded multiplier, the
   daily reward and the shop; spent on boosters, revives and garage cars (§39).
@@ -4353,14 +4734,14 @@ bbox  = (x0 − m, x1 + m, y0 − m, y1 + m)
 stopY = max(f.Sy)
 ```
 
-## 35. Levels: hand-made, generated, validated, baked
+## 35. Levels: hand-made, generated, validated, adaptive
 
 ### 35.1 `LevelDef`
 
 ```csharp
 public sealed class LevelDef
 {
-    public int N; public string Shape; public int Dir = 1; public string Pattern;
+    public int N; public double? E; public string Shape; public int Dir = 1; public string Pattern;
     public bool Hard, Dual, Teach; public string Tutorial;      // "tap", "gap", "ccw" or null
     public Pulse Pulse;                                         // null, or { Amp, Period } (rush hour)
     public int Speed, Traffic, Player, Time;
@@ -4404,47 +4785,55 @@ random:        tries = 0; while count < n and tries < 3000: tries++; s = R() × 
 
 Positions are not wrapped (they can exceed `L`); `PoseAt` wraps them.
 
-**RawDef(n)** (levels ≥ 11; RNG `Mulberry32(n × 7919 + 17)`; `pick(a) =
-a[(int)(R() × a.Length)]`). Draw in exactly this order; a draw marked
-*(if …)* happens only when the condition holds:
+**RawDef(n, e)** (levels ≥ 11; RNG `Mulberry32(n × 7919 + 17)`; `pick(a) =
+a[(int)(R() × a.Length)]`). `e` is the effective level from the adaptive model
+(§35.7), or null for the typical curve. Draw in exactly this order; a draw
+marked *(if …)* happens only when the condition holds:
 
 ```
 hard  = n % 10 == 0 || (n > 20 && n % 10 == 5)
 dual  = n ≥ 16 && n % 5 == 1
 pulse = n ≥ 12 && n % 4 == 3
+x     = e == null ? n : max(6, e − (hard ? HardWorth : 0))       // HardWorth = 10; no draw
 shape   = pick([circle, squircle, stadiumV, stadiumH, roundRect, tall, tri, hex, pent, bigCircle])
 if dual: shape = pick([stadiumH, roundRect])
 dir     = (n ≥ 11 && R() < .38) ? −1 : 1                         // the draw always happens for n ≥ 11
 pattern = pick([even, pairs, trains, random, random])
 tx      = dual ? 0 : pick([0, 0, 0, −30, 30])                     // draw (if !dual)
-speed   = JsRound(min(185, 148 + (n − 10) × .75) × (n > 60 ? .95 + R() × .1 : 1) + (hard ? 6 : 0))   // draw (if n > 60)
+speed   = JsRound(min(185, 148 + (x − 10) × .75) × (n > 60 ? .95 + R() × .1 : 1) + (hard ? 6 : 0))   // draw (if n > 60)
 if pulse: amp = .15 + min(.12, (n − 12) × .004); period = 3.2 + R() × 1.6; speed = JsRound(speed × .92)
 L     = LoopLength(shape);  cap = 2L / (47 + .3 × speed)
-fill  = lerp(.55, .88, sqrt(clamp((n − 10)/70, 0, 1))) × (hard ? 1.08 : 1) × (.92 + R() × .16) × (pulse ? .9 : 1)
+fill  = lerp(.55, .88, sqrt(clamp((x − 10)/70, 0, 1))) × (hard ? 1.08 : 1) × (.92 + R() × .16) × (pulse ? .9 : 1)
 total = max(7, JsRound(cap × fill))
 player  = clamp(JsRound(total × .5 + R() × 1.2 − .6), 5, 10);  traffic = max(2, total − player)
 ```
 
-Then for every level: `N = n`, `Seed = ToUint32(n × 104729 + 7)` (compute in
-`long`), and `Feeders = dual ? (rect shape ? [−(w − corner) × .75, +(w − corner) × .75]
-: [−50, 50]) : [tx]`.
+Then for every level: `N = n`, `E = (n ≤ 10 || e == null) ? null : e`,
+`Seed = ToUint32(n × 104729 + 7)` (compute in `long`), and
+`Feeders = dual ? (rect shape ? [−(w − corner) × .75, +(w − corner) × .75]
+: [−50, 50]) : [tx]`. Only `speed`, `fill` and the clock use `x`; the shape,
+direction, pattern, entrances, rush hour and every random draw depend on `n`
+alone, so a level keeps its look whatever `e` is. A hard level starts
+`HardWorth` lower because its own +6 speed, ×1.08 fill and ×.95 clock make up
+about ten levels.
 
 Why the capacity sizing: a cautious player needs a gap of about
 `47 + 0.3 × speed` units to merge, and gaps split as cars go in, so a ring holds
 about `2 × length / gap` cars. Levels fill from 55% of that to 88% by level 80,
 rising fastest early on.
 
-**LevelDef(n)** validates and sets the clock:
+**LevelDef(n, e)** validates and sets the clock (`e` is ignored for n ≤ 10):
 
 ```
 for att = 0 .. 11:
-    d = RawDef(n)                                   // hand level for n ≤ 10
+    d = RawDef(n, e)                                // hand level for n ≤ 10
     d.Traffic = max(0, d.Traffic − att)
     if att ≥ 4: d.Player = max(3, d.Player − floor((att − 2)/2))
     res = GreedySolve(d, extra: 3)
     ref = res.Ok && res.Spare ≥ (n < 25 ? 2 : 1) ? RefSolve(d, REF, maxT: 20) : fail
     if ref.Ok && RefSolve(d, CAUTIOUS, maxT: 60).Ok: break
-slack  = (n ≤ 3 ? 2.2 : lerp(2, 1.4, clamp((n − 4)/60, 0, 1))) × (hard ? .95 : 1) × (dual ? 1.15 : 1)
+x      = e == null ? n : max(6, e − (hard ? HardWorth : 0))
+slack  = (n ≤ 3 ? 2.2 : lerp(2, 1.4, clamp((x − 4)/60, 0, 1))) × (hard ? .95 : 1) × (dual ? 1.15 : 1)
 d.Time = ceil(max(ref.T × slack + 2, d.Player × 1.2 + 3))
 if n == 1: d.Time = 30
 ```
@@ -4512,19 +4901,23 @@ RefSolve(def, P, maxT):             // plans each tap P.lead s ahead, ±P.margin
 
 ### 35.5 The baked set (`LevelSource`, `CarLoopBake`)
 
-- Levels **1–300 ship as data**: `Config/CarLoop/CarLoopLevels.json`, produced
-  by running the **web engine itself** with the Node script in §0.5 (about 30 s,
-  87 KB). Baked levels stay identical across app updates and can be hand-edited
-  or remotely tuned per level.
+- Levels **1–300 of the typical curve** (`e` left out) **ship as data**:
+  `Config/CarLoop/CarLoopLevels.json`, produced by running the **web engine
+  itself** with the Node script in §0.5 (about 30 s, 87 KB). Levels 1–10 always
+  come from it; for 11+ it is the parity reference for the C# generator and
+  the level used when the model is switched off (`CarLoopDirector.Adaptive =
+  false`, a development setting).
 - `CarLoopBake` (editor) checks the file: levels 1–300 present and in order;
   known shapes and patterns; `1 ≤ Time ≤ 60`; `Player 3–10`; `Feeders` 1 or 2
   values. It then runs the C# `LevelDef(n)` for every level and reports any field
   that differs (the JSON wins at runtime; differences point at a porting bug).
-- **Past level 300** `LevelSource` runs the C# `LevelDef(n)` on a worker
-  thread, caches the result, and requests `n + 1` while the level-complete panel
-  is up (as the web does with its 450 ms timeout). If the player reaches a level
-  that is not ready, show the level-intro text "LEVEL N" and start when it
-  arrives.
+- **Adaptive levels** (11+ with the model on, and past level 300 always):
+  `LevelSource.Get(n, e)` runs the C# `LevelDef(n, e)` on a worker thread and
+  caches it under `n@e` (`e` is rounded to 0.5, so a player meets a handful of
+  variants at most). It requests `(n + 1, HeatFor(n + 1))` while the
+  level-complete panel is up (as the web does with its 450 ms timeout), and
+  `(unlocked, HeatFor(unlocked))` during boot. If a level is not ready when it
+  starts, show the level-intro text "LEVEL N" and start when it arrives.
 
 ### 35.6 JavaScript-to-C# parity rules for Car Loop
 
@@ -4539,6 +4932,36 @@ Everything in §10.10 applies, plus:
 | `for (d = lo; d <= hi; d += .5)` | the same accumulating `double` loop | Halves are exact in binary; don't rewrite it as `lo + i * .5` with a different end test. |
 | `t += 1/60` | the same accumulating `double` | Bot times in Appendix C depend on it. |
 | `Math.sin/cos/atan2` | `Math.Sin/Cos/Atan2` | May differ by an ulp on some CPUs. Geometry tests use a 1e-3 tolerance; level fields are compared exactly and any difference is reported, not fatal (the baked JSON is the shipped truth). |
+
+### 35.7 Adaptive levels (`CarLoopDirector`, §4.9)
+
+Car Loop's heat is the effective level `e`: the level whose speed, fill and
+clock a generated level takes. `SkillConfig(12, 20, 14, 2)`: going 12 levels
+harder takes a player who wins half the time down to about 16%.
+
+```
+HeatRange(n)       = [max(10, .3 × min(n, 150)), min(140, n + 40)]
+LevelTarget(n, f)  = 1 − (1 − p) × Mercy^f, where (pos = (n − 1) mod 10)
+                     p = Target[9] on a hard x0 level, Target[4] on a hard x5 level (n > 20),
+                         Target[3] on any other pos 4, else Target[pos]
+HeatFor(n)         = n ≤ 10 ? null
+                   : round(clamp(SkillModel.Heat(skill, LevelTarget(n, fails at n), cfg), lo, hi) × 2) / 2
+Observe(won, q)    = once per attempt (mode play only): Observe(skill, e ?? n, won); for a win
+                     ObserveQuality(skill, e ?? n, q); tries = won ? {0, 0} : {n, fails + 1}; save
+```
+
+- `StartLevel(n)` asks for `LevelSource.Get(n, HeatFor(n))`; levels 1–10 are
+  fixed lessons but still read the player at `e = n`.
+- **Readings.** The first crash or time-out of an attempt is a loss (a revive
+  continues the attempt but doesn't undo it); a clear is a win with
+  `q = Φ((timeLeft / clock − .15 − .1 × boostersUsed) / .2)`.
+- A retry is a new attempt at the new `HeatFor(n)`: after a loss it is eased by
+  mercy, so a player stuck on a level gets a gentler version of it.
+- The floor of 10 keeps a new player's first generated levels near the old
+  level 11, and `.3 × n` keeps late levels from falling back to the first ones; the
+  ceiling lets a strong player run up to 40 levels ahead.
+- The parity tests (§57) use the baked typical-curve set and the
+  `HeatFor` and `LevelDef(n, e)` fixtures in Appendix C.5.
 
 ## 36. Simulation (`Scene.cs`, `Car.cs`, `Sim.cs`)
 
@@ -4660,14 +5083,16 @@ time, Slow-Mo slows it too, and Tow mode freezes it.
 ### 37.3 Starting a level (`StartLevel(n)`)
 
 1. Close every modal, clear pause reasons, leave tow mode, hide the coach.
-2. `def = LevelSource.Get(n)`; scene with traffic colours from §37.8;
+2. `def = LevelSource.Get(n, CarLoopDirector.HeatFor(n))` (§35.7), and a new
+   attempt (`observed = false`); scene with traffic colours from §37.8;
    `time = def.Time`, `state = ready`, `started = false`, zero `slowT`, `lightT`,
    `autoN`, `closeN`, `boostersUsed`, `revives`; hooks `Released`, `Merged`,
    `Settled`, `Crash` (§37.5).
 3. Build the static layer (§41.2), switch to the game HUD, fit the camera.
 4. HUD: "LEVEL N" plus a HARD chip on hard levels; booster bar; car pips; level
    intro (§43.4).
-5. `stats.played++`, save, `level_start` (level, time, traffic, player).
+5. `stats.played++`, save, `level_start` (level, e, time, traffic, player, mu,
+   sd).
 6. If a booster unlocks at or below this level and its intro hasn't been seen,
    open the booster intro 700 ms later (only if still in `ready`), then the
    tutorial; otherwise the tutorial now (§37.7).
@@ -4703,16 +5128,16 @@ feeder), ← and →, Esc or P (pause), 1–4 (boosters).
 - **Win:** `state = won`, island glows green (fading), leave tow mode, hide the
   coach; 110 confetti at the island centre, a ring the size of the island
   (`#7CF0A8`, 0.8 s, width 4); win sound, honk at 380 ms, haptic [20,40,20];
-  player cars flash their headlights (§41.3); `level_complete` (level,
-  timeLeft, close, boosters, revives).
+  player cars flash their headlights (§41.3); `Observe(true, q)` (§35.7);
+  `level_complete` (level, timeLeft, close, boosters, revives).
 - **Crash(a, b)** (play mode): both cars become wrecks thrown off the road
   (§41.4), crash effects at their midpoint, shake 18, crash sound. If the state
   was ready/playing: `state = crashed`, island pulses red (held), haptic
-  [60,40,90], hide coach, leave tow mode, `stats.crashes++`, `level_fail`
-  (reason crash, cars in).
+  [60,40,90], hide coach, leave tow mode, `stats.crashes++`, `Observe(false)`,
+  `level_fail` (reason crash, cars in).
 - **Time up:** `state = timeup`, island pulses red, leave tow mode, hide coach,
   fail sound, haptic [40,60,40], float "TIME!" (`#FF7884`, 30) at the island,
-  `stats.timeups++`, `level_fail` (reason time, cars in).
+  `stats.timeups++`, `Observe(false)`, `level_fail` (reason time, cars in).
 
 ### 37.6 Revive (`DoRevive(kind)`)
 
@@ -4960,7 +5385,7 @@ An earned rewarded view sets `lastRewarded` and `stats.adsWatched++`.
 
 ### 40.4 Analytics events
 
-`level_start` (level, time, traffic, player), `level_complete` (level, timeLeft,
+`level_start` (level, e, time, traffic, player, mu, sd), `skill_update` (§4.9), `level_complete` (level, timeLeft,
 close, boosters, revives), `level_fail` (level, reason, in), `level_reward`
 (level, coins, mult), `revive` (kind, level), `booster_used` (id, level),
 `booster_bought` (id, with), `car_unlocked` (id), `car_bought` (id, coins),
@@ -5371,11 +5796,14 @@ scene, out 0.4 s on leaving), ducked under ads.
   "starter": false, "starterSeen": false, "rated": false,
   "daily": { "last": "2026-10-4", "day": 3 }, "carProg": 0.45, "freeCoinsAt": 0,
   "stats": { "played": 0, "won": 0, "crashes": 0, "timeups": 0, "revives": 0, "adsWatched": 0 },
-  "sinceInt": 0, "retries": 0
+  "sinceInt": 0, "retries": 0,
+  "skill": { "mu": 24.6, "sd": 6.1, "n": 18 }, "tries": { "n": 0, "fails": 0 }
 }
 ```
 
-Same fields as the web's `roundabout-rush-v1`, minus `sound`, `music`,
+`skill` and `tries` are the adaptive model's (§4.9, §35.7); an invalid or
+missing `skill` is recreated from the prior. Otherwise the same fields as the
+web's `roundabout-rush-v1`, minus `sound`, `music`,
 `haptics` and `noAds` (app settings and purchases in Playbox) and `dev`
 (development builds keep it in `PlayerPrefs`). `daily.last` is the local date
 as `Y-M-D` without padding; `freeCoinsAt` is Unix ms. Save after every change,
@@ -5399,22 +5827,1220 @@ as the web does.
 
 ---
 
-# Part V: Shipping
+# Part V: Cake Sort
 
-## 46. Tests
+## 46. Rules
+
+Cake Sort is a placement puzzle on a 4 × 5 counter. Implement exactly:
+
+- **Counter.** 20 cells, 4 columns × 5 rows, numbered row by row from the top
+  left (`c = row × 4 + col`). Two cells are **neighbours** only when they share a
+  side; corners never touch. Neighbour order is up, left, right, down, and it
+  decides ties, so keep it.
+- **Cake stands.** Some levels put glass cake stands on cells. A stand is never
+  in the bottom row, never next to another stand, and nothing can go on it.
+- **Plates and slices.** A plate holds up to **6 slices**. Each slice is one of
+  ten cakes (§55). A plate keeps each cake's slices together in one run of slots.
+- **Tray.** Three plates. New plates come only when all three are down.
+- **Placing.** Drag a tray plate onto any empty cell (or tap a plate, then tap a
+  cell). **Placing never waits for the sort:** the player can put a plate down
+  while slices from the last one are still in the air (§49.4).
+- **The sort.** When a plate lands (or changes), for each cake on it, among the
+  plate and its neighbours holding that cake, the plate that can end up holding
+  the most of it becomes the gathering point, and that cake's slices on the
+  plates next to it fly over, smallest groups first, as far as there is room. A
+  transfer happens only if it leaves more slices together than any giving plate
+  had, so the sort always settles. Every plate a transfer touches is checked
+  again, so sorting chains across the counter (§48.4).
+- **Cakes.** Six slices of one cake on one plate make a **whole cake**: it spins,
+  flies to the order card at the top and counts toward the order. A plate left
+  empty is cleared away.
+- **Win** when the number of cakes baked reaches the order (`goal`).
+- **Full counter.** When a tray plate is waiting and no cell is empty, the level
+  is stuck: a bar offers the hammer, undo and restart.
+- **Boosters.** Undo (takes back the last plate with everything it caused; 3 per
+  try, then 30 coins each), Hammer (clears one plate off the counter; 2 to start,
+  60 coins), New plates (swaps the plates still in the tray; 2 to start, 40
+  coins). Hammer only works when nothing is sorting.
+- **Coins.** Start with 100. A level pays 10 (hard 30, super hard 60), plus 5 if
+  no booster was used.
+- **Cakes on the menu.** Each level uses a few of the cakes unlocked so far; a
+  cake joins the menu at the level in §55 and is shown off on a turntable the
+  first time it appears.
+- **Levels** are made on the device when they start, at a difficulty the
+  adaptive model picks for this player (§4.9, §48.3). In every block of ten the
+  5th level is **hard** and the 10th **super hard**: they aim at a lower win rate
+  and always have one and two cake stands.
+- **Level 1** is a fixed tutorial: three strawberry slices on the counter, three
+  more in the tray, so the first drop bakes a cake.
+- **Progress** (level, coins, boosters, the level in progress, the cake
+  collection, the skill estimate) saves after every plate.
+
+---
+
+## 47. Units, camera and scene
+
+**Screen first, then 3D.** Every position in this part is computed in screen dp
+exactly as the web computes it (§50), then turned into a point on the counter.
+That keeps every web formula usable as written while the cakes are real 3D
+meshes that light, sort and spin correctly.
+
+- **World.** The counter is the plane `y = 0`; `+x` is screen right; `+z` comes
+  toward the viewer (screen down). 1 world unit = 1 dp.
+- **Camera.** Orthographic, rotated `α = asin(0.68) = 42.8436°` about +x so it
+  looks down and toward −z. A circle on the counter then shows as an ellipse
+  squashed to 0.68, exactly the web's `SQ`, and a height `y` shows as
+  `y × cos α = 0.73268 y` on screen.
+- **Conversion.** A web screen point `(sx, sy)` on the counter at web height `hz`
+  (dp drawn upward) is the world point `(sx − W/2, hz / cos α, (sy − Yref) / SQ)`
+  plus the camera offset that puts `Yref` at the screen's vertical centre. Every
+  web "height" (cake height, plate thickness, lift, dome height) is divided by
+  `cos α` when built in 3D, so it shows on screen at the web's size.
+- **Orthographic size** = screen height in dp / 2 (so 1 unit = 1 dp on screen
+  for x; z is foreshortened by SQ as on the web).
+- **Depth.** Cakes, plates and stands are opaque meshes with depth write, so
+  overlaps sort themselves (the web painter's order is not needed). Glass,
+  shadows, doilies and particles are transparent and drawn after, sorted by
+  distance.
+- **Layers.** `CakeSort` (15) for the counter; `CakeFx` (16) for cakes being
+  served, sparkles and the tutorial hand, drawn by an overlay camera (URP camera
+  stack) **after** the HUD, because a served cake flies on top of the order card.
+  The HUD canvas is *Screen Space – Camera* on the base camera.
+- **Scene `CakeSort`** (built by `SceneBuilder`): `CakeRig` (base camera,
+  counter root, tray root, slice pool, particle pool), `CakeFxRig` (overlay
+  camera), UI canvas with `CakeLobbyScreen` and `CakePlayScreen`, `SheetHost`,
+  `Toast`, and `CakeSortController` (§49).
+
+---
+
+## 48. Engine (pure C#, full source)
+
+Namespace `Playbox.CakeSort.Engine`, assembly `Playbox.CakeSort.Engine`
+(`noEngineReferences: true`, refs `Playbox.Common`). It must reproduce the web
+engine (`playbox/src/games/cake-sort.html`, between the engine markers) exactly;
+Appendix E has the fixtures.
+
+### 48.1 `CakeRng.cs`, `Seeds` and constants
+
+```csharp
+namespace Playbox.CakeSort.Engine
+{
+    /// Mulberry32 with its state as a plain int, like the web's rngNext({ s }).
+    /// The state is saved with a level in progress and in every undo snapshot.
+    public sealed class CakeRng
+    {
+        public int S;
+        public CakeRng(int s) { S = s; }
+        public double Next()
+        {
+            unchecked
+            {
+                S = S + 0x6D2B79F5;
+                uint s = (uint)S;
+                uint t = (s ^ (s >> 15)) * (1u | s);
+                t = (t + ((t ^ (t >> 7)) * (61u | t))) ^ t;
+                return (t ^ (t >> 14)) / 4294967296.0;
+            }
+        }
+        public CakeRng Clone() => new CakeRng(S);
+    }
+
+    public static class Cfg
+    {
+        public const int Cap = 6, Cols = 4, Rows = 5, Cells = 20, Tray = 3;
+        public const int Stand = -1;                     // a cell value: a cake stand (null = empty, list = plate)
+        public static readonly int[] UnlockAt = { 1, 1, 1, 3, 5, 8, 12, 16, 21, 27 };   // level each cake joins the menu
+        public static readonly double[] Ramp = { 0, .4, .8, 1.2, 2.4, .5, .9, 1.3, 1.7, 3.4 };
+        public const double BlockStep = .6, HeatMax = 10, StandWorth = .5;
+        public const int BaseBlocks = 8;
+        /// Port of seedFor(n, salt) (same as Paint Sort's Seeds.SeedFor).
+        public static uint SeedFor(int n, int salt) => Playbox.PaintSort.Engine.Seeds.SeedFor(n, salt);
+        public static int JsRound(double x) => (int)System.Math.Floor(x + 0.5);
+    }
+}
+```
+
+(If the Cake Sort engine must not reference Paint Sort's assembly, copy
+`SeedFor` into `Cfg`; it is eight lines.)
+
+### 48.2 Cells
+
+A counter is `List<int>[] cells` of length 20: `null` is empty, a list is a plate
+(bottom slot first), and the stand marker is kept in a separate `bool[] stand`
+mirror **or** as a shared static list instance `StandCell` that every engine
+function tests by reference. The web uses `-1` in the same array; pick one
+representation and keep it everywhere. This plan uses `object[]` mirroring the
+web exactly:
+
+```csharp
+// cells[c] is null (empty), the boxed int -1 (stand), or a List<int> (plate)
+static bool IsPlate(object v) => v is List<int>;
+static bool IsStand(object v) => v is int i && i == Cfg.Stand;
+```
+
+### 48.3 `Difficulty.cs`
+
+```csharp
+using System;
+
+namespace Playbox.CakeSort.Engine
+{
+    public sealed class Spec
+    {
+        public int N, Block, Pos, Tier, Pool, Blocked, K, Goal, Pre, Reward;
+        public double Heat, Mix, Mix3, Help, Big;
+    }
+
+    public static class Difficulty
+    {
+        static int BlockOf(int n) => Math.Min(Cfg.BaseBlocks, (Math.Max(1, n) - 1) / 10);
+
+        /// The sawtooth a typical new player starts on; also the heat when no model is given.
+        public static double BaseHeat(int n) { n = Math.Max(1, n); return BlockOf(n) * Cfg.BlockStep + Cfg.Ramp[(n - 1) % 10]; }
+
+        /// How far the model may move level n: never below 2.5 under the start of its
+        /// block of ten, never above 4 over the block's hardest level.
+        public static (double Lo, double Hi) HeatRange(int n)
+        {
+            double start = BlockOf(n) * Cfg.BlockStep;
+            return (Math.Max(0, start - 2.5), Math.Min(Cfg.HeatMax, start + Cfg.Ramp[9] + 4));
+        }
+
+        /// Every knob follows the heat h. Cake stands come with heat; a hard level
+        /// always has one and a super-hard level two. Each stand spends StandWorth
+        /// of the heat and the rest drives the other knobs.
+        public static Spec SpecFor(int n, double? h = null)
+        {
+            n = Math.Max(1, n);
+            int block = (n - 1) / 10, pos = (n - 1) % 10;
+            int tier = pos == 9 ? 2 : pos == 4 ? 1 : 0;
+            double heat = Math.Min(Cfg.HeatMax, Math.Max(0, h ?? BaseHeat(n)));
+            int pool = 0; foreach (var u in Cfg.UnlockAt) if (u <= n) pool++;
+            int blocked = n < 4 ? 0 : Math.Min(4, Math.Max(tier, heat >= 3.5 ? 1 + (int)Math.Floor((heat - 3.5) / 2) : 0));
+            double k = Math.Max(0, heat - blocked * Cfg.StandWorth);
+            return new Spec
+            {
+                N = n, Block = block, Pos = pos, Tier = tier, Heat = heat, Pool = pool, Blocked = blocked,
+                K = n == 1 ? 3 : Math.Max(3, Math.Min(Math.Min(pool, 8), Cfg.JsRound(3.2 + k * .5))),
+                Goal = n == 1 ? 3 : Math.Max(5, Math.Min(26, Cfg.JsRound(6 + k * 2.2))),
+                Pre = n < 3 ? 0 : Math.Min(6, 2 + (int)Math.Floor(k * .8)),
+                Mix = Math.Min(.7, .28 + k * .07),               // chance a plate holds a second cake
+                Mix3 = Math.Min(.3, Math.Max(0, k - 1.5) * .07),  // and a third
+                Help = Math.Max(.3, .64 - k * .06),               // chance a new plate's cake is one already out
+                Big = Math.Min(.5, .12 + k * .05),                // chance of a 4- or 5-slice plate
+                Reward = tier == 2 ? 60 : tier == 1 ? 30 : 10
+            };
+        }
+    }
+}
+```
+
+### 48.4 `Sort.cs` (the rules)
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Playbox.CakeSort.Engine
+{
+    public sealed class Step
+    {
+        public int D, F;                       // gathering plate, cake
+        public List<(int Cell, int Slices)> From = new();
+        public bool Cake;                      // D became a whole cake and was served (D is now empty)
+        public List<int> Emptied = new();      // giving plates left empty (now empty cells)
+    }
+
+    public static class Sort
+    {
+        public static bool IsPlate(object v) => v is List<int>;
+        public static bool IsStand(object v) => v is int i && i == Cfg.Stand;
+
+        /// Up, left, right, down: the order decides ties.
+        public static List<int> Neighbours(int c)
+        {
+            int x = c % Cfg.Cols, y = c / Cfg.Cols; var o = new List<int>(4);
+            if (y > 0) o.Add(c - Cfg.Cols);
+            if (x > 0) o.Add(c - 1);
+            if (x < Cfg.Cols - 1) o.Add(c + 1);
+            if (y < Cfg.Rows - 1) o.Add(c + Cfg.Cols);
+            return o;
+        }
+        public static int CountOf(List<int> p, int f) { int k = 0; foreach (var x in p) if (x == f) k++; return k; }
+        /// Distinct cakes in order of first appearance.
+        public static List<int> KindsOf(List<int> p) { var o = new List<int>(); foreach (var x in p) if (!o.Contains(x)) o.Add(x); return o; }
+        public static bool IsCake(List<int> p) => p.Count == Cfg.Cap && p.All(x => x == p[0]);
+
+        /// Slices leave from the end of their run and arrive after it.
+        public static void TakeSlices(List<int> p, int f, int k)
+        {
+            for (int i = p.Count - 1; i >= 0 && k > 0; i--) if (p[i] == f) { p.RemoveAt(i); k--; }
+        }
+        public static void AddSlices(List<int> p, int f, int k)
+        {
+            int at = p.LastIndexOf(f);
+            var ins = Enumerable.Repeat(f, k);
+            if (at < 0) p.AddRange(ins); else p.InsertRange(at + 1, ins);
+        }
+
+        sealed class Gather { public int[] Key; public int F, D; public List<(int, int)> From; }
+
+        static int Cmp(int[] a, int[] b) { for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return a[i] - b[i]; return 0; }
+
+        static Gather BestGather(object[] cells, int c)
+        {
+            var p = (List<int>)cells[c];
+            Gather best = null;
+            foreach (int f in KindsOf(p))
+            {
+                var cands = new List<int> { c };
+                foreach (int n in Neighbours(c)) if (cells[n] is List<int> q && q.Contains(f)) cands.Add(n);
+                if (cands.Count < 2) continue;
+                foreach (int d in cands)
+                {
+                    var pd = (List<int>)cells[d];
+                    int cd = CountOf(pd, f), room = Cfg.Cap - pd.Count;
+                    if (room <= 0) continue;
+                    var srcs = new List<(int N, int K)>();
+                    foreach (int n in Neighbours(d))
+                        if (cells[n] is List<int> q && !IsCake(q)) { int k = CountOf(q, f); if (k > 0) srcs.Add((n, k)); }
+                    srcs = srcs.OrderBy(s => s.K).ThenBy(s => s.N).ToList();   // stable, like the web's sort
+                    List<(int, int)> from; int final;
+                    for (;;)
+                    {
+                        from = new List<(int, int)>(); int left = room;
+                        foreach (var (n, k) in srcs) { if (left == 0) break; int take = Math.Min(k, left); from.Add((n, take)); left -= take; }
+                        final = cd + room - left;
+                        int fin = final;
+                        var keep = srcs.Where(s => s.K < fin).ToList();
+                        if (keep.Count == srcs.Count) break;
+                        srcs = keep;
+                    }
+                    if (from.Count == 0) continue;
+                    int others = pd.Count - cd;
+                    bool cake = final == Cfg.Cap && others == 0;
+                    int moved = final - cd;
+                    // completes a cake > most slices together > fewest other cakes > fewest slices flown > the plate that changed
+                    var key = new[] { cake ? 1 : 0, final, -others, -moved, d == c ? 1 : 0 };
+                    if (best == null || Cmp(key, best.Key) > 0) best = new Gather { Key = key, F = f, D = d, From = from };
+                }
+            }
+            return best;
+        }
+
+        /// Settles the counter after the plate at `start` changed. Mutates `cells`
+        /// and returns the steps in playing order.
+        public static List<Step> Resolve(object[] cells, int start)
+        {
+            var steps = new List<Step>(); var queue = new List<int> { start }; int guard = 0;
+            while (queue.Count > 0 && guard < 400)
+            {
+                int c = queue[0]; queue.RemoveAt(0);
+                for (;;)
+                {
+                    if (++guard > 400) break;
+                    if (!(cells[c] is List<int> pc) || IsCake(pc)) break;
+                    var g = BestGather(cells, c);
+                    if (g == null) break;
+                    var touched = new List<int> { g.D };
+                    foreach (var (n, k) in g.From) { TakeSlices((List<int>)cells[n], g.F, k); AddSlices((List<int>)cells[g.D], g.F, k); touched.Add(n); }
+                    var step = new Step { D = g.D, F = g.F };
+                    foreach (var (n, k) in g.From) step.From.Add((n, k));
+                    foreach (var (n, _) in g.From) if (((List<int>)cells[n]).Count == 0) { cells[n] = null; step.Emptied.Add(n); }
+                    if (IsCake((List<int>)cells[g.D])) { step.Cake = true; cells[g.D] = null; }
+                    steps.Add(step);
+                    foreach (int t in touched) if (t != c && cells[t] is List<int> && !queue.Contains(t)) queue.Add(t);
+                    if (!(cells[c] is List<int>)) break;
+                }
+            }
+            return steps;
+        }
+    }
+}
+```
+
+### 48.5 `Level.cs` (dealing, new level, placing)
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Playbox.CakeSort.Engine
+{
+    public sealed class Level
+    {
+        public int N; public Spec Sp; public List<int> Flv;     // cakes on the menu, ascending
+        public object[] Cells = new object[Cfg.Cells];
+        public List<int>[] Tray = new List<int>[Cfg.Tray];
+        public CakeRng Rs; public int Baked, Moves;
+        public Dictionary<int, int> BakedBy = new();
+    }
+
+    public sealed class PlaceResult { public List<Step> Steps; public bool Dealt; }
+
+    public static class Levels
+    {
+        public static List<int> MakePlate(object[] cells, Spec sp, List<int> flv, CakeRng rs)
+        {
+            double R() => rs.Next();
+            int n; double u = R();
+            if (u < sp.Big) n = R() < .7 ? 4 : 5;
+            else n = u < sp.Big + (1 - sp.Big) * .22 ? 1 : u < sp.Big + (1 - sp.Big) * .62 ? 2 : 3;
+            int kinds = 1;
+            if (n >= 2 && R() < sp.Mix) kinds = 2;
+            if (n >= 3 && kinds == 2 && R() < sp.Mix3) kinds = 3;
+            // what's already out, weighted by slice count, in order of first appearance (the web's Map)
+            var outF = new List<int>(); var outK = new List<int>();
+            foreach (var v in cells) if (v is List<int> p) foreach (int f in p)
+            { int i = outF.IndexOf(f); if (i < 0) { outF.Add(f); outK.Add(1); } else outK[i]++; }
+            var chosen = new List<int>();
+            while (chosen.Count < kinds)
+            {
+                int f = -1;
+                if (outF.Count > 0 && R() < sp.Help)             // no draw when nothing is out
+                {
+                    int tot = 0; for (int i = 0; i < outF.Count; i++) if (!chosen.Contains(outF[i])) tot += outK[i];
+                    double x = R() * tot;
+                    for (int i = 0; i < outF.Count; i++) { if (chosen.Contains(outF[i])) continue; x -= outK[i]; if (x < 0) { f = outF[i]; break; } }
+                }
+                if (f < 0) { var left = flv.Where(g => !chosen.Contains(g)).ToList(); f = left[(int)(R() * left.Count)]; }
+                chosen.Add(f);
+            }
+            var counts = chosen.Select(_ => 1).ToArray();
+            for (int k = kinds; k < n; k++) counts[(int)(R() * kinds)]++;
+            var plate = new List<int>();
+            for (int i = 0; i < chosen.Count; i++) for (int k = 0; k < counts[i]; k++) plate.Add(chosen[i]);
+            return plate;
+        }
+
+        public static bool Deal(Level L)
+        {
+            if (L.Tray.Any(p => p != null)) return false;
+            for (int t = 0; t < Cfg.Tray; t++) L.Tray[t] = MakePlate(L.Cells, L.Sp, L.Flv, L.Rs);
+            return true;
+        }
+
+        /// Level n at heat h: the menu, the stands, the plates already out and the
+        /// first tray. Deterministic per (n, heat).
+        public static Level NewLevel(int n, double? h = null)
+        {
+            var sp = Difficulty.SpecFor(n, h);
+            var rs = new CakeRng(unchecked((int)Cfg.SeedFor(n, 11 + Cfg.JsRound(sp.Heat * 20))));
+            var pool = new List<int>(); for (int f = 0; f < Cfg.UnlockAt.Length; f++) if (Cfg.UnlockAt[f] <= n) pool.Add(f);
+            var newest = pool.Where(f => Cfg.UnlockAt[f] == n && n > 1).ToList();
+            var rest = pool.Where(f => !newest.Contains(f)).ToList();
+            for (int i = rest.Count - 1; i > 0; i--) { int j = (int)(rs.Next() * (i + 1)); (rest[i], rest[j]) = (rest[j], rest[i]); }
+            var flv = newest.Concat(rest).Take(sp.K).OrderBy(f => f).ToList();
+            var cells = new object[Cfg.Cells];
+            int tries = 0, placed = 0;
+            while (placed < sp.Blocked && tries++ < 200)                       // stands: never the bottom row, never side by side
+            {
+                int c = (int)(rs.Next() * (Cfg.Cells - Cfg.Cols));
+                if (cells[c] != null || Sort.Neighbours(c).Any(m => Sort.IsStand(cells[m]))) continue;
+                cells[c] = Cfg.Stand; placed++;
+            }
+            var pre = new Spec { Mix = sp.Mix, Mix3 = sp.Mix3, Help = 0, Big = Math.Min(.3, sp.Big) };
+            tries = 0; placed = 0;
+            while (placed < sp.Pre && tries++ < 300)                           // plates already out, none touching a shared cake
+            {
+                int c = (int)(rs.Next() * Cfg.Cells);
+                if (cells[c] != null) continue;
+                var p = MakePlate(cells, pre, flv, rs);
+                if (Sort.Neighbours(c).Any(m => cells[m] is List<int> q && q.Any(f => p.Contains(f)))) continue;
+                cells[c] = p; placed++;
+            }
+            var L = new Level { N = n, Sp = sp, Flv = flv, Cells = cells, Rs = rs };
+            if (n == 1)
+            {
+                cells[9] = new List<int> { 0, 0, 0 }; cells[14] = new List<int> { 1, 1, 1, 1 };
+                L.Tray = new[] { new List<int> { 0, 0, 0 }, new List<int> { 2, 2, 1 }, new List<int> { 2, 2 } };
+                return L;
+            }
+            Deal(L);
+            return L;
+        }
+
+        public static PlaceResult Place(Level L, int t, int c)
+        {
+            if (L.Tray[t] == null || L.Cells[c] != null) return null;
+            L.Cells[c] = L.Tray[t]; L.Tray[t] = null; L.Moves++;
+            var steps = Sort.Resolve(L.Cells, c);
+            foreach (var s in steps) if (s.Cake) { L.Baked++; L.BakedBy[s.F] = (L.BakedBy.TryGetValue(s.F, out var k) ? k : 0) + 1; }
+            bool dealt = Deal(L);
+            return new PlaceResult { Steps = steps, Dealt = dealt };
+        }
+
+        public static bool IsWon(Level L) => L.Baked >= L.Sp.Goal;
+        public static bool IsStuck(Level L) => !IsWon(L) && L.Tray.Any(p => p != null) && !L.Cells.Contains(null);
+    }
+}
+```
+
+Note the `pre` spec: the web copies the whole spec and overrides `help` and
+`big`; only `Mix`, `Mix3`, `Help` and `Big` are read by `MakePlate`, so the copy
+above is equivalent. `MakePlate` draws `R()` for the help test only when
+something is out, and that draw still happens when `Help` is 0.
+
+### 48.6 `Bots.cs` and `Probe.cs` (tests, the probe CLI and the adaptive simulation)
+
+Port `cloneLevel`, `boardScore`, `candidates`, `botMove`, `playout` and `probe`
+from the web as written (they are short). Their exact behaviour:
+
+- `BoardScore(cells)`: +16 per empty cell; per plate −14 × (kinds − 1) +
+  1.4 × count² per cake; +3 per neighbouring pair (counted once, `n > c`) that
+  shares a cake.
+- `BotMove(L, skill, rand)`: candidates are every (tray slot, empty cell) in tray
+  order then cell order. **Skilled** (`skill ≥ 1`): for each, clone, place,
+  resolve; score `120 × cakes + BoardScore + 6 × rand()`; best wins (first on
+  ties). **Casual**: the candidates whose cell has a neighbour sharing a cake with
+  that tray plate; with chance .85 pick uniformly among them, else uniformly
+  among all.
+- `Playout(n, skill, seed, h)`: `NewLevel(n, h)`, then `L.Rs.S ^= seed` (int32
+  xor), `rand = new CakeRng(seed)`; up to 600 placements; return `Moves` on a
+  win, −1 when no move is left or the cap is reached.
+- `Probe(from, to, runs)`: per level, `runs` casual playouts with seeds
+  `SeedFor(n, 500 + i)` and skilled with `SeedFor(n, 900 + i)` (cast to int);
+  rows `N, Tier, K, Goal, Blocked, Heat, Casual, Skilled, Fail = mean, Plates`.
+
+### 48.7 Parity rules
+
+Everything in §10.10 applies, plus:
+
+| JavaScript | C# |
+| --- | --- |
+| `x \| 0` on a non-negative double (indices from `r() * n`) | `(int)x` (truncation) |
+| `seedFor(...) \| 0` | `unchecked((int)SeedFor(...))` |
+| `Math.round` | `Cfg.JsRound` |
+| `arr.sort((a, b) => a[1] - b[1] \|\| a[0] - b[0])` | `OrderBy(K).ThenBy(N)` (stable) |
+| `new Map()` iteration | insertion-ordered parallel lists (§48.5) |
+| `queue.shift()` / `includes` | `List<int>` with `RemoveAt(0)` / `Contains` (the queue is tiny) |
+
+---
+
+## 49. Level state, the placement queue and game flow
+
+### 49.1 State (`CakeLevelState`, saved as `cur`, §56.1)
+
+`N`, `H` (the heat this attempt was made at), `Flv`, `Cells`, `Tray`, `Rs` (int),
+`Baked`, `BakedBy`, `Moves`, `Undos` (left this try), `Clean` (no booster used),
+`MinFree` (fewest empty cells seen this attempt, starts at 20), `Observed` (this
+attempt has already been read by the skill model), plus the runtime-only `Won`.
+Undo snapshots hold `Cells`, `Tray`, `Rs`, `Baked`, `BakedBy`, `Moves` (deep
+copies), at most 12.
+
+### 49.2 Starting a level (`StartLevel(n, fresh)`)
+
+1. Close sheets; clear the drag, selection, hammer mode, combo, the undo stack
+   and every animation (`StopPlayback`, §49.4); remove floats; hide the bar.
+2. Resume when `!fresh && cur != null && cur.N == n`; otherwise
+   `h = Director.HeatFor(n)` (§4.9) and `NewLevel(n, h)` with `Undos = 3`,
+   `Clean = true`, `MinFree = 20`, `Observed = false`.
+3. Tutorial on when `n == 1` and not resumed (the coach line is shown only on
+   that level, at a fixed height, so the counter never moves).
+4. Show the play screen; tier backdrop; menu chips with baked counts; HUD.
+5. Next frame: layout (§50), build visuals from the state with a pop-in
+   (plates `born` at now + random 0–120 ms, tray at now + 70 ms × slot), save.
+6. Hard or super hard and not resumed: the hard intro (§52.7), then the new-cake
+   sheet if any; otherwise the new-cake sheet if any cake on the menu has not
+   been seen (`seen[f]`); level 1 marks its three cakes seen silently.
+7. If the resumed state is stuck, show the full-counter bar.
+
+### 49.3 Placing (`PutDown(t, c, from, lift)`, `Commit(t, c)`)
+
+```
+Free(c) = state.Cells[c] == null && (visual plate at c is absent or dying) && no mover is headed to c
+PutDown(t, c): ignore if busy (won), tray t empty or already in flight, or !Free(c)
+    selection = none; drop sound; mover {t, c, from, to = cell centre, lift, 150 ms, easeOutCubic} → Commit
+Commit(t, c):
+    push undo snapshot (cap 12)
+    the tray plate's visual becomes the cell's plate (born = now − 200: a small squash on landing)
+    place sound, haptic 8
+    res = Levels.Place(state, t, c)
+    MinFree = min(MinFree, empty cells now)
+    for each cake step: stats.cakes++, baked[f]++
+    tutorial step 1 → 2
+    if res.Dealt: the three new tray visuals pop in at now + 160 + 80 × slot, deal sound at +160 ms
+    if IsWon(state): busy = true          // the order is filled: no more plates
+    save; Enqueue(res.Steps)
+```
+
+### 49.4 The step queue (input never waits)
+
+The engine settles a placement at once, so the board state is always final; the
+picture catches up through one queue shared by every placement. A placement's
+steps always come after every earlier placement's steps, so playing them
+strictly in order keeps the visuals consistent with the board however fast
+plates go down.
+
+```
+queue = [], playing = false, gen = 0
+Enqueue(steps): queue.AddRange(steps); Pump()
+Pump(): if playing: return
+        if queue empty: Settle(); return
+        playing = true; g0 = gen; wait = PlayStep(queue.Dequeue())
+        after wait ms: if gen == g0: playing = false; Pump()
+Sorting = playing || queue not empty
+StopPlayback(): gen++; queue.Clear(); playing = false; flyers, served cakes and movers cleared
+```
+
+`PlayStep` is §52.3. `Settle()` runs when the queue runs dry:
+1. combo = 0.
+2. Compare each cell's visual plate (ignoring dying ones) with the state; rebuild
+   any that differ and log a warning (never happens in normal play; it guards
+   against bugs).
+3. Won: `busy = true`; open the win sheet after 1250 ms if a cake is still
+   flying to the order card, else after 250 ms.
+4. Stuck: read a lost try (§49.7); show the full-counter bar unless a mover is in
+   flight. Otherwise hide the bar (unless in hammer mode).
+5. Tutorial: step 2 and a cake baked → step 3.
+
+### 49.5 Boosters
+
+| Booster | Rule |
+| --- | --- |
+| Undo | Not while won or while a mover is in flight. Needs a snapshot ("Nothing to undo" toast and bonk otherwise). Uses one of the 3 free undos of this try, then offers to buy one for 30. Restores the snapshot, `StopPlayback`, rebuilds visuals (tray pops in), shown counts = state, undo sound, `Clean = false`. |
+| Hammer | Not while won, sorting or a mover is in flight ("Wait for the slices to settle" toast). Needs a plate on the counter. With none left, offers one for 60. Hammer mode: plates pulse; the bar reads "Tap a plate to clear it off the counter" with Cancel; the booster button shows accent. Tapping a plate: remove it from the state, `hammer−−`, `Clean = false`, clear the undo stack, shards (§52.6), the plate dies at once, smash sound, haptic [30,30,50], leave hammer mode. |
+| New plates | Not while won or a mover is in flight. With none left, offers one for 40. Replaces every tray plate still there with `MakePlate(cells, spec, menu, Rs)` in slot order, pops them in (80 ms stagger), refresh sound, `Clean = false`, clears the undo stack. |
+
+The buy sheet: eyebrow "Booster", title "Another undo?" / "Buy a hammer?" / "Buy
+new plates?", sub "{price} coins. You have {coins}.", actions "Buy for {price}"
+and "Not now". Not enough coins: toast "Not enough coins ({price} needed)" and
+bonk.
+
+### 49.6 Restart, win and economy
+
+- **Restart** (pause menu, full-counter bar): with no plates placed it restarts
+  at once; otherwise a sheet "Start this level again?" / "The counter is cleared
+  and you get a fresh set of plates." with "Restart" and "Keep playing". Giving up
+  after 5 or more plates is a lost try (§49.7). The new attempt is made at the
+  model's new heat.
+- **Win** (`Win()`, once): `Won = true`; shown counts = state; read the win
+  (§49.7); coins += reward + (Clean ? 5 : 0); `level = max(level, n + 1)`;
+  `cur = null`; stats (won, hard, super); flush the save; win sound, haptic
+  [20,40,20,40,60]; after 350 ms the win sheet (§54.4) with a coin count-up (step
+  `max(1, round(total/12))` every 55 ms, coin sound per step).
+
+| Constant | Value |
+| --- | --- |
+| Starting coins | 100 |
+| Starting inventory | 2 hammers, 2 new plates |
+| Undos per try | 3 |
+| Reward normal / hard / super hard | 10 / 30 / 60 |
+| Bonus for no booster | +5 |
+| Prices: undo / hammer / new plates | 30 / 60 / 40 |
+| Undo history cap | 12 |
+
+### 49.7 Skill readings (`CakeDirector`, §4.9)
+
+One reading per attempt (`Observed` guards it):
+- **Lost:** the counter fills (read when the queue settles on a stuck state),
+  or a restart after 5 or more plates.
+- **Won:** at the win, then a quality reading
+  `q = Φ((MinFree / (20 − stands) − 0.12 − (Clean ? 0 : 0.1)) / 0.3)`: bots that
+  win half the time keep about 12% of the counter free at the tightest moment,
+  easy wins about half of it.
+- A win resets `tries`; a loss increments `tries.fails` for this level, which
+  eases the next attempt's target (mercy).
+
+### 49.8 Tutorial (level 1)
+
+| Step | Coach line | Pointer |
+| --- | --- | --- |
+| 1 | "Drag the strawberry plate next to the other strawberries." | a hand from tray slot 0 to cell 10, 1.8 s loop: position eased (easeInOutCubic of min(1, 1.4u)), fading out over the last 15% |
+| 2 (after the first plate) | "Six slices of one cake make a whole cake." | none |
+| 3 (after the first cake) | "Mixed plates sort themselves when they touch. Bake 3 cakes!" | none; cleared after 6 s |
+
+The hand: a white glove outline (the web's `drawHand` path), 0.32 cw tall,
+rotated −0.35 rad, surface fill and 2.2 dp ink stroke, 0.2 cw below the target.
+
+---
+
+## 50. Board layout and input
+
+### 50.1 Layout (`CakeLayout`, port of `layout`)
+
+Measure the field rect (between the coach line or order card and the booster
+row) in dp: `fx, fy, fw, fh`; the full play view is `W × H`.
+
+```
+RP = .8, TOP = .42, MID = .14, TRAY_H = 1.25
+cw    = max(36, min((fw − 36)/4, fh/(TOP + 5·RP + MID + TRAY_H), 116))     // cell width
+rp    = cw · RP                                                             // row pitch on screen
+used  = cw · (TOP + 5·RP + MID + TRAY_H)
+bx    = fx + (fw − 4cw)/2
+by    = fy + max(0, (fh − used)/2) + cw·TOP
+pr    = .44 cw                       // plate radius; cake radius R = .8 pr; cake height = .52 R
+cell centre (c): x = bx + (c mod 4 + .5)·cw,  y = by + (floor(c/4) + .5)·rp
+trayY = by + 5·rp + MID·cw + .58 cw
+gap   = min(1.3 cw, (W − 24)/3);  tray x = W/2 − gap, W/2, W/2 + gap
+```
+
+Static pieces (rebuilt on layout and theme change):
+- **Tablecloth**: rounded rect (radius 18) from `(bx − .14cw, by − .5rp − .06cw)`
+  size `(4cw + .28cw, 5rp + .2cw)`, `cs-cloth` fill, gingham of `cs-check`
+  (stripes `max(10, cw/5)` wide every other band, both directions), 2 dp
+  `cs-cloth-edge` outline, a shadow (`cs-shadow`) offset (2, 6).
+- **Doilies** on every non-stand cell: radius `1.06 pr`, 18 scallops of radius
+  `.11 × 1.06 pr` around `.93 × 1.06 pr`, `cs-mat` fill; a dashed ring (2 on, 3
+  off, 1.2 dp, `cs-mat-edge`) at `.78 ×`. Lying on the counter, so the camera
+  squashes them to 0.68 like the web.
+- **Tray board**: width `min(W − 16, gap·2 + 1.2cw)`, height `1.02cw`, radius 22,
+  vertical gradient `cs-wood → cs-wood-2`, 4 grain curves (rgba(0,0,0,.08),
+  1.4 dp), a 2 dp rgba(255,255,255,.35) inner edge, shadow offset (2, 6); under
+  each slot a spot: ellipse `1.04 pr`, rgba(0,0,0,.05), and a dashed ring
+  (4 on, 5 off, 1.5 dp, white α .4) at `.98 pr`.
+
+The web draws all of that into one canvas; in Unity the cloth, doilies and tray
+are textured quads on the counter plane (§51.6).
+
+### 50.2 Input (`CakeInput`)
+
+All hit tests are in screen dp.
+
+- **Tray hit:** the nearest tray slot (with a plate, not in flight) whose
+  distance `hypot(tx − x, (trayY − y)/.85) < 1.35 pr`.
+- **Cell hit** (`HitCell`): the cell with `|x − cx| ≤ cw/2` and
+  `|y − cy + .2pr| ≤ rp/2`.
+- **Pointer down** (not on HUD): in hammer mode, a plate under the pointer is
+  smashed. Otherwise (and not won): on a tray plate → start a drag `{t, x, y,
+  start, offset = slot centre − pointer, moved = false, target = −1, wasSel}`,
+  clear the selection, pick sound, haptic 5. Else, with a plate selected: a free
+  cell under the pointer → `PutDown(sel, c, slot centre, .16cw)`; anything else
+  deselects (drop sound).
+- **Drag move:** once the pointer has moved 8 dp, the plate follows at
+  `(x + ox·.3, y − .45cw + oy·.3)` and the target is the nearest `Free` cell
+  within `.75 cw` of that point (vertical distance divided by .9). A soft tick
+  (1200 Hz, 30 ms, gain .025, triangle) plays when the target changes to a cell.
+- **Release:** no movement → a tap: select that plate (or deselect it if it was
+  selected). With a target → `PutDown(t, target, drag point, .2cw)`. Otherwise
+  the plate returns: mover to the slot over 180 ms from lift `.2cw`, drop sound.
+- Drags start even while slices are flying (§49.4).
+- **Editor keys:** 1–3 pick a tray plate (and put the cursor on the first empty
+  cell), arrows move the cursor, Enter/Space put the plate down (or smash in
+  hammer mode), U undo, H hammer, N new plates, Esc cancels hammer or selection.
+
+---
+
+## 51. Cakes: meshes, materials and toppings
+
+The web draws each slice as flat polygons in a fixed back-to-front order
+(`drawSlice`). In Unity every slice is a small mesh on the counter plane, so
+depth sorts the faces and a spinning slice simply rotates.
+
+### 51.1 Slice geometry (`SliceMeshBuilder`, built once per cake type and size)
+
+A slice is a sixth of a cylinder in its own frame: centre at the origin, angles
+`[0, SEG]` (`SEG = π/3`, angles measured from +x toward +z, i.e. clockwise on
+screen like the web), radius `R = .8 pr`, height `Hc = .52 R / cos α` (§47).
+Arcs use 8 segments.
+
+| Part | Faces | Colour |
+| --- | --- | --- |
+| Top | fan from the centre over the arc at `y = Hc` | the cake's `top` |
+| Outer side, frosted cakes | band over the arc from `y = 0` to `Hc` | `side` |
+| Outer side, bare cakes | one band per layer, layer heights in order | each layer's colour |
+| Drip coat (cakes with `drip`) | band from `.8 Hc` to `Hc`, plus 3 drips at angle fractions (j + .5)/3 of the slice: rounded strips of half-width `.06R·(.6 + .4·sin a)` hanging `Hc·(.22 + ((7j + 3) mod 5)·.09)` below `.82 Hc` | `drip` |
+| Cut face at angle 0 and at angle SEG | one quad per layer, from the centre to the rim; frosted cakes add a strip from `.9R` to `R` over the full height (the frosting seen in section) | layer colours / `side` |
+| Edges | handled in the shader (§51.2) | |
+
+Layers each extend 0.6 dp (screen) above their nominal top except the last, as
+the web does, so no seam shows between them.
+
+Vertex data: position; normal; colour (sRGB, straight from the cake table);
+`uv0` = face-local coordinates (u across the face 0..1, v up or out 0..1) for the
+edge lines; `uv1.x` = face kind (0 top, 1 outer side, 2 cut face, 3 drip);
+`uv2` = slice-local plane position `(x/R, z/R)` for the top pattern.
+
+### 51.2 `CakeSlice.shader` (unlit, opaque, sRGB maths like the other shaders in §2)
+
+Per material: `_Edge` (light `rgba(80,30,45,.30)`, dark `rgba(0,0,0,.38)`),
+`_Pattern` (the cake's pattern texture or none), `_Glaze` (0/1).
+Per renderer (MaterialPropertyBlock): `_Cake = (centre x on screen in dp, R in
+dp)` for the side shading.
+
+```
+base = vertex colour
+kind 2 (cut face):  nx = world normal x                       // light comes from the left
+                    base = tone(base, −nx·.16 − .05)           // tone: toward white for k > 0, toward black for k < 0 (Hex.Shade rule, §6.1)
+kind 1, 3 (outer):  s = (fragment screen x − _Cake.x)/_Cake.y mapped to 0..1 across the cake
+                    over = gradient stops (0: black α .20) (.3: white α .06) (.6: transparent) (1: black α .30)
+                    base = blend(base, over)
+kind 0 (top):       base = blend(base, _Pattern sampled at slice-local uv2)
+                    if _Glaze: add the screen-fixed sheen: an elliptical arc around the cake centre
+                      offset (−.06R, −.06R·SQ), radii (.66R, .62R·SQ), angles 1.08π..1.62π,
+                      line width .08R, white α .42 (it is a reflection, so it does not turn with the slice)
+edges:              within 1 screen dp of a face border (fwidth on uv0) blend in _Edge;
+                    the outer arc of a top face that faces the viewer also gets a
+                    1.2 dp rgba(255,255,255,.35) line just inside the rim
+out = SRGBToLinear(base)
+```
+
+### 51.3 Patterns on top (`cs_pattern_<cake>.png`, 256 × 256, generated)
+
+`RasterCanvas` port of `drawPattern`, drawn in slice-local plane coordinates:
+the image covers `[−R, R]²` of the slice frame with `R = 128 px`, the slice at
+angles `[0, SEG]`. The web's speck positions are
+`SPECKS = [[.2,.45],[.55,.3],[.82,.55],[.32,.74],[.64,.66],[.47,.9],[.86,.84],[.14,.88],[.72,.2],[.4,.56],[.9,.36],[.25,.25]]`
+as `[fraction across the slice, fraction of the radius]`.
+
+| Pattern | Drawing (sizes in units of R) |
+| --- | --- |
+| `swirl` (Chocolate) | rings at .36 and .70, width .045, colour `tone(top, +.14)` |
+| `dust` (Matcha) | a dot of radius .03 at every speck, `tone(top, −.28)` |
+| `sprinkles` (Birthday) | at speck i a dash of half-length .055 along angle `1.7i + slice start` (in the slice frame that is `1.7i`), width .045, round caps, colours cycling `#FF5A8A #FFD23F #5AD17F #FFFFFF #B57BFF #FF9A3D` |
+| `crumbs` (Cookies & Cream, Red Velvet) | a square of half-size `.03 + (i mod 3)·.012` at each speck's angle and radius `.62 + v·.36`, colour `crumb` |
+| `drizzle` (Caramel) | a polyline through 9 points at fractions k/8 across the slice, radius .95 for odd k and .42 for even, width .05, round joins, colour `drizzle` |
+| `glaze` (Strawberry, Lemon, Mango) | nothing in the texture (the sheen is in the shader) |
+
+The web squashes specks by `SQ`; drawn on the counter plane, the camera does it.
+
+### 51.4 Toppings and piping (billboards)
+
+Each slice carries its topping, and piping when the cake has a `pipe` colour,
+as quads that face the camera and stay upright (the web draws them upright, they
+do not turn with the slice). Positions on the slice's top at its mid angle
+`m = start + SEG/2`: topping at radius `.5R`, piping at `.8R`. When the slice is
+in the back half (`sin m < 0`) the piping is behind the topping, otherwise in
+front, which depth testing gives for free.
+
+Textures (`cs_top_<kind>.png`, 128 × 128, generated by a `RasterCanvas` port of
+`drawTopping` with `s = 40 px` and the anchor at (64, 92); quad pivot at that
+anchor, quad height `2.0 · .21R / 40 × 128`, i.e. the drawing keeps the web's
+size `s = .21R`):
+
+`strawberry`, `choc`, `lemon`, `leaf`, `berries`, `candle` (drawn **without** its
+flame), `cubes`, `cookie`, `raspberry`, `nut`; plus `cs_pipe.png` (the dollop
+drawn in white and grey, tinted with the cake's pipe colour) and
+`cs_flame.png` (the candle flame, drawn on its own quad at the candle's tip and
+scaled in y by the flicker `.8 + .2·sin(t·.03 ms)` on served cakes and the
+unlock turntable; 1 elsewhere). Every drawing call is in `drawTopping` and
+`drawPipe` in the web source; port them line by line.
+
+### 51.5 Plates and stands
+
+- **Plate** (`PlateMeshBuilder`, radius `pr`): edge disc at `y = 0` (a short
+  cylinder `.075 pr / cos α` high) in `cs-plate-edge`; top disc `cs-plate`; rim
+  ring at `.87 pr` (width `max(1, .035 pr)`) `cs-plate-line`; well disc `.72 pr`
+  `cs-plate-well` raised a hair. Shadow: `fx_hex_blob` on the counter at
+  `(+.05 pr, +.26 pr)`, radius `1.02 pr`, tinted `cs-shadow`.
+- **Cake stand with a cloche** (cells that hold nothing): stand disc `.82 pr`
+  (edge + top like a plate); a cupcake billboard `cs_cupcake.png` (port of the
+  cupcake part of `drawCloche`); a glass dome: half ellipsoid with radii
+  `(.74 pr, 1.15 pr / cos α, .74 pr)` in `CakeGlass.shader` (transparent,
+  `cs-glass` fill, a 1–2 dp white α .75 rim by Fresnel, and a white α .8
+  highlight stroke on the upper left), knob on top.
+- **Theme.** Plate, glass and edge colours come from §54.1 and update live.
+
+### 51.6 Static art (generated textures)
+
+| File | Size | Contents |
+| --- | --- | --- |
+| `cs_gingham.png` | 64 × 64, Repeat | White; two transparent-white crossing bands make a gingham check in white α 1 / α .5 / α 0 (tinted `cs-check` over `cs-cloth`) |
+| `cs_doily.png` | 256 × 256 | White scalloped disc (18 scallops) with a dashed ring at 78%; tinted `cs-mat` / `cs-mat-edge` (two layers) |
+| `cs_tray_wood.png` | 512 × 128, sRGB | Rounded board (radius 22 px scaled), vertical gradient white → 0.85 grey, 4 grain curves black α .08; tinted `cs-wood → cs-wood-2` by a two-colour gradient material |
+| `cs_cupcake.png` | 128 × 160 | Cupcake from `drawCloche` |
+| `cs_top_*.png`, `cs_pipe.png`, `cs_flame.png` | §51.4 | |
+| `cs_pattern_*.png` | §51.3 | |
+| `cs_hand.png` | 128 × 128 | The tutorial hand (`drawHand`) in white with an ink outline |
+| `tex_board_cake_sort_light.png`, `…_dark.png` | 1600 × 1000 | Board art (§5) |
+
+### 51.7 Cake icons (`CakeIconRig`)
+
+The HUD chips, lobby, win sheet and collection show whole cakes on plates. A
+hidden rig renders each cake (plate radius filling the icon, `rot` 0) into a
+cached 128 × 108 sRGB RenderTexture, once per cake per theme; the locked icon is
+a plate with a `cs-plate-edge` cylinder, a grey `#888888` top and a white "?"
+(800 weight, `.9R`). The unlock sheet's turntable (§52.7) renders live.
+
+---
+
+## 52. Animations and effects
+
+Time in ms. Easing names are §14.2's (`easeOutCubic`, `easeInOutCubic`), plus
+`easeOutBack(t) = 1 + 2.6(t − 1)³ + 1.6(t − 1)²` and
+`easeInBack(t) = 2.7t³ − 1.7t²`.
+
+### 52.1 Visual slices and the turntable
+
+Each plate's visual holds a list of visual slices in the same order as its
+state list. A visual slice: `{ f, a0, a1, t0, dur, spin, ghost }`; its angle at
+time t is `a1` once `t ≥ t0 + dur`, else
+`a0 + (a1 − a0)·ease((t − t0)/dur)` with `ease = spin ? easeOutBack : easeOutCubic`.
+Slot `i` sits at `SLOT0 + i·SEG`, `SLOT0 = 7π/6` (a plate fills from the back
+left, clockwise).
+
+```
+Reslot(plate, t, dur, turns):              // every slice eases to its slot; `turns` extra full turns
+    for slice i: cur = Angle(slice, t); target = SLOT0 + i·SEG
+                 d = ((target − cur) mod 2π + 2π) mod 2π; if d > π: d −= 2π      // shortest way round
+                 a0 = cur; a1 = cur + d + turns·2π; t0 = t; dur; spin = turns > 0
+```
+
+A plate is **settled** when no slice is a ghost or still easing, it is not dying,
+and its pop-in has finished; settled plates can be drawn from a cached snapshot
+(the web caches a sprite per slice list; in Unity, static batching or simply
+leaving the meshes alone is enough).
+
+### 52.2 Plates appearing and leaving
+
+- **Born** (pop-in): scale `easeOutBack(clamp((t − born)/420))` (0 before
+  `born`).
+- **Dying:** scale `1 − easeInBack(clamp((t − dying)/300))`; removed 300 ms after
+  `dying`.
+- **Landing squash** after a drop: `born = now − 200`, so the last 220 ms of the
+  pop-in play.
+
+### 52.3 A step (`PlayStep`, port of `playStep`)
+
+```
+FLIGHT = 470, STAGGER = 75
+dest = visual plate at step.D (if missing: return 0)
+total = Σ slices in step.From
+insert `total` ghost slices of step.F after the last slice of step.F on dest (or at the end);
+    each ghost starts at its slot angle
+span = FLIGHT + STAGGER·(total − 1)
+Reslot(dest, now, span + 90, turns: 1)          // the plate turns one full turn while slices fly in
+spin sound
+k = 0; fill0 = dest slice count − total
+for each (src, m) in step.From:
+    for j < m: take the last slice of step.F off src's visual; a0 = its angle now; ghost = ghosts[k]
+               turn = the multiple of 2π that puts (ghost.a1 + turn − a0) in [2π, 4π)   // one to two full spins
+               flyer { f, from = src centre, a0, ghost, turn, dest = step.D, t0 = now + k·STAGGER, dur = FLIGHT, note = fill0 + k }
+               k++
+    src empty → dying at now + k·STAGGER; else Reslot(src, now + k·STAGGER, 320, 0)   // the gap closes after the last slice leaves
+for each emptied cell not yet dying: dying at now + span/2
+if step.Cake: after span + 110 → Serve(step.D, step.F) (if the queue generation is unchanged); return span + 260
+return span + 150
+```
+
+### 52.4 Slices in the air (`FlyerPose`, port of `flyerPose`)
+
+```
+u = clamp((t − t0)/dur), e = easeInOutCubic(u)
+ga = Angle(ghost, t)                                   // the ghost spins with the turntable
+RC = .6366 (centroid of a sixth of a disc, as a share of R)
+c0 = from centre + RC·R·(cos(a0 + SEG/2), sin(a0 + SEG/2)·SQ)      // screen dp
+c1 = dest centre + RC·R·(cos(ga + SEG/2), sin(ga + SEG/2)·SQ)
+ang = a0 + (ga + turn − a0)·e                          // a full spin (or a bit more) on the way over
+sc = 1 + .14·sin(πu); lift = .72 cw·sin(πu)
+m = lerp(c0, c1, e)
+slice centre = m − RC·R·sc·(cos(ang + SEG/2), sin(ang + SEG/2)·SQ) − (0, lift)
+```
+
+Draw the flying slice at that centre with start angle `ang` and radius `R·sc`
+(scale the slice transform), lifted by `lift` (world `y = lift / cos α`). Its
+shadow: `fx_hex_blob` at `m + (0, .1 pr)`, radius `.42 pr`, alpha
+`.55·(1 − lift/(1.2 cw))`, colour `cs-shadow`. A flyer whose `t0` has not come
+sits at its start pose (`u = 0`).
+
+**Landing** (`t ≥ t0 + dur`): remove the flyer, the ghost becomes a real slice
+(same angle, so nothing jumps), land sound with `note`, 4 crumbs (§52.6) in the
+cake's top colour at the dest centre, `cake height` up.
+
+**Take-off** (first frame with `t ≥ t0`): whoosh sound.
+
+### 52.5 Serving a cake (`Serve`, port of `serve` and `drawServed`)
+
+```
+plate at c: a = angle of its first slice now (or SLOT0); its slices are cleared; dying = now + 620
+served { f, x, y = cell centre, a, t0 = now, target = centre of the cake's chip icon (or the meter) in screen dp }
+combo++; cake sound(combo); haptic [18,40,18]
+float text "{Name}!" (or "{Name}! ×{combo}", large, when combo > 1) at (x, y − 1.1 pr), colour = top (side for the white-topped Cookies & Cream and Red Velvet)
+draw (on the CakeFx layer):
+    e1 = clamp((t − t0)/620), e2 = clamp((t − t0 − 620)/520); done when e2 ≥ 1
+    rot = a + easeOutCubic(e1)·3π + e2·2π            // a fast one-and-a-half turns, then a slow turn in flight
+    phase 1 (e2 == 0): position (x, y); scale 1 + .16·sin(π·min(1, 1.3 e1)); lift .18 cw·sin(π e1)
+                       glow ring: ellipse at (x, y − .2 pr) radius pr·(1 + .5 e1), 4 dp, #FFE38A, alpha .55·(1 − e1)
+    phase 2: e = easeInOutCubic(e2); position lerp((x, y), target, e) − (0, .9 cw·sin(πe)); scale lerp(1, .32, e)
+    six slices at rot + i·SEG
+at t0: a sparkle burst (16 stars, §52.6) at (x, y − .3 pr) in the top colour, #FFE38A and white
+at t0 + 1140: removed; that cake's shown count +1, the chip bumps (scale 1.22 at 30% over 450 ms, cubic-bezier(.2,1.6,.4,1)), served sound, meter and counter update
+```
+
+Shown counts (`shown[f]`, `shownTotal`) lag the state on purpose: the order card
+counts a cake when it lands there. On undo, restart and win they are reset to the
+state.
+
+### 52.6 Particles (CakeFx layer, gravity in dp/ms²)
+
+| Kind | Spawn | Motion | Look |
+| --- | --- | --- | --- |
+| Crumb | 4 at a landing, x spread ±.25 pr | vx ±.06, vy −.08…−.20, g .0009, life 380 | square, half-size .03–.06 pr, cake top colour, alpha 1 − q² |
+| Star | 16 around a served cake, evenly spaced angles + up to .3 rad | speed .12–.28 (vy × .8 − .05), g .00012, ×.97 per frame, life 650–950 | 8-point star (radii r and .35r), r .08–.16 pr, spinning `spin + life·.006` rad, alpha 1 − q² |
+| Shard | 18 on a hammer smash (every 3rd is a crumb in the plate's cake colours) | random angle, speed .10–.32, upward, g .0011, life 600–900 | triangle `(−r, −.4r) (r, −.7r) (.2r, .8r)` in `cs-plate`, r .07–.15 pr, spinning `vs ±.015`/ms |
+
+### 52.7 Small motion
+
+- **Dragged plate:** drawn at the drag point lifted `.2 cw`, scale 1.06, with a
+  shadow ellipse at the drag point (`.95 pr × .9·SQ`), on top of everything else.
+- **Selected tray plate:** bobs `.16 cw + .04 cw·sin(t·.007)`.
+- **Target cell** (drag or keyboard): filled ellipse `1.08 pr` in `cs-accent` at
+  alpha `.18 + .14·pulse` and a 3 dp ring at `1.02 pr`; `pulse = .5 + .5·sin(t·.008)`.
+  The keyboard cursor without a plate: a dashed 2 dp ring (5 on, 4 off).
+- **Hammer mode:** every plate gets a 3 dp `cs-accent` ring at `1.08 pr`, alpha
+  `.45 + .45·pulse`.
+- **Unlock turntable** (new cake sheet): plate radius `min(W/2.4, H/(2·SQ + .7))`
+  in a 26:19 view; slice i drops in from `.5 pr` above over 300 ms
+  (`easeOutCubic`) starting at `90i` ms; the cake turns at `rot = .0011·t +
+  (1 − easeOutCubic(min(1, t/900)))·2π`; the candle flame flickers.
+- **Hard intro:** as Paint Sort's (§19.4), with the text "Bake {goal} cakes[
+  around {stands} cake stand(s)]. Worth {reward} coins."
+
+---
+
+## 53. Sound and haptics
+
+### 53.1 Recipes (`CakeSortRecipes.cs`, group `cs_*`, through the shared synth and compressor like Paint Sort, §4.3)
+
+A port of `makeSfx` in `cake-sort.html`. Notation as in §18.1: `tone(f, f1,
+dur, gain, type, at, attack, filter, ff)`, `noise(filter, f, f1, dur, gain, q,
+at, attack)`, `bell(f, at, gain)`; `note(base, s) = base·2^(s/12)`;
+`penta = [0,2,4,7,9,12,14,16,19,21,24,26,28]`.
+
+| Clip | Recipe |
+| --- | --- |
+| `cs_pick` | tone 1760, .05, .05, triangle; tone 520→780, .08, .10 |
+| `cs_drop` | tone 640→420, .08, .08 |
+| `cs_place` | noise bandpass 2600, .05, .16, q 3; tone 340→230, .10, .18; tone 2350, .22, .035, triangle, at .01 |
+| `cs_whoosh` | noise bandpass 500→2600, .26, .06, q 1.2, attack .05 |
+| `cs_land_0` … `cs_land_12` | `f = note(392, penta[k])`: tone f→1.01f, .16, .13, triangle; tone 2f, .08, .04; noise lowpass 900, .05, .05 |
+| `cs_spin` | tone 260→620, .30, .035, triangle, attack .04 |
+| `cs_cake_0` … `cs_cake_6` | `base = note(523.25, penta[k])`: bells at note(base, 0/4/7/12), at .06·i, gain .12; noise highpass 6000, .5, .05, at .05, attack .04 |
+| `cs_served` | tone 1318.5, .06, .05, square, lowpass 3800; tone 1975.5, .12, .05, square, at .05, lowpass 3800 |
+| `cs_empty` | tone 980→340, .07, .08 |
+| `cs_deal` | for i 0..2: noise bandpass (1400 + 300i)→2400, .07, .05, q 2, at .07i; tone 700 + 90i, .05, .04, at .07i + .02 |
+| `cs_bonk` | tone 190→105, .18, .20, square, lowpass 650 |
+| `cs_smash` | tone 150→55, .22, .30; for k 0..5: noise highpass 3500 + 600k, .05 + .015k, .10, at .025k; noise lowpass 900, .20, .14 |
+| `cs_undo` | noise bandpass 2600→480, .22, .12, q 1.4; tone 700→420, .14, .06 |
+| `cs_refresh` | for i 0..2: noise bandpass 900→2600, .12, .07, q 1.5, at .08i |
+| `cs_win` | bells at note(523.25, 0/4/7/12/16/19), at .085i, gain .15; noise highpass 5500, .9, .04, at .4, attack .1; tone 130.8→131, .9, .12, triangle, at .5 |
+| `cs_full` | tones note(330, 7/4/0), .22, .08, triangle, at .12i |
+| `cs_coin` | the same as `sfx_coin` (§18.1) |
+| `cs_unlock` | bells at note(659.25, 0/7/12/16/19/24), at .07i, gain .10 |
+| `cs_hard_1`, `cs_hard_2` | Paint Sort's hard stingers (§18.1) |
+| `cs_tick` | tone 1200, .03, .025, triangle |
+
+Land notes use `min(note, 12)`; cake chimes use `min(combo, 6)`.
+
+### 53.2 Haptics (`CakeSortHaptics`)
+
+| Event | Pattern (ms) |
+| --- | --- |
+| pick up | 5 |
+| plate lands | 8 |
+| cake served | [18, 40, 18] |
+| hammer smash | [30, 30, 50] |
+| counter full | [40, 60, 40] |
+| hard intro | [30, 60, 30] |
+| win | [20, 40, 20, 40, 60] |
+
+---
+
+## 54. UI layouts
+
+uGUI and the shared widgets (§4.8): sheets, toasts, `AppDisplay`/`AppBody`
+fonts, Paint Sort's top-bar buttons, coin pill and booster-button style.
+
+### 54.1 Tokens (light / dark, in `ThemePalette.asset`)
+
+| Token | Light | Dark |
+| --- | --- | --- |
+| cs-bg-a / cs-bg-b | #FFF6EE / #FFDDE6 | #2C1622 / #12090F |
+| cs-hard-a / cs-hard-b | #FFEEE7 / #FFC4BB | #3B1618 / #160809 |
+| cs-super-a / cs-super-b | #F4ECFF / #D7C3FA | #2B1A4A / #100A20 |
+| cs-cloth | #FFFFFF | #3A2231 |
+| cs-check | rgba(240,86,140,.11) | rgba(255,255,255,.045) |
+| cs-cloth-edge | #F1BCCD | #5A3349 |
+| cs-mat / cs-mat-edge | rgba(255,250,252,.95) / rgba(225,120,158,.36) | rgba(255,255,255,.07) / rgba(255,160,200,.20) |
+| cs-plate / cs-plate-edge | #FFFFFF / #CDD4E2 | #ECE6EC / #8F879A |
+| cs-plate-well / cs-plate-line | #F2F4F9 / #F6A8C2 | #DAD3DB / #E07AA0 |
+| cs-shadow | rgba(120,40,70,.20) | rgba(0,0,0,.45) |
+| cs-wood / cs-wood-2 | #F4CFAB / #DDA97F | #6E4632 / #4C2E20 |
+| cs-edge | rgba(80,30,45,.30) | rgba(0,0,0,.38) |
+| cs-glass | rgba(205,228,255,.42) | rgba(170,200,255,.20) |
+| cs-accent / cs-accent-deep / cs-accent-soft | #F0568C / #B8305F / #FFE4EE | #FF7AA8 / #B8456E / #3A1826 |
+
+Backdrop: `Gradient.shader` from `cs-bg-a` (top) to `cs-bg-b`; hard levels use
+the hard pair, super hard the super pair.
+
+### 54.2 Lobby (`CakeLobbyScreen`)
+
+```
+CakeLobbyScreen (safe area; backdrop behind)
+├─ TopBar (padding 12/16/6): Back (→ Hub) · spacer · Coin pill · Settings (app sheet + "How to play Cake Sort" ghost button)
+└─ Body (scroll, padding 8/18/22 + safe bottom, gap 18)
+   ├─ Wordmark "Cake " + "S","o","r","t" in #FF6F9F, #8B4A2B, #F2BE00, #7DB451 (54 display; each letter with a 3 dp drop 42% darker)
+   ├─ NextCard (radius 22, padding 16, surface, shadow; vertical gap 12)
+   │  ├─ Row (gap 14): CakeIcon 116×96 (a whole cake of the menu's ((n − 1) mod K)-th cake) · Meta:
+   │  │     eyebrow "Up next" / "Up next · Hard" / "Up next · Super hard" (11.5 caps .12em; cs-accent / hard / super)
+   │  │     title "Level N" (26 display) · sub "Bake {goal} cakes · {K} kinds[ · {stands} cake stand(s)]" (13.5 muted)
+   │  ├─ MenuChips: one chip per cake on the menu: icon 28×24 + name (13 heavy muted), pill on surface-2, wrap
+   │  └─ PlayButton (full width): "Play level N" / "Continue level N"; cs-accent with a 5 dp cs-accent-deep drop (hard / super styles on spikes)
+   ├─ ShelfCard (radius 22, padding 14/14/16): header "Cake collection" (19 display) · "{open} of 10" (12.5 dim)
+   │  └─ Grid 2 columns, gap 8: tile (radius 16, surface-2, padding 5/8/5/4, row gap 8): icon 52×44 · name (13.5 heavy) over "{n} baked" (12 dim);
+   │     locked: the "?" icon, "Locked" (dim) over "Level {UnlockAt}"
+   └─ Note (13.5 muted, centred): "{cakes} cake(s) baked · {won} level(s) cleared" (or the intro line for a new player) + " Levels adjust to how you play."
+```
+
+The next level's figures come from `Director.HeatFor(level)` (or the saved
+attempt when resuming), so the card shows what Play will start.
+
+### 54.3 Play screen (`CakePlayScreen`)
+
+```
+CakePlayScreen (backdrop by tier; the 3D counter renders behind the HUD)
+├─ TopBar: Back (→ lobby, saves) · Level column ("Level N" 24 display; tier badge as Paint Sort) · spacer · Coin pill · Menu
+├─ OrderCard (margin 2/14, padding 10/12, radius 20, surface at 82%, 2 dp line drop)
+│  ├─ Row (gap 10): "Bake {goal} cakes" (14 heavy muted) · Meter (height 12, radius 999, surface-2 with an inner shadow;
+│  │     fill gradient cs-accent → 70% cs-accent + #FFD45A, width = shown/goal, 450 ms) · "{shown}/{goal}" (20 display, "/goal" 15 dim)
+│  └─ MenuChips: icon 28×24 + count (13 heavy muted, tabular); a chip bumps when its cake arrives (§52.5)
+├─ CoachLine (level 1 only; height 46; 14 bold muted, centred)
+├─ Field (flex: the counter and the tray live here, §50.1)
+├─ BoosterBar (padding 6/12/12 + safe bottom; 3 columns, 84 wide): Undo (undos left) · Hammer (inventory; accent when active) · New plates (inventory)
+│  counts as Paint Sort's badges ("+" on coin colour when empty); the message bar sits on top of this row:
+│  MessageBar (12 from the sides, 6 above the row; radius 16, surface, shadow; rises 300 ms): text (14 heavy; bad colour when stuck) + small ghost buttons
+└─ HardIntro overlay (§52.7)
+```
+
+Message bar contents: full counter → "The counter is full" with "Hammer" (or
+"Hammer · 60" when none left), "Undo" (when there is a snapshot), "Restart".
+Hammer mode → "Tap a plate to clear it off the counter" with "Cancel".
+
+### 54.4 Sheets
+
+| Sheet | Eyebrow / title / sub | Body | Actions |
+| --- | --- | --- | --- |
+| New cake | "New cake on the menu" / name / note (§55) | the turntable (§52.7), 260 wide, 26:19 | "Bake it" ("Bake them" when more than one is new; the sheet shows the first) |
+| Pause | "Level N" / "Paused" | toggles Sound ("Clinks, whooshes and chimes"), Vibration | Resume · How to play · Restart level · Back to the bakery |
+| How to play | "How to play" / "Sort the slices" | six rows (title + text): "Drag a plate onto the counter" / "Any empty spot will do. You get three plates at a time, and three more when they are all down."; "Slices of the same cake fly together" / "When plates touch side by side (not corner to corner), each kind of cake gathers on the plate that can hold the most of it. Empty plates are cleared away."; "Six slices make a whole cake" / "A whole cake is served and counts toward the order at the top. Bake the number on the order to win."; "Keep space free" / "If the counter fills up, use the hammer to clear a plate, undo, or start again."; "Boosters" / "Undo takes back a plate (3 per try). The hammer clears one plate. New plates swaps the ones in your tray."; "Hard levels" / "Levels 5 and 10 of every ten are harder, with cake stands in the way. They pay 30 and 60 coins." | Got it |
+| Win | "Level N complete" (hard: "Hard level beaten", super: "Super hard level beaten") / title by tier: super "Showstopper.", hard "That was a tough bake.", else `["Order up!", "Fresh out of the oven.", "Sweet.", "Counter cleared."][n mod 4]` | chips (icon 40×34 + count) for each cake baked this level; coins "+N" (26 display) with " incl. 5 for no boosters" | "Next level" ("Next: hard level N+1" / "Next: super hard level N+1" in hard/super style) · "Back to the bakery"; not dismissable |
+| Restart | "Level N" / "Start this level again?" / "The counter is cleared and you get a fresh set of plates." | | Restart · Keep playing |
+| Booster buy | §49.5 | | |
+
+### 54.5 Floats
+
+"{Name}!" floats as Paint Sort's float label (§19.5) with an 18 display size
+(24 for combos), coloured as §52.5, at the cake.
+
+---
+
+## 55. Cakes and strings
+
+### 55.1 The ten cakes (`Cakes.asset`)
+
+Layers run bottom to top as `colour share-of-height`.
+
+| # | Name | Unlocks | Top | Side (style) | Layers | Pattern | Topping | Piping |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | Strawberry | 1 | #FF8DB3 | #FF9BBD (frosted) | #FFE6AE .30 · #FFFFFF .09 · #E8364F .07 · #FFE6AE .30 · #FF8DB3 .24 | glaze | strawberry | #FFFFFF |
+| 1 | Chocolate | 1 | #5E2F1A | #55291A (frosted, drip #3B1A0C) | #74402A .32 · #2F150A .10 · #74402A .32 · #5E2F1A .26 | swirl | choc | none |
+| 2 | Lemon | 1 | #FFDF45 | #FFF0A8 (bare) | #FFF0B0 .30 · #FFCB12 .08 · #FFFBEA .08 · #FFF0B0 .30 · #FFDF45 .24 | glaze | lemon | #FFFBEA |
+| 3 | Matcha | 3 | #8DC35F | #7DB451 (frosted) | #BCDB8E .30 · #F8F4E4 .10 · #BCDB8E .30 · #8DC35F .30 | dust | leaf | #F8F4E4 |
+| 4 | Blueberry | 5 | #A887EC | #9878E2 (frosted) | #F6E7C9 .30 · #5B3FA8 .08 · #ECE3FF .08 · #F6E7C9 .30 · #A887EC .24 | none | berries | #ECE3FF |
+| 5 | Birthday | 8 | #7BCFF5 | #68C2EC (frosted) | #FFF3D2 .30 · #FFFFFF .10 · #FFF3D2 .30 · #7BCFF5 .30 | sprinkles | candle | #FFFFFF |
+| 6 | Mango | 12 | #FFA22C | #FFB651 (bare) | #FFE2A4 .30 · #FF9C1A .08 · #FFF5E0 .08 · #FFE2A4 .30 · #FFA22C .24 | glaze | cubes | none |
+| 7 | Cookies & Cream | 16 | #F6F2EB | #3B3431 (bare) | #3B3431 .28 · #F6F2EB .12 · #3B3431 .28 · #F6F2EB .32 | crumbs #2B2523 | cookie | none |
+| 8 | Red Velvet | 21 | #FFF5EC | #B5172D (bare) | #B5172D .30 · #FFF5EC .10 · #B5172D .30 · #FFF5EC .30 | crumbs #C31D35 | raspberry | none |
+| 9 | Caramel | 27 | #D9933A | #CA852F (frosted, drip #9C5713) | #F2D59B .30 · #B86A1C .08 · #F2D59B .30 · #D9933A .32 | drizzle #8A4A10 | nut | none |
+
+Notes (shown on the new-cake sheet): 0 "Pink buttercream, vanilla sponge with
+jam, and a berry on every slice." · 1 "Dark sponge, ganache dripping down the
+side, a square of chocolate on top." · 2 "A bare-sided sponge with lemon curd,
+bright glaze and a candied wedge." · 3 "Green tea sponge dusted with matcha, a
+swirl of cream and a tea leaf." · 4 "Lavender cream over berry jam, crowned with
+fresh blueberries." · 5 "Sky-blue frosting, rainbow sprinkles and a candle on
+every slice." · 6 "A bare-sided sponge with mango cream, glazed and topped with
+fruit." · 7 "Black cookie sponge, white cream, crumbs and a whole cookie." ·
+8 "Deep red sponge, cream cheese frosting, red crumbs and a raspberry." ·
+9 "Golden caramel coat with drips, a salty drizzle and a hazelnut."
+
+Cakes are told apart by more than colour: topping silhouette, frosted or bare
+sides, layer stripes in the cut faces and the top pattern. Keep all four when
+adjusting colours.
+
+### 55.2 Strings (`StringTable` scope `CakeSort`)
+
+Everything quoted in §46–§54, plus: board title "Cake Sort"; tagline "Slide
+plates together until every slice joins a whole cake."; statuses (§56.1);
+lobby intro line "Drag plates of cake slices onto the counter. Matching slices
+fly together into whole cakes."; toasts "Nothing to undo", "No plates on the
+counter", "Wait for the slices to settle", "Not enough coins ({price} needed)".
+
+---
+
+## 56. Save section, probe and analytics
+
+### 56.1 Save (`games["cake-sort"]`)
+
+```json
+{
+  "level": 14, "coins": 240,
+  "inv": { "hammer": 2, "refresh": 2 },
+  "stats": { "won": 13, "cakes": 41, "hard": 1, "super": 1 },
+  "baked": { "0": 9, "1": 7, "2": 8, "3": 5 },
+  "seen": { "0": true, "1": true, "2": true, "3": true },
+  "tips": {},
+  "skill": { "mu": 3.91, "sd": 0.52, "n": 17 },
+  "tries": { "n": 14, "fails": 1 },
+  "cur": {
+    "n": 14, "h": 2.85, "flv": [0, 2, 3, 4],
+    "cells": [null, [0, 0, 3], -1, null, "…20 entries"],
+    "tray": [[2, 2], null, [4]],
+    "rs": -1404925724, "baked": 3, "bakedBy": { "0": 2, "3": 1 },
+    "moves": 9, "undos": 3, "clean": true, "minFree": 11, "observed": false
+  }
+}
+```
+
+`cur` is written after every plate, undo, hammer and new-plates; `cells` holds
+`null`, `-1` (a stand) or a plate list. Undo snapshots are not saved (an undo
+after a restart of the app is not offered). Defaults: level 1, 100 coins,
+`inv {hammer 2, refresh 2}`, skill from §4.9.
+
+**Board status** (`CakeSortStatus`): `level > 1 ? "Level {level} · {cakes}
+cakes" : "New · 10 cakes to discover"`; Cta `level > 1 || cur != null ?
+"Continue" : "Play"`.
+
+### 56.2 Probe and simulation CLIs
+
+- `Playbox.Editor.CakeProbeCli.Run -from 1 -to 60 -runs 16`: the typical curve
+  (no model), the same columns as `node playbox/tools/cake-probe.mjs`.
+- `Playbox.Editor.AdaptiveSimCli.Run -game cake -levels 60`: the adaptive
+  simulation (§4.9) with the two bots, printing the table of
+  `node playbox/tools/adaptive-sim.mjs cake 60`.
+
+### 56.3 Analytics events
+
+`level_start` (level, tier, heat, mu, sd, kinds, goal, stands),
+`level_complete` (level, tier, heat, plates, clean, reward, min_free),
+`level_fail` (level, heat, plates, baked), `level_restart` (level, plates),
+`cake_baked` (kind, combo), `cake_unlocked` (kind), `booster_used` (id, level),
+`booster_bought` (id, price), `skill_update` (§4.9). Each carries `game`.
+
+---
+
+# Part VI: Shipping
+
+## 57. Tests
 
 **EditMode: Paint Sort**
 - `EngineParityTests`: every value in Appendix B.1 (seeds, RNG streams,
-  `Spec`, `Generate` vials/palette/hidden/len for the listed levels, first solver
-  moves, painting kinds/slots/bbox).
+  `Spec` and `HeatRange` rows, `Generate` vials/palette/hidden/len for the
+  listed levels and heats, first solver moves, painting kinds/slots/bbox).
 - `CurveTests`: Appendix B.2 rows reproduce exactly (colours, hidden count,
   moves, casual, skilled) for levels 1–30.
 - `SolvabilityTests`: levels 1–200 all solve with budget 400000; no level
   starts solved; every vial holds ≤ 4 units; each colour appears exactly 4 times.
-- `SawtoothTests`: for every block of ten in levels 1–200, the hard level's
-  difficulty (pos 4) > the mean of positions 0–3, the super hard level's (pos 9)
-  > the mean of positions 5–8, and position 5 has fewer colours than position 4.
-  (Verified against the web engine: all 20 blocks pass.)
+- `SawtoothTests` (the typical curve, no model): for every block of ten in
+  levels 1–200, the hard level's heat (pos 4) is above positions 0–3, the super
+  hard level's (pos 9) above positions 5–8 and above pos 4, and position 5 has
+  fewer colours than position 4 (all 20 blocks, verified against the web
+  engine). Measured bot failure is noisier: the hard level beats the mean of
+  positions 0–3 and the super hard level the mean of 5–8 in at least 18 of the
+  20 blocks (the web engine: 18; blocks 3 and 19 miss), and over levels 1–200
+  the mean failure is ordinary .51 < hard .67 < super hard .82.
 - `GeometryTests`: `Hgeo = 3.807301`; total interior area `AreaBelow(Poly, 1)`
   = 3.697482 (the 16-segment bottom is slightly smaller than a true semicircle,
   exactly as on the web); `CapAt(0)` equals it; the table never increases;
@@ -5428,9 +7054,13 @@ as the web does.
 - Pour flow: tap source + target → animation completes within
   `tA + tB + tC + 50` ms and the board matches the engine.
 - Win flow: start from a fresh save with `level` set to 4, play the solver's
-  path through `BoardInput`; the Win sheet appears and the save shows level 5
-  and 135 coins (120 + 10 + 5 for no boosters). Continue into level 5: the hard
-  intro plays; winning it gives 170 coins.
+  path through `BoardInput`; the Win sheet appears and the save shows level 5,
+  135 coins (120 + 10 + 5 for no boosters) and `skill.n = 1` with `mu` above
+  its prior. Continue into level 5: the hard intro plays; winning it gives 170
+  coins.
+- Gentler board: on level 7, give up twice after 3 pours each: the second
+  restart sheet offers "Mix a gentler board", and the board it mixes has a lower
+  `h` than the first attempt's (and `tries = {7, 2}`).
 - Resume: play 3 moves of a level, reload the scene, "Continue level N", same
   board.
 - Easel: the three painting checks in §17.7 (reveal on cork, instant reset on
@@ -5442,10 +7072,10 @@ as the web does.
   in a game section survive a write; "Erase all saved progress" clears `games`
   and `last` and keeps `settings` and `purchases`.
 - `HubTests`: with no save, Paint Sort is featured ("Start here") and the grid is
-  [Hex Tile Sort, Car Loop], neither wide, and the count reads "2"; with
-  `last = "car-loop"`, Car Loop is featured with "Jump back in" and the grid is
-  [Paint Sort, Hex Tile Sort]; adding a fourth, soon fake game makes the grid
-  three boards with the last one wide and the count "1 coming soon"; a status of
+  [Hex Tile Sort, Car Loop, Cake Sort] with Cake Sort wide, and the count reads
+  "3"; with `last = "car-loop"`, Car Loop is featured with "Jump back in" and the
+  grid is [Paint Sort, Hex Tile Sort, Cake Sort]; adding a fifth, soon fake game
+  makes the grid four boards, none wide, and the count "1 coming soon"; a status of
   "Level 4 · 120 coins" shows in full on the featured board and as "Level 4" on a
   small one; Hex Tile Sort with `best = 12840` shows "Best 12,840".
 - `EntitlementTests`: `carloop_starter` sets `noads` and the starter flag and adds
@@ -5453,13 +7083,25 @@ as the web does.
   scene is not loaded; restoring it again adds no coins; `noads` makes
   `ShowBanner` and `ShowInterstitial` no-ops (interstitial `done` still runs);
   rewarded ads still work.
-- `AudioSynthTests` (all three groups): each recipe renders the expected length
+- `AudioSynthTests` (all four groups: `sfx_*`, `hex_*`, `cl_*`, `cs_*`): each recipe renders the expected length
   (± 5 ms), no NaN, each group's loudest clip peaks at −1 dBFS ± 0.05 after
   normalisation, identical bytes on two runs; `cl_music_loop` is exactly 10 s and
   its first and last 100 samples join without a step larger than the largest
   step inside the loop.
 - `IconTests`: every id in §7.3 exists in `IconSet.asset` as a 128 × 128 sprite
   with some opaque pixels; `cl_coin` is not single-colour.
+- `SkillModelTests`: every value in Appendix F to 1e-6 (`Phi`, `PhiInv`,
+  `TargetFor`, `Heat`, `Chance` and both observe sequences); a quality reading
+  of .95 or more that lands below the mean, or of .05 or less that lands above
+  it, leaves the state unchanged; `Valid` rejects NaN, infinite and
+  non-positive `sd`.
+- `DirectorTests` (each of the four directors on a fake save): `HeatFor` stays
+  inside the game's range and is rounded (0.05; Car Loop 0.5); a second
+  `Observe` in the same attempt changes nothing; a loss raises `tries.fails` for
+  that level and lowers its `HeatFor`; a win resets `tries`; a missing or
+  invalid `skill` loads as the prior.
+- `AdaptiveSimTests`: `AdaptiveSimCli -game model` prints the idealised rows of
+  the §4.9 table to the printed two decimals (same seeds, same RNG).
 
 **EditMode: Hex Tile Sort**
 - `HexBoardTests`: 19 cells in the order of Appendix D; every cell has 2–6
@@ -5468,13 +7110,18 @@ as the web does.
 - `MergeChooserTests`: every board in Appendix D gives the listed receiver,
   givers and score, including the tie-break and the `lastPlaced` bonus.
 - `StackFactoryTests`: with a recording `IRandom`, `PickColour` on an empty board
-  makes no 0.62 draw; `StackHeight` returns 1/2/3/4 at the thresholds .30/.70/.95
-  (early) and .22/.58/.88 (after 18 clears); `GenStack` never puts two runs of
-  the same colour next to each other unless the reroll guard ran out; `SeedBoard`
-  places 6 stacks of 1–3 tiles of one colour, with no two neighbours sharing a
-  top colour (seeds 1–200).
+  makes no help draw, and the help chance is .8 at heat 0, .62 at 2.5714 and .25
+  from 7.8571; `StackHeight` returns 1/2/3/4 at the thresholds .32/.72/.95 at
+  heat 0 and .18/.55/.85 from heat 7; at heat ≥ 5 no run in `GenStack` is longer
+  than 2; `GenStack` never puts two runs of the same colour next to each other
+  unless the reroll guard ran out; `SeedBoard` places 6 stacks of 1–3 tiles of
+  one colour, with no two neighbours sharing a top colour (seeds 1–200).
 - `TierTests`: clears 0 → 4 colours, 6 → 4, 7 → 5, 20 → 6, 21 → 7, 100 → 7;
-  `Into(10, 5) = 3/7`; `Into(30, 7) = 1`.
+  `Into(10) = 3/7`; `Into(30) = 2/7`; `Stage(6) = 0`, `Stage(7) = 1`;
+  `StageTone` of stages 3, 4, 9, 14, 19 = 0, 1, 2, 1, 2.
+- `HexDirectorTests`: Appendix D's stage heats and reading sequence to
+  1e-6; each stage is read once; a new run from a board with `peak` 13 reads a
+  lost stage, from `peak` 12 reads nothing; the skill survives a new run.
 - `ScoreTests`: pop of 10 at combo 1 = 100; 13 at combo 3 = 480; 10 at chain 14
   uses combo 10 = 1000.
 
@@ -5486,7 +7133,10 @@ as the web does.
 - `CarLoopLevelTests`: Appendix C.1 RNG values exactly; Appendix C.3 traffic
   positions within 1e-3; Appendix C.4 rows: shape, dir, pattern, hard, dual,
   pulse, speed, feeders and seed exactly; traffic, player, time and att exactly
-  (a failure prints the row; see §35.6).
+  (a failure prints the row; see §35.6); Appendix C.5 `HeatRange`,
+  `LevelTarget` and `HeatFor` values and `LevelDef(n, e)` rows the same way;
+  `RawDef(n, e)` keeps shape, dir, pattern, feeders and seed of `RawDef(n)` for
+  any `e`.
 - `CarLoopBakeTests`: the shipped JSON has levels 1–300 in order, all fields
   valid (§35.5), and its rows for the levels in Appendix C.4 equal the appendix.
 - `CarLoopEconomyTests`: payout examples: level 1 with 3 stars and no bonus = 39;
@@ -5501,8 +7151,8 @@ as the web does.
 **PlayMode: app**
 - Hub: tapping each board loads its scene; coming back makes that game the
   featured board with the label "Jump back in".
-- Settings: toggling Sound off mutes all three games' sounds; Music off stops
-  Car Loop's loop; theme changes restyle the Hub and Paint Sort live.
+- Settings: toggling Sound off mutes all four games' sounds; Music off stops
+  Car Loop's loop; theme changes restyle the Hub, Paint Sort and Cake Sort live.
 
 **PlayMode: Hex Tile Sort** (seeded run)
 - Place a stack next to a matching one: the flip finishes within
@@ -5514,6 +7164,10 @@ as the web does.
   refilling; the best score is saved; "Play again" starts a seeded new run.
 - Rotate during a resolve is ignored; rotate when idle turns the board 60° in
   360 ms and keeps every stack on its cell.
+- Stages: with a scripted board, the 21st clear shows "NEW COLOUR" and the
+  ribbon "Stage 4 · 7 colours"; the 28th shows "HARD WAVE" in the hard
+  gradient, the ribbon turns `#FF8A8F` and reads "Stage 5 · 7 colours · hard",
+  and the next refill is dealt at the new heat.
 
 **PlayMode: Car Loop**
 - Level 1 played by a script (release every 0.6 s): win, complete panel, 3
@@ -5527,37 +7181,79 @@ as the web does.
   Autopilot releases an armed car on the first safe frame.
 - Mock ads: with *No ad fill* the revive ad returns `false` and nothing changes;
   a completed rewarded view of `level_multiplier` pays base × the needle value.
+- Adaptive retry: with `skill = {45, 6}`, level 25 starts at `e` 45. Crash,
+  revive by coins and clear it: only the loss is read (`mu` falls,
+  `tries = {25, 1}`), not the clear. From the same start, crash and press Retry
+  instead: the new attempt's `e` is below 45.
+
+**EditMode: Cake Sort**
+- `CakeEngineTests`: every value in Appendix E: the RNG stream and `SeedFor`,
+  the typical-curve table and `Spec(n, h)` rows, `NewLevel` counters and trays
+  for the listed levels and heats, `Place` steps, the six `Resolve` cases A–F,
+  the `MakePlate` sequence and the `Playout` results.
+- `CakeRulesTests`: over 200 seeded bot playouts of levels 1–60 at random heats,
+  after every `Place` no plate holds more than 6 slices, no plate holds 6 of one
+  cake, slices never move between diagonal cells, the counts of each cake
+  (counter + tray + baked × 6) never change except by baking, and `IsStuck` is
+  true exactly when no cell is empty and the order isn't filled.
+- `CakeQueueTests` (the step queue on a fake clock): three placements committed
+  50 ms apart play their steps in commit order; when the queue drains, every
+  cell's visual plate equals the state; `StopPlayback` mid-step stops further
+  steps, and the old timer firing after it does nothing (`gen` guard); a tray
+  plate cannot be dropped on a cell a mover is headed to.
+
+**PlayMode: Cake Sort**
+- Live input: on level 3 at a fixed heat, drop the three tray plates 100 ms
+  apart while the first one's slices are still flying: all three land, none is
+  refused, the counter matches the engine when the queue drains, and the order
+  card counts every cake.
+- Win: level 1 along the tutorial path: the coach steps run in order, the win
+  sheet opens after the last cake lands, coins go 100 → 115, level 2 unlocks,
+  `skill.n = 1`.
+- Full counter: with `skill = {4, 0.5}`, fill the counter on level 12: the
+  full-counter bar appears once the queue drains, one lost try is read, and
+  Restart makes a new attempt at a lower heat.
+- Boosters during a sort: the hammer is refused with "Wait for the slices to
+  settle"; undo and new plates are refused while a plate is in flight.
+- Resume: place 3 plates, reload the scene, Continue: same counter, tray and
+  heat.
 
 ---
 
-## 47. Milestones and acceptance checks
+## 58. Milestones and acceptance checks
 
 Build in this order (§1). Each row's checks must pass before the next starts.
 
 | # | Milestone | Done when |
 | --- | --- | --- |
-| P0 | Foundation: project setup (§2), asmdefs, `Playbox.Common`, Core services (save, settings, theme, `SfxPlayer`, `MusicPlayer`, haptics, mock ads, mock store, log analytics), generators (`Raster`, `RasterCanvas`, `SvgIcon`, `Synth`), the icon set, the Hub with all three boards and navigation into placeholder game scenes | Save, Hub, Entitlement, Icon tests pass; the three boards match §5 in both themes (featured board, grid, chips, board art); Back from each placeholder scene returns to the Hub |
+| P0 | Foundation: project setup (§2), asmdefs, `Playbox.Common`, Core services (save, settings, theme, `SfxPlayer`, `MusicPlayer`, haptics, mock ads, mock store, log analytics), generators (`Raster`, `RasterCanvas`, `SvgIcon`, `Synth`), the icon set, the Hub with all four boards and navigation into placeholder game scenes | Save, Hub, Entitlement, Icon tests pass; the four boards match §5 in both themes (featured board, grid, chips, board art); Back from each placeholder scene returns to the Hub |
+| AD1 | Adaptive difficulty: `SkillModel`, `SkillConfig` assets, the director base, `AdaptiveSimCli` (model mode) (§4.9) | SkillModel, Director and AdaptiveSim tests pass |
 | PS1 | Paint Sort engine port and probe CLI | EngineParity, Curve, Solvability and Sawtooth tests pass; the CLI output equals Appendix B.2 |
 | PS2 | Paint Sort textures and audio | Appendix A Paint Sort PNGs and §18.2 WAVs regenerate byte-identically; AudioSynth tests pass for the `sfx_*` group; audition every sound |
 | PS3 | Static board: layout, vial meshes, liquid shader, symbols, cork | Levels 1, 13, 20 and 60 render in light and dark themes; hidden layers show hatched primer with '?'; side by side with web screenshots, paint colours match and the glass alphas have been tuned for Linear colour space (§2) |
 | PS4 | Input, pour animation, stream, particles, glug sounds, haptics | Paint stays level while tipping; stream lands on the rising surface; pitch rises as the target fills; concurrent pours work |
-| PS5 | Level flow: corking, the easel painting (§17.7), win sequence, save and resume | Win flow, Resume and Easel PlayMode tests pass; paintings match the web for levels 1, 5 and 20 |
+| PS5 | Level flow: corking, the easel painting (§17.7), win sequence, save and resume, `PaintSortDirector` (§11.11) | Win flow, Gentler board, Resume and Easel PlayMode tests pass; paintings match the web for levels 1, 5 and 20 |
 | PS6 | Boosters, buy sheet, dead-end watcher, hint, tutorial, hard intro, hidden-paint tip | Stuck bar appears on a proven dead end within ~0.5 s; hints never spent on dead boards |
 | PS7 | Lobby, level road, settings sheet, theme switching, erase progress, performance | Road matches §19.3; Auto theme follows the OS; 60 fps on a mid-range Android with 15 vials; generation never blocks the main thread; probe run for levels 1–120 recorded |
-| HX1 | Hex Tile Sort engine and a headless resolver | HexBoard, MergeChooser, StackFactory, Tier and Score tests pass; a seeded headless run (instant tweens) plays 200 random placements without exceptions |
+| HX1 | Hex Tile Sort engine, stages and `HexDirector`, and a headless resolver | HexBoard, MergeChooser, StackFactory, Tier, HexDirector and Score tests pass; a seeded headless run (instant tweens) plays 200 random placements without exceptions |
 | HX2 | 3D board: meshes, `HexTile`/`HexSocket` shaders, camera fit, backdrop, stacks, badges, rotation | Side by side with web screenshots at 390 × 844 and 360 × 640: board size and position within 4 dp, tile colours, rims, gloss and side walls match after Linear tuning; the board turns ±60° cleanly |
 | HX3 | Input, place, drop, flips, pops, primed timing, tray refill, particles, floats, banner, shake | Hex PlayMode tests pass; a flip lands exactly on the stack top; placing during a chain keeps the chain (combo grows) |
 | HX4 | HUD, game-over veil, sounds, haptics, best score, board status | The `hex_*` group passes AudioSynth tests; best score persists across app restarts and shows on the Hub board |
-| CL1 | Car Loop engine: geometry, generator, bots, simulation; baked JSON and `CarLoopBake` | CarLoopGeometry, CarLoopLevel, CarLoopBake and CarLoopSim tests pass; the bake report lists no differences (or each is explained) |
+| CL1 | Car Loop engine: geometry, generator (with `e`), bots, simulation; baked JSON and `CarLoopBake`; `CarLoopDirector` and the worker-thread `LevelSource` | CarLoopGeometry, CarLoopLevel, CarLoopBake and CarLoopSim tests pass; the bake report lists no differences (or each is explained) |
 | CL2 | Rendering: car sprites, static layer, camera fit, cars moving, attract mode | Levels 1, 8, 16 and 75 match web screenshots (road, island, trees, lamps, markings, cars); the demo ring runs on the Car Loop home |
 | CL3 | Gameplay: tap, collisions, clock, win/lose, effects, HUD, intro, tutorial and tips, sounds and music, haptics | Level 1 and crash PlayMode tests pass; the clock stays frozen until the first tap; close calls pay +3 |
 | CL4 | Boosters, complete and fail panels, revive, after-level chain, garage, daily reward, levels screen, shop | Booster and Economy tests pass; every panel in §43.3 opens from its trigger and matches the web prototype |
 | CL5 | Ads and store: banner slot, interstitial gate, every rewarded placement, Remove Ads across the app, purchases and restore, analytics events | Mock-ads PlayMode tests pass; with the real SDKs and the network's test ids, a rewarded, an interstitial and a banner show on a device, and a sandbox purchase of each product grants correctly |
-| R1 | Release pass | All tests green; 60 fps in all three games on a mid-range Android and an older iPhone; no main-thread hitch over 50 ms; consent and ATT flows verified; store assets and legal links in place |
+| CS1 | Cake Sort engine port, bots, `CakeProbeCli`, `AdaptiveSimCli -game cake` | CakeEngine and CakeRules tests pass; the probe prints the same table as `cake-probe.mjs`; the simulation's bot rows are within ± .05 of §4.9 |
+| CS2 | Cake Sort textures and audio: patterns, toppings, piping, flame, cloth, doily, tray, cupcake, hand, board art; the `cs_*` clips | Appendix A Cake Sort PNGs and §53.1 WAVs regenerate byte-identically; AudioSynth tests pass for the `cs_*` group; audition every sound |
+| CS3 | The 3D counter: pitched camera, counter, plates, stands with cloches, `CakeSlice.shader`, all ten cakes, `CakeIconRig` | Levels 1, 5, 20 and 45 side by side with web screenshots at 390 × 844: plates within 4 dp, slices, patterns, toppings and glaze match after Linear tuning; every cake renders in the collection, in both themes |
+| CS4 | Input, the step queue, spinning slice flights, serving to the order card, effects, sounds, haptics | CakeQueue tests and the Live input PlayMode test pass; 200 rapid random placements leave no visual desync |
+| CS5 | Level flow: lobby, menu chips, order card, boosters, tutorial, hard intro, win, new-cake and unlock sheets, save and resume, `CakeDirector` | Cake Sort PlayMode tests pass; the board status shows on the Hub |
+| R1 | Release pass | All tests green; 60 fps in all four games on a mid-range Android and an older iPhone; no main-thread hitch over 50 ms; consent and ATT flows verified; store assets and legal links in place |
 
 ---
 
-## 48. Appendix A: generated asset manifest
+## 59. Appendix A: generated asset manifest
 
 All PNGs are RGBA, straight alpha, written to
 `Assets/_Project/Textures/Generated/`.
@@ -5598,7 +7294,15 @@ All PNGs are RGBA, straight alpha, written to
 | `cl_ellipse_mask.png` | 512×176 | Sprite | White ellipse (mask for the turntable's light sweep) |
 | `cl_light_sweep.png` | 128×16 | Sprite | Horizontal white gradient α 0 → .12 → 0 |
 | `cl_rays.png` | 256×256 | Sprite | Rays from the centre, 10° on and 14° off, white, alpha fading radially from 40% of the radius to 0 at the edge (rotating behind big panel icons) |
-| Icons (`IconSet.asset`) | 128×128 each | Sprite | Every id in §7.3 (app, Paint Sort, Hex Tile Sort, the 33 Car Loop symbols and `cl_sign` at 256×256) |
+| `cs_pattern_<cake>.png` | 256×256 each | Default, Clamp, sRGB | Cake tops, §51.3 |
+| `cs_top_<kind>.png` (10), `cs_pipe.png`, `cs_flame.png` | 128×128 each | Sprite, pivot at the anchor (64, 92) | Toppings, piping and the candle flame, §51.4 |
+| `cs_gingham.png` | 64×64 | Default, Repeat | §51.6 |
+| `cs_doily.png` | 256×256 | Sprite | §51.6 |
+| `cs_tray_wood.png` | 512×128 | Sprite, 9-slice, sRGB | §51.6 |
+| `cs_cupcake.png` | 128×160 | Sprite | §51.6 |
+| `cs_hand.png` | 128×128 | Sprite | §51.6 |
+| `tex_board_cake_sort_light.png`, `tex_board_cake_sort_dark.png` | 1600×1000 | Sprite, Clamp, sRGB, no mipmaps | Cake Sort's board art, §5 |
+| Icons (`IconSet.asset`) | 128×128 each | Sprite | Every id in §7.3 (app, Paint Sort, Hex Tile Sort, the 33 Car Loop symbols and `cl_sign` at 256×256, Cake Sort) |
 
 Runtime-generated (not files): Paint Sort's vial meshes (§13.2), paint stream
 ribbons (§15), hint pointer meshes (§16), painting meshes and RenderTextures
@@ -5606,15 +7310,18 @@ ribbons (§15), hint pointer meshes (§16), painting meshes and RenderTextures
 slabs and chips (uGUI, §5); backdrop gradients (§6.1); Hex Tile Sort's prisms,
 sockets and outline ribbons (§26.1); Car Loop's roads, island, speckles,
 markings, danger-zone ribbons and signals (§41.2), tow cables and reticles
-(§41.3).
+(§41.3); Cake Sort's slice meshes, plates, stands, cloche domes and counter
+(§51) and the cake icon RenderTextures (§51.7).
 
-Audio files: §18.2 (Paint Sort), §30.2 (Hex Tile Sort), §44.3 (Car Loop).
+Audio files: §18.2 (Paint Sort), §30.2 (Hex Tile Sort), §44.3 (Car Loop),
+§53.1 (Cake Sort).
 
 ---
 
-## 49. Appendix B: Paint Sort golden fixtures
+## 60. Appendix B: Paint Sort golden fixtures
 
-Produced by the web engine. The C# port must reproduce them exactly.
+Produced by the web engine with no model (`h` left out: the typical curve) and,
+where marked, at a given heat. The C# port must reproduce them exactly.
 
 ### B.1 Values
 
@@ -5625,114 +7332,143 @@ SeedFor(0,0)  = 1802543397
 Mulberry32(SeedFor(1,7)) first 4: 0.154533308232, 0.378489000723, 0.221675909357, 0.806769933086
 Mulberry32(12345) first 3:        0.979728267761, 0.306752264500, 0.484205421526
 
-Spec(n)   K  tier  heat    mystery  pick  cands  reward
-   1      3   0    0.0000  0.0000   0     4      10
-   5      6   1    2.5000  0.0000   1     9      30
-  10      7   2    3.6000  0.0000   1     14     60
-  15      7   1    3.6500  0.4600   1     9      30
-  47      9   0    5.6500  0.0000   0.45  4      10
-  50     11   2    8.2000  0.7000   1     14     60
-  55     11   1    8.2500  0.6200   1     9      30
-  60     12   2    9.3500  0.7000   1     14     60
-  61     10   0    6.9000  0.0000   0     4      10
-  63     10   0    7.8000  0.5400   0.55  4      10
- 100     12   2   13.9500  0.7000   1     14     60
+Spec(n)   heat     K  tier  mystery  pick    cands  reward   heatRange
+   1      0.0000    3    0    0.0000    0          5      10    [0, 7.6]
+   5      2.5000    5    1    0.0000    0.5        8      30    [0, 7.6]
+  10      3.6000    6    2    0.0000    0.6       10      60    [0, 7.6]
+  15      3.6500    6    1    0.4600    0.65       8      30    [0, 8.75]
+  47      5.6500    8    0    0.0000    0.65       5      10    [2.1, 10]
+  50      8.2000   11    2    0.7000    0.2       10      60    [2.1, 10]
+  55      7.1000   10    1    0.6200    0.1        8      30    [2.1, 10]
+  60      8.2000   11    2    0.7000    0.2       10      60    [2.1, 10]
+  61      4.6000    7    0    0.0000    0.6        5      10    [2.1, 10]
+  63      5.5000    8    0    0.5400    0.5        5      10    [2.1, 10]
+ 100      8.2000   11    2    0.7000    0.2       10      60    [2.1, 10]
 
-Generate(1):  vials   [[0,1,2,2],[0,1,2,1],[1,0,2,0],[],[]]
-              palette [10,2,4]   hidden all 0   len 9   pool 4   fail 0
-              solve(budget 400000) first moves [[0,3,2],[1,0,1],[1,3,1],[0,1,2]]
-              art kinds ["wave","sun"]   slots [1,2,0]   shape[1] bbox [0,167.1956,400,57.1835]
+Spec(n, h) with a heat from the model:
+Spec(12, 0)  heat 0  K 3  pick 0  tier 0  cands 5
+Spec(12, 2.35)  heat 2.35  K 5  pick 0.35  tier 0  cands 5
+Spec(12, 6.8)  heat 6.8  K 9  pick 0.8  tier 0  cands 5
+Spec(25, 4.5)  heat 4.5  K 7  pick 0.5  tier 1  cands 8
+Spec(33, 9.95)  heat 9.95  K 12  pick 0.95  tier 0  cands 5
+Spec(33, 12)  heat 10  K 12  pick 1  tier 0  cands 5
 
-Generate(2):  vials   [[2,0,1,0],[1,0,2,0],[2,1,2,1],[],[]]
-              palette [5,11,10]   len 10
-              first moves [[0,3,1],[1,3,1],[2,0,1],[1,2,1]]
-              art kinds ["hill","sun2"]   slots [0,1,2]   shape[1] bbox [0,198.7899,400,101.2101]
+Generate(1):  heat 0  K 3
+  vials   [[0,1,2,2],[0,1,2,1],[1,0,2,0],[],[]]
+  palette [10,2,4]   len 9   pool 5   casual 0   skilled 0   fail 0
+  first moves [[0,3,2],[1,0,1],[1,3,1],[0,1,2]]
+  art kinds ["wave","sun"]   slots [1,2,0]   shape[1] bbox [0,167.1956,400,57.1835]
 
-Generate(5):  vials   [[3,2,1,2],[4,5,3,1],[0,3,4,1],[0,0,4,5],[4,3,1,2],[2,5,5,0],[],[]]
-              palette [9,0,4,1,10,11]   len 20   pool 9   casual 0.5   skilled 0.2   fail 0.35
-              first moves [[0,6,1],[1,0,1],[4,6,1],[2,4,1]]
-              art kinds ["wave","block","arch","sun","dots"]   slots [1,5,4,3,0,2]   shape[1] bbox [0,163.5554,400,66.9693]
+Generate(2):  heat 0.45  K 3
+  vials   [[0,2,1,2],[2,0,1,1],[0,2,0,1],[],[]]
+  palette [5,11,10]   len 10   pool 5   casual 0   skilled 0   fail 0
+  first moves [[0,3,1],[2,0,1],[0,4,2],[0,3,1]]
+  art kinds ["hill","sun2"]   slots [0,1,2]   shape[1] bbox [0,198.7899,400,101.2101]
 
-Generate(10): vials   [[0,3,6,0],[1,0,3,1],[4,3,2,6],[2,2,5,6],[4,5,6,1],[4,5,1,0],[2,3,4,5],[],[]]
-              palette [8,3,9,10,5,6,0]   len 25   pool 14   casual 0.75   skilled 0.6   fail 0.675
-              first moves [[0,7,1],[2,0,1],[5,7,1],[4,5,1]]
-              art kinds ["stripe","hill","wave","ring","blob","leaf"]   slots [0,2,3,6,5,4,1]
+Generate(5):  heat 2.5  K 5
+  vials   [[0,3,1,2],[4,0,2,0],[1,3,2,3],[2,4,4,1],[0,3,4,1],[],[]]
+  palette [9,0,4,1,10]   len 18   pool 8   casual 0.05   skilled 0.05   fail 0.05
+  first moves [[0,5,1],[3,0,1],[4,6,1],[0,6,2]]
+  art kinds ["wave","block","sun","dots"]   slots [2,4,3,1,0]   shape[1] bbox [0,163.5554,400,66.9693]
 
-Generate(13): vials   [[4,0,1,2],[4,2,3,4],[1,3,3,2],[3,0,1,0],[0,1,2,4],[],[]]
-              palette [10,8,5,11,3]   len 16
-              hidden  [[0,0,0,0],[0,0,0,0],[1,0,0,0],[0,0,0,0],[0,0,1,0],[],[]]
-              first moves [[0,5,1],[2,5,1],[0,6,1],[3,0,1]]
-              art kinds ["peak","hill","sun","blob"]   slots [0,4,2,1,3]   shape[1] bbox [175.3173,164.7517,200.7875,135.2483]
+Generate(10):  heat 3.6  K 6
+  vials   [[2,1,5,4],[5,0,2,0],[5,3,2,1],[1,2,3,4],[1,3,0,3],[0,4,5,4],[],[]]
+  palette [8,3,9,10,5,6]   len 22   pool 10   casual 0.15   skilled 0.3   fail 0.225
+  first moves [[0,6,1],[3,6,1],[4,3,1],[1,4,1]]
+  art kinds ["stripe","hill","wave","ring","blob"]   slots [5,0,4,1,3,2]   shape[1] bbox [0,0,400,300]
 
-Generate(20): vials   [[3,5,5,0],[1,4,6,1],[3,1,5,7],[7,4,2,7],[2,4,1,4],[3,6,6,7],[3,6,5,0],[2,0,2,0],[],[]]
-              palette [6,2,8,3,7,11,5,10]   len 28   casual 0.95   skilled 1   fail 0.975
-              hidden  [[0,1,0,0],[1,1,1,0],[1,1,0,0],[1,1,1,0],[1,1,0,0],[0,1,1,0],[1,1,0,0],[0,0,1,0],[],[]]
-              first moves [[0,8,1],[6,8,1],[6,0,1],[7,8,1]]
-              art kinds ["arch","peak","block","stripe","blob","dots","ring"]   slots [1,7,2,5,0,6,3,4]
-              shape[1] bbox [85.7874,187.4683,130.4856,112.5317]
+Generate(13):  heat 2.05  K 5
+  vials   [[4,1,2,0],[2,4,2,0],[1,0,4,1],[0,3,4,1],[3,3,3,2],[],[]]
+  palette [10,8,5,11,3]   len 15   pool 5   casual 0   skilled 0   fail 0
+  hidden  [[0,0,0,0],[0,0,0,0],[1,0,0,0],[0,0,0,0],[0,0,1,0],[],[]]
+  first moves [[0,5,1],[1,5,1],[0,1,1],[2,0,1]]
+  art kinds ["peak","hill","sun","blob"]   slots [0,4,2,1,3]   shape[1] bbox [175.3173,164.7517,200.7875,135.2483]
 
-Generate(37): vials   [[7,6,4,2],[6,4,3,3],[5,4,7,1],[5,6,7,6],[0,5,4,5],[3,7,2,1],[0,2,1,0],[1,3,0,2],[],[]]
-              palette [6,11,10,3,5,4,1,2]   len 25   casual 0.6428571428571429   skilled 0.2857142857142857
-              first moves [[0,8,1],[7,8,1],[6,7,1],[5,6,1]]
+Generate(20):  heat 4.75  K 7
+  vials   [[1,3,4,1],[6,5,3,6],[3,6,0,0],[5,1,0,5],[4,4,2,6],[0,4,3,2],[5,2,1,2],[],[]]
+  palette [6,2,8,3,7,11,5]   len 23   pool 10   casual 0.7   skilled 0.35   fail 0.525
+  hidden  [[0,1,0,0],[1,1,1,0],[1,1,0,0],[0,1,1,0],[1,1,1,0],[0,0,1,0],[1,1,1,0],[],[]]
+  first moves [[6,7,1],[0,6,1],[5,7,1],[0,8,1]]
+  art kinds ["arch","peak","block","blob","dots","ring"]   slots [3,5,4,0,6,2,1]   shape[1] bbox [85.7874,187.4683,130.4856,112.5317]
 
-Generate(60): vials   [[10,2,8,2],[7,8,1,4],[4,6,11,8],[7,11,10,3],[0,10,5,9],[5,9,2,11],[7,1,7,6],[6,9,8,9],[0,11,1,0],[10,2,5,3],[4,6,5,3],[1,3,4,0],[],[]]
-              palette [10,3,2,9,4,0,7,1,11,5,8,6]   len 46   fail 1
-              hidden  [[1,0,1,0],[1,1,0,0],[1,0,1,0],[1,0,1,0],[0,1,1,0],[0,0,1,0],[0,1,1,0],[1,1,0,0],[1,0,1,0],[0,0,1,0],[1,0,0,0],[1,0,0,0],[],[]]
-              first moves [[0,12,1],[2,0,1],[5,2,1],[5,12,1]]
-              art kinds ["hill","stripe","wave","arch","peak","ring","blob","sun","leaf","dots","sun2"]
-              slots [8,10,0,6,3,9,7,2,1,5,4,11]
+Generate(37):  heat 4.5  K 7
+  vials   [[3,1,2,1],[0,4,6,4],[1,2,0,3],[5,0,4,5],[2,6,3,6],[3,0,4,6],[5,5,2,1],[],[]]
+  palette [6,11,10,3,5,4,1]   len 24   pool 5   casual 0.5714285714285714   skilled 0.21428571428571427   fail 0.39285714285714285
+  first moves [[0,7,1],[6,7,1],[0,6,1],[0,7,1]]
+  art kinds ["stripe","arch","wave","ring","dots","blob"]   slots [3,5,2,6,1,0,4]   shape[1] bbox [0,23.9083,400,251.3427]
+
+Generate(60):  heat 8.2  K 11
+  vials   [[4,9,8,5],[3,7,4,5],[9,0,4,0],[9,10,10,8],[5,6,3,9],[6,1,2,2],[7,3,0,0],[1,8,2,8],[1,4,10,1],[10,7,2,7],[6,3,5,6],[],[]]
+  palette [10,3,2,9,4,0,7,1,11,5,8]   len 36   pool 10   casual 0.9   skilled 0.9   fail 0.9
+  hidden  [[1,0,1,0],[1,1,0,0],[1,0,1,0],[1,0,1,0],[0,1,1,0],[0,0,0,0],[1,0,0,0],[1,1,1,0],[1,0,1,0],[0,1,0,0],[0,1,1,0],[],[]]
+  first moves [[0,11,1],[1,11,1],[7,0,1],[6,12,2]]
+  art kinds ["hill","stripe","wave","arch","peak","ring","blob","sun","leaf","dots"]   slots [4,8,5,1,10,3,2,7,6,0,9]   shape[1] bbox [0,169.622,400,130.378]
+
+Generate(12, 2.35):  heat 2.35  K 5
+  vials   [[4,0,2,0],[4,3,1,3],[0,4,4,2],[3,2,3,1],[1,0,1,2],[],[]]
+  palette [1,10,9,3,0]   len 17   pool 5   casual 0.07142857142857142   skilled 0   fail 0.03571428571428571
+  first moves [[0,5,1],[4,0,1],[3,4,1],[1,3,1]]
+  art kinds ["arch","peak","blob","sun2"]   slots [3,1,2,0,4]   shape[1] bbox [258.8934,229.3242,107.4745,70.6758]
+
+Generate(25, 4.5):  heat 4.5  K 7
+  vials   [[3,5,2,0],[4,0,2,4],[3,6,1,2],[1,6,6,5],[6,0,3,3],[4,2,1,0],[1,5,5,4],[],[]]
+  palette [2,5,7,8,9,11,10]   len 22   pool 8   casual 0.55   skilled 0.35   fail 0.45
+  hidden  [[0,1,1,0],[1,1,1,0],[1,0,1,0],[1,1,1,0],[1,1,0,0],[1,0,0,0],[1,1,0,0],[],[]]
+  first moves [[0,7,1],[2,0,1],[5,7,1],[5,2,1]]
+  art kinds ["peak","stripe","hill","blob","sun2","sun"]   slots [0,2,1,5,3,6,4]   shape[1] bbox [24.4175,154.8605,274.6248,145.1395]
 ```
 
 "art kinds" lists the shapes after the ground, in build order; "slots" includes
-the ground first; bboxes are `[x, y, w, h]` rounded to 4 decimals.
+the ground first; bboxes are `[x, y, w, h]` rounded to 4 decimals. `heatRange`
+is `HeatRange(n)` (§10.3).
 
-### B.2 Difficulty curve, levels 1–30
+### B.2 Difficulty curve, levels 1–30 (the typical curve, no model)
 
 `casual` and `skilled` are the two simulated players' failure rates;
 difficulty is their mean; moves is the solver's path length.
 
 ```
  lvl  tier  colours hidden moves  casual skilled  difficulty
-   1             3       0      9     0.00    0.00    0.00
-   2             3       0     10     0.00    0.00    0.00
-   3             4       0     12     0.00    0.00    0.00
-   4             4       0     13     0.00    0.00    0.00
-   5   HARD      6       0     20     0.50    0.20    0.35
-   6             4       0     13     0.00    0.00    0.00
-   7             4       0     13     0.00    0.00    0.00
-   8             5       0     16     0.36    0.14    0.25
-   9             5       0     15     0.07    0.14    0.11
-  10   SUPER     7       0     25     0.75    0.60    0.68
-  11             4       0     12     0.00    0.00    0.00
-  12             5       0     17     0.21    0.00    0.11
-  13             5       2     16     0.07    0.07    0.07
-  14             6       0     21     0.43    0.00    0.21
-  15   HARD      7      10     25     0.90    0.80    0.85
-  16             5       0     16     0.00    0.00    0.00
-  17             5       0     16     0.07    0.00    0.04
-  18             6       5     20     0.57    0.00    0.29
-  19             6       0     18     0.29    0.29    0.29
-  20   SUPER     8      16     28     0.95    1.00    0.97
-  21             5       0     16     0.00    0.00    0.00
-  22             6       0     20     0.36    0.14    0.25
-  23             6       4     22     0.43    0.43    0.43
-  24             7       0     25     0.57    0.29    0.43
-  25   HARD      8      16     25     0.90    0.55    0.72
-  26             6       0     17     0.07    0.21    0.14
-  27             6       0     22     0.14    0.21    0.18
-  28             7       9     23     0.71    0.43    0.57
-  29             7       0     24     0.43    0.64    0.54
-  30   SUPER     9      16     35     1.00    0.95    0.97
+   1             3       0      9     0.00    0.00      0.00
+   2             3       0     10     0.00    0.00      0.00
+   3             3       0     12     0.00    0.00      0.00
+   4             4       0     13     0.00    0.00      0.00
+   5   HARD      5       0     18     0.05    0.05      0.05
+   6             3       0     11     0.00    0.00      0.00
+   7             4       0     12     0.00    0.00      0.00
+   8             4       0     14     0.00    0.00      0.00
+   9             4       0     15     0.00    0.00      0.00
+  10   SUPER     6       0     22     0.15    0.30      0.23
+  11             4       0     13     0.00    0.00      0.00
+  12             4       0     15     0.00    0.00      0.00
+  13             5       2     15     0.00    0.00      0.00
+  14             5       0     15     0.07    0.00      0.04
+  15   HARD      6       9     21     0.30    0.20      0.25
+  16             4       0     13     0.07    0.00      0.04
+  17             5       0     16     0.07    0.00      0.04
+  18             5       5     16     0.07    0.07      0.07
+  19             6       0     18     0.14    0.00      0.07
+  20   SUPER     7      15     23     0.70    0.35      0.53
+  21             5       0     18     0.07    0.00      0.04
+  22             5       0     17     0.43    0.00      0.21
+  23             6       4     21     0.21    0.07      0.14
+  24             6       0     21     0.50    0.43      0.46
+  25   HARD      7      15     22     0.65    0.60      0.63
+  26             5       0     17     0.29    0.07      0.18
+  27             6       0     18     0.00    0.00      0.00
+  28             6       9     20     0.43    0.14      0.29
+  29             7       0     23     0.14    0.14      0.14
+  30   SUPER     8      11     27     0.80    0.65      0.72
 
-mean difficulty   normal 0.16 · hard 0.64 · super 0.87
+mean difficulty   normal 0.07 · hard 0.31 · super 0.49
 ```
 
 ---
 
-## 50. Appendix C: Car Loop golden fixtures
+## 61. Appendix C: Car Loop golden fixtures
 
 Produced by the web engine (`roundabout/src/app.html`) with the Node approach in
-§0.5. Values rounded to 4 decimals. Tolerances in §46.
+§0.5. Values rounded to 4 decimals. Tolerances in §57.
 
 ### C.1 RNG
 
@@ -5807,9 +7543,47 @@ Levels 1–300 needed at most 4 attempts (167 levels: 0, 52: 1, 36: 2, 27: 3,
  300   circle       1   even        1     0   -                   200       6      6    [30]        31418707     12    0   6.8667   1.9333
 ```
 
+### C.5 Adaptive levels (`HeatFor`, `LevelDef(n, e)`)
+
+`HeatRange`, `LevelTarget(n, 0)`, `LevelTarget(n, 2)` and `HeatFor(n)` for a new
+player (`skill = {20, 14}`, no failed tries):
+
+```
+  n  10  range [10, 50]  target 0.36  target(f=2) 0.7696  HeatFor null
+  n  11  range [10, 51]  target 0.9  target(f=2) 0.964  HeatFor 10
+  n  12  range [10, 52]  target 0.86  target(f=2) 0.9496  HeatFor 10
+  n  15  range [10, 55]  target 0.78  target(f=2) 0.9208  HeatFor 10
+  n  20  range [10, 60]  target 0.36  target(f=2) 0.7696  HeatFor 26.5
+  n  25  range [10, 65]  target 0.5  target(f=2) 0.82  HeatFor 20
+  n  30  range [10, 70]  target 0.36  target(f=2) 0.7696  HeatFor 26.5
+  n  45  range [13.5, 85]  target 0.5  target(f=2) 0.82  HeatFor 20
+  n  50  range [15, 90]  target 0.36  target(f=2) 0.7696  HeatFor 26.5
+  n 100  range [30, 140]  target 0.36  target(f=2) 0.7696  HeatFor 30
+  n 200  range [45, 140]  target 0.36  target(f=2) 0.7696  HeatFor 45
+```
+
+With `skill = {45, 6}`: `HeatFor` 11 → 28, 20 → 50, 25 → 45, 30 → 50, 41 → 28,
+45 → 45, 50 → 50; level 45 after two lost tries (`tries = {45, 2}`) → 32.5.
+
+`LevelDef(n, e)` (same columns as C.4; `e` changes only speed, traffic, cars
+and the clock):
+
+```
+ lvl     e  shape      dir pattern  hard dual  speed traffic player  time att refT     greedyT
+  11    10  circle       1   even     0    0      148       4      5    12   0 4.95     1.7
+  11    30  circle       1   even     0    0      163       6      5     9   0 3.3667   1.7667
+  20    25  hex          1   random   1    0      158       5      6    17   0 8.2167   2.3167
+  25    30  circle      -1   pairs    1    0      162       5      5    12   0 5.2167   1.65
+  37    20  tall         1   trains   0    0      156       6      6    17   0 8.0833   1.6833
+  37    60  tall         1   trains   0    0      185       7      7    14   0 7.6667   1.7833
+  60    45  squircle     1   even     1    0      173       6      6    11   0 4.2333   1.8167
+ 100    70  tri          1   trains   1    0      192       5      5     9   0 4.75     1.3333
+ 150   120  hex          1   even     1    0      200       3      7    12   3 5.7833   1.65
+```
+
 ---
 
-## 51. Appendix D: Hex Tile Sort fixtures
+## 62. Appendix D: Hex Tile Sort fixtures
 
 Produced by running the web's `scoreMerge` and `bestMerge` on constructed
 boards (§0.5). Stacks are listed bottom to top; colours are indices into
@@ -5845,3 +7619,166 @@ Candidate scores on "A without colour 3", for `ScoreMerge` tests:
 
 **Pop scores:** run 10 at combo 1 → 100; run 13 at combo 3 → 480; run 10 with
 chain 14 → combo 10 → 1000.
+
+**Stages and skill readings** (`HexDirector`, §24.6; the web's skill block with
+`SkillConfig(1, 2.5, 1.8, .2)`):
+
+```
+TargetFor(pos, 1): 0 → 0.94, 4 → 0.7, 9 → 0.616
+prior {2.5, 1.8}: StageHeat 0..9 = 0, 0, 0, 0.199984, 1.420193, 0, 0, 0.080554, 0.312139, 1.892574
+skill {5, 0.5}:   StageHeat 0..9 = 3.26171, 3.458613, 3.61673, 3.751171, 4.413702, 3.366489, 3.541317, 3.686325, 3.812067, 4.670189
+q for peak 8 / 12 / 15 / 19 = 0.985846 / 0.785082 / 0.396215 / 0.04779
+from the prior: stage 0 at heat 0 won, peak 10      → 2.131469 ± 1.088546
+                stage 1 at heat 0.093603 won, peak 14 → 1.608404 ± 0.845267
+                stage 2 at heat 0 lost             → 0.640469 ± 0.697898   n 3
+```
+
+Stage heats are not rounded. With the prior, stage 0's raw heat is −0.70 and
+clamps to 0.
+
+---
+
+## 63. Appendix E: Cake Sort fixtures
+
+Produced by the web engine (`cake-sort.html`, between the engine markers) with
+the Node approach in §0.5. Counters list cells by index (`row × 4 + col`); in the
+`newLevel` grids `.` is empty, `#` a cake stand, and a list a plate (bottom slot
+first). Steps are `{d, f, from: [[cell, slices]], cake, emptied}`.
+
+```
+rngNext from {s: SeedFor(1,11)|0} first 3: 0.824639473343, 0.302575792884, 0.983872138895
+SeedFor(7, 11 + 20*heat 2.35 → 58) = 3783001627  as int32 -511965669
+
+baseHeat / heatRange / spec(n) at the typical curve:
+   n  heat   range          tier K goal stands pre  mix    mix3   help   big    reward
+   1     0 [0, 7.4]          0  3    3      0   0   0.28      0   0.64   0.12     10
+   2   0.4 [0, 7.4]          0  3    7      0   0  0.308      0  0.616   0.14     10
+   3   0.8 [0, 7.4]          0  4    8      0   2  0.336      0  0.592   0.16     10
+   4   1.2 [0, 7.4]          0  4    9      0   2  0.364      0  0.568   0.18     10
+   5   2.4 [0, 7.4]          1  4   10      1   3  0.413  0.028  0.526  0.215     30
+  10   3.4 [0, 7.4]          2  4   11      2   3  0.448  0.063  0.496   0.24     60
+  14   1.8 [0, 8]            0  4   10      0   3  0.406  0.021  0.532   0.21     10
+  20     4 [0, 8]            2  5   13      2   4   0.49  0.105   0.46   0.27     60
+  27   2.1 [0, 8.6]          0  4   11      0   3  0.427  0.042  0.514  0.225     10
+  45   4.8 [0, 9.8]          1  5   15      1   5  0.581  0.196  0.382  0.335     30
+  90   8.2 [2.3, 10]         2  7   21      3   6    0.7    0.3    0.3  0.455     60
+ 150   8.2 [2.3, 10]         2  7   21      3   6    0.7    0.3    0.3  0.455     60
+
+spec(n, h):
+spec(20, 0)     heat 0 tier 2 K 3 goal 6 stands 2 pre 2 mix 0.28 mix3 0 help 0.64 big 0.12
+spec(20, 3.5)   heat 3.5 tier 2 K 4 goal 12 stands 2 pre 4 mix 0.455 mix3 0.07 help 0.49 big 0.245
+spec(20, 6)     heat 6 tier 2 K 6 goal 17 stands 2 pre 6 mix 0.63 mix3 0.245 help 0.34 big 0.37
+spec(20, 12)    heat 10 tier 2 K 7 goal 24 stands 4 pre 6 mix 0.7 mix3 0.3 help 0.3 big 0.5
+spec(45, 2.5)   heat 2.5 tier 1 K 4 goal 10 stands 1 pre 3 mix 0.42 mix3 0.035 help 0.52 big 0.22
+spec(45, 7.25)  heat 7.25 tier 1 K 6 goal 20 stands 2 pre 6 mix 0.7 mix3 0.3 help 0.3 big 0.4325
+spec(50, 1)     heat 1 tier 2 K 3 goal 6 stands 2 pre 2 mix 0.28 mix3 0 help 0.64 big 0.12
+
+newLevel(n, h): menu, counter (row by row, . empty, # stand, slices bottom-up), tray
+newLevel(1): heat 0 flv [0,1,2] goal 3
+   . . . .
+   . . . .
+   . [0,0,0] . .
+   . . [1,1,1,1] .
+   . . . .
+   tray [[0,0,0],[2,2,1],[2,2]]   rs.s 472628284
+newLevel(2): heat 0.4 flv [0,1,2] goal 7
+   . . . .
+   . . . .
+   . . . .
+   . . . .
+   . . . .
+   tray [[1,2],[2,2,1],[2,2,2]]   rs.s -169813964
+newLevel(3, 1.2): heat 1.2 flv [0,1,2,3] goal 9
+   . . . .
+   [0] . [0] .
+   . . . .
+   . . . .
+   . . . .
+   tray [[2,2,2],[2],[0,0]]   rs.s -472808503
+newLevel(5): heat 2.4 flv [0,1,3,4] goal 10
+   . [0,0,0] . .
+   . . [4,4,4,4,4] .
+   [4,4,4] . . .
+   . # . .
+   . . . .
+   tray [[0,0],[1,4],[4,4]]   rs.s -1404925724
+newLevel(10): heat 3.4 flv [1,3,4,5] goal 11
+   . # . .
+   . . # .
+   [4,4] . . .
+   . . . .
+   . [4,4,4] . [1,1,4]
+   tray [[4,4],[4,4],[1,4]]   rs.s -158702755
+newLevel(27, 5.4): heat 5.4 flv [1,2,3,4,8,9] goal 17
+   . [1,2,2,8] . .
+   . . . [2]
+   [1,1,2] # . [1,4]
+   . [3,3,4,1] . .
+   . . . .
+   tray [[9],[1],[8]]   rs.s -1973168133
+
+place() on level 1: tray 0 onto cell 10
+   steps [{"d":10,"f":0,"from":[[9,3]],"cake":true,"emptied":[9]}] dealt false baked 1
+
+resolve(cells, start) on constructed counters (index = row*4 + col):
+A: three plates share strawberry: start 6
+   before {"5":[0,0],"6":[0,1],"9":[0,0,0]}
+   steps  [{"d":5,"f":0,"from":[[6,1],[9,3]],"cake":true,"emptied":[9]}]
+   after  {"6":[1]}
+B: two plates swap two cakes: start 6
+   before {"5":[0,0,1,1,1],"6":[0,0,0,1,1]}
+   steps  [{"d":6,"f":0,"from":[[5,1]],"cake":false,"emptied":[]},{"d":5,"f":1,"from":[[6,2]],"cake":false,"emptied":[]},{"d":6,"f":0,"from":[[5,1]],"cake":false,"emptied":[]}]
+   after  {"5":[1,1,1,1,1],"6":[0,0,0,0,0]}
+C: a full mixed plate frees room: start 0
+   before {"0":[0,1],"1":[1,1,1,1,1,0]}
+   steps  [{"d":0,"f":0,"from":[[1,1]],"cake":false,"emptied":[]},{"d":1,"f":1,"from":[[0,1]],"cake":true,"emptied":[]}]
+   after  {"0":[0,0]}
+D: a chain across three plates: start 5
+   before {"4":[2,2,2],"5":[2,3],"6":[3,3,3,3],"7":[2]}
+   steps  [{"d":6,"f":3,"from":[[5,1]],"cake":false,"emptied":[]},{"d":4,"f":2,"from":[[5,1]],"cake":false,"emptied":[5]}]
+   after  {"4":[2,2,2,2],"6":[3,3,3,3,3],"7":[2]}
+E: no shared cake: start 9
+   before {"8":[0,1],"9":[2,3]}
+   steps  []
+   after  {"8":[0,1],"9":[2,3]}
+F: corner neighbours never trade: start 5
+   before {"0":[4,4,4],"5":[4,4,4]}
+   steps  []
+   after  {"0":[4,4,4],"5":[4,4,4]}
+
+makePlate sequence: level 20 at its typical heat, counter as dealt, five plates from its rs
+   [[6,6,6,6,6],[1,1,1,3],[6,6,3],[6,6,6],[5,5,5,6,6]]   rs.s after 1131314668
+
+playout(n, skill, seed, h) → plates used, -1 a loss:
+   playout(12, 0, 1234) = 27
+   playout(12, 1, 1234) = 17
+   playout(30, 0, 99, 5) = -1
+   playout(30, 1, 99, 5) = 38
+```
+
+---
+
+## 64. Appendix F: skill model fixtures
+
+Produced by the web's `skill*` functions (`shell.html`, between the
+`@skill-start` and `@skill-end` markers). `SkillModelTests` must match to 1e-6.
+Each `observe` line applies the outcome, then (for a win with `q`) the quality
+reading, to the same state, in order.
+
+```
+Phi(x):     -3 → 0.001349967 · -1 → 0.158655264 · -0.5 → 0.308537537 · 0 → 0.500000001 · 0.3 → 0.617911354 · 1 → 0.841344736 · 2.5 → 0.993790320
+PhiInv(p):  0.001 → -3.090232305 · 0.025 → -1.959963986 · 0.1 → -1.281551564 · 0.36 → -0.358458793 · 0.5 → 0.000000000 · 0.78 → 0.772193213 · 0.9 → 1.281551564 · 0.975 → 1.959963986
+Target(pos, fails): (0,0) 0.9 · (4,0) 0.5 · (9,0) 0.36 · (3,1) 0.868 · (4,1) 0.7 · (9,2) 0.7696
+
+cfg beta 1, mu0 2.5, sd0 1.8, drift .2
+Heat for targets .9/.5/.36: -0.138876, 2.500000, 3.238112   Chance(h 2): 0.595928
+observe(h 1.2, win , q 0.8) → after outcome 3.206252 ± 1.441387; after quality 2.647135 ± 1.039318   n 1
+observe(h 2, win ) → after outcome 3.061122 ± 0.898471   n 2
+observe(h 3.1, loss) → after outcome 2.575037 ± 0.776083   n 3
+observe(h 2.6, win , q 0.95) → after outcome 2.981176 ± 0.693773; after quality 3.203865 ± 0.629684   n 4
+observe(h 4, loss) → after outcome 3.047815 ± 0.611881   n 5
+observe(h 3, win , q 0.4) → after outcome 3.316976 ± 0.581533; after quality 3.242456 ± 0.542211   n 6
+observe(h 3.4, win , q 0.99) → after outcome 3.498867 ± 0.527598; after quality 3.695048 ± 0.497708   n 7
+
+cfg beta 12, mu0 20, sd0 14, drift 2 (Car Loop): heat for .9 -3.630643; after a win at 10 → 25.275673 ± 11.895157; after a loss at 25 → 18.364356 ± 9.934084
+```
