@@ -991,8 +991,9 @@ Assets/_Project/Art/CakeSort/
 ├─ chocolate/   lemon/   matcha/   blueberry/   birthday/   mango/   cookies/   redvelvet/   caramel/
 ```
 
-Reference only, kept out of `Assets/`. They are in the repository and in
-`CakeSort_Reference.zip`:
+Reference only, kept out of `Assets/`. They are in the repository and in the
+downloads `CakeSort_Reference_part1of4.zip` … `part4of4.zip`, which unzip into
+the same `CakeSort/` folder:
 - each cake's `renders/`: the hi-res model and the game asset seen by the game
   camera, each also on a transparent background;
 - the `textures/*_1024.png` bake masters;
