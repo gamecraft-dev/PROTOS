@@ -1,28 +1,28 @@
-# Strawberry slice (Cake Sort)
+# Lemon slice (Cake Sort)
 
-The game asset for the Strawberry cake's slice: frosted all the way down the outside. Built by `../cake_slice.py` in Blender 4.2 and checked
+The game asset for the Lemon cake's slice: bare-sided (its layers show outside) under a glaze that drips down. Built by `../cake_slice.py` in Blender 4.2 and checked
 by the same script; everything here is generated. Rebuild with (from `playbox/art/cake-sort/`):
 
-    blender -b -P cake_slice.py -- --cake strawberry --out strawberry --glb --views hero,game,single,lodviews
+    blender -b -P cake_slice.py -- --cake lemon --out lemon --glb --views hero,game,single,lodviews
 
 ## Files
 
 | File | What it is |
 | --- | --- |
-| `strawberry_slice.glb` | The game mesh: one mesh, one material, 1156 triangles, 512 albedo + normal atlas (embedded) |
-| `textures/StrawberrySlice_albedo.png`, `StrawberrySlice_normal.png` | The same atlas as loose files (512); `*_1024.png` are the bake masters |
-| `renders/hero.png`, `game_cake.png`, `game_single.png` | The hi-res model (render only, about 144,520 triangles) |
+| `lemon_slice.glb` | The game mesh: one mesh, one material, 1000 triangles, 512 albedo + normal atlas (embedded) |
+| `textures/LemonSlice_albedo.png`, `LemonSlice_normal.png` | The same atlas as loose files (512); `*_1024.png` are the bake masters |
+| `renders/hero.png`, `game_cake.png`, `game_single.png` | The hi-res model (render only, about 117,188 triangles) |
 | `renders/lod_game_cake.png`, `lod_game_single.png` | The GLB as the game camera sees it, with the outline drawn by an inverted hull |
 | `renders/*_alpha_0001.png` | Each render again on a transparent background (for UI art) |
 | `stats.json` | Every check's numbers from the last build |
 
-The build also saves `strawberry_slice.blend` (both versions, lights and cameras) next to these; it is not kept in the
+The build also saves `lemon_slice.blend` (both versions, lights and cameras) next to these; it is not kept in the
 repository, since the script rebuilds it.
 
 ## Units and orientation
 
 - Radius 1, pivot at the cake's centre (the slice's point). Height 0.71 (the game camera is pitched 42.84
-  degrees down, so it shows as 0.52 R on screen); the topping reaches 0.9905.
+  degrees down, so it shows as 0.52 R on screen); the topping reaches 0.9769.
 - In Blender the slice spans 0..60 degrees from +X toward +Y. The GLB is +Y up: the slice lies in the
   XZ plane from +X toward -Z. glTFast and UnityGLTF negate X, so in Unity it runs from -X toward -Z.
   Slot k of a plate is the slice turned 60 k degrees about Y.
@@ -38,7 +38,7 @@ and the slice's look comes from the toon slice shader, not from these.
 
 ## The outline (an inverted hull, in the slice shader's outline pass)
 
-Ink colour for this cake: `#4A1626`. Smooth normals for the shell are stored in the second and third
+Ink colour for this cake: `#4A3008`. Smooth normals for the shell are stored in the second and third
 texture-coordinate sets, because the cut faces split the shading normals and a hull built from them would
 crack at the corners.
 
@@ -47,7 +47,7 @@ texture-coordinate set):
 
     outlineNormal = normalize(float3(-uv1.x, 1 - uv1.y, uv2.x))   // object space
     weight        = 1 - uv2.y
-    // shell: cull front faces, colour #4A1626, and push each vertex out by a fixed number of screen
+    // shell: cull front faces, colour #4A3008, and push each vertex out by a fixed number of screen
     // pixels, so the line keeps its weight at every plate size (in object units it would vanish: at the
     // counter a plate is about 76 px across at 2x, R about 29 px, so 0.015 R is under half a pixel):
     float4 pos = TransformObjectToHClip(positionOS);
@@ -57,7 +57,7 @@ texture-coordinate set):
     pos.xy    += nCS * (2.0 * px / _ScreenParams.xy) * pos.w;
     // (if it must stay in object units, use about 0.09 R at the 76 px plate.) The previews here draw
     // the shell in object units, 0.015 R, which is about 4 px at their 900 px scale.
-    // weight 1: the cake; 0.5: the coat's lip at the counter (where the normal points down and out)
+    // weight 1: the cake
     // weight 0.25: piped cream: no shell, no ink
     // weight 0: the topping: no shell (it would poke through what it sits on); instead ink the
     //           surface at grazing angles: lerp(albedo, ink, smoothstep(0.62, 0.8, facing)),
@@ -66,19 +66,17 @@ texture-coordinate set):
 As written in the file (glTF space, before any importer): TEXCOORD_1 = (nx, ny), TEXCOORD_2 =
 (nz, weight). A check that reads the GLB the way those importers do and applies the formula above
 finds 232 of 232 smooth shell vertices with dot(outline normal,
-normal) over 0.5 (worst 1.0); at hard edges (68 vertices) the shell normal is the
-bisector of the faces that meet there (worst dot 0.354); weights found: {'0.0': 208, '0.25': 703, '0.5': 21, '1.0': 279}.
-TEXCOORD_0 (the atlas) spans [0.01, 0.991] and never equals TEXCOORD_1.
+normal) over 0.5 (worst 1.0); at hard edges (70 vertices) the shell normal is the
+bisector of the faces that meet there (worst dot 0.354); weights found: {'0.0': 54, '0.25': 706, '1.0': 302}.
+TEXCOORD_0 (the atlas) spans [0.007, 0.993] and never equals TEXCOORD_1.
 
 ## Checks (from the last build)
 
 | Check | Result |
 | --- | --- |
-| GLB re-imported | 1 mesh, 1156 triangles, origin [0.0, 0.0, 0.0], materials 1, double-sided [False], vertex colours none |
+| GLB re-imported | 1 mesh, 1000 triangles, origin [0.0, 0.0, 0.0], materials 1, double-sided [False], vertex colours none |
 | Top of the cake stays in the wedge | [0.0, 60.0] degrees |
 | Visible overlaps with neighbours (hi-res / game) | [0, 0, 0] / [0, 0, 0] |
-| Rays reaching sponge cut faces from outside (whole cake) | 0 of 90,830 |
-| First hits on back faces (game mesh: lone slice / whole cake; 12 headings, a ray every 0.006, grid kept off the seam planes) | 0 of 291,975 / 0 of 1,090,752 |
-| Topping normals bent past tangent z 0.3 | 0.0% of 2340 samples |
-| Glaze pink baked onto the topping | 0 samples |
-| Green share round each berry, slots 0-5 | {'hi-res game_cake': [0.07, 0.01, 0.03, 0.18, 0.26, 0.24], 'game asset lod_game_cake': [0.05, 0.02, 0.03, 0.09, 0.15, 0.14]} |
+| Rays reaching sponge cut faces from outside (whole cake) | 0 of 89,052 |
+| First hits on back faces (game mesh: lone slice / whole cake; 12 headings, a ray every 0.006, grid kept off the seam planes) | 0 of 286,332 / 0 of 1,069,140 |
+| Topping normals bent past tangent z 0.3 | 0.0% of 1816 samples |

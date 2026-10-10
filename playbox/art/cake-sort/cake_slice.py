@@ -1,12 +1,12 @@
-# Cake Sort: the strawberry slice, built and rendered in Blender.
+# Cake Sort: one cake's slice, built and rendered in Blender 4.2, with its game asset (GLB).
 #
-#   blender -b -P strawberry_slice.py -- --out DIR [--quick] [--views hero,game,single] [--glb]
+#   blender -b -P cake_slice.py -- --cake NAME --out DIR [--quick] [--views hero,game,single,lodviews] [--glb]
 #
-# Units: the slice radius is 1. The slice is a sixth of a cake with its point
-# at the origin (the plate centre) and spans 0..60 degrees from +X toward +Y,
-# Z up. Its height is 0.71: the game camera is pitched 42.84 degrees down, so
-# vertical lengths show at cos(42.84) = 0.733 and this gives the 0.52 R the
-# game draws on screen.
+# NAME is one of the cakes in cake_specs.py (strawberry, chocolate, lemon, matcha, blueberry, birthday,
+# mango, cookies, redvelvet, caramel). Units: the slice radius is 1. The slice is a sixth of a cake with
+# its point at the origin (the plate centre) and spans 0..60 degrees from +X toward +Y, Z up. Its height
+# is 0.71: the game camera is pitched 42.84 degrees down, so vertical lengths show at cos(42.84) = 0.733
+# and this gives the 0.52 R the game draws on screen.
 import bpy, bmesh, math, sys, os, json
 from mathutils import Vector, Matrix, noise
 from mathutils.bvhtree import BVHTree
@@ -14,101 +14,35 @@ from mathutils.bvhtree import BVHTree
 argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 def arg(name, default=None):
     return argv[argv.index(name) + 1] if name in argv else default
-OUT = arg('--out', '/tmp/strawberry')
+CAKE = arg('--cake', 'strawberry')
+OUT = arg('--out', '/tmp/' + CAKE)
 QUICK = '--quick' in argv
 VIEWS = (arg('--views', 'hero,game,single')).split(',')
 os.makedirs(OUT, exist_ok=True)
 
-R = 1.0
-SEG = math.radians(60)
-H_TOP = 0.71                       # top of the glaze
-H_BODY = 0.672                     # where the glaze's band starts on a cut face
-SPONGE_TOP = H_BODY - 0.016        # the sponge stops a little lower, so at a seam between slices the glaze covers it
-GLAZE_E = 0.024                    # how far the glaze stands off the sponge
-RC = 0.6366                        # centroid of the sector, as a share of R
-CENTROID = Vector((RC * math.cos(SEG / 2), RC * math.sin(SEG / 2)))
-
-def lin(h):
-    h = h.lstrip('#')
-    c = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
-    return tuple(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c) + (1.0,)
-
-def smoothstep(a, b, x):
-    t = max(0.0, min(1.0, (x - a) / (b - a)))
-    return t * t * (3 - 2 * t)
-
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
+sys.path.insert(0, os.path.dirname(os.path.abspath(sys.argv[sys.argv.index('-P') + 1])))
+from cake_common import *
+from cake_specs import SPECS
+import cake_toppings as TOP
 
-def link(obj, coll=None):
-    (coll or scene.collection).objects.link(obj)
-    return obj
+SPEC = SPECS[CAKE]
+TITLE = SPEC['title']
+ASSET = ''.join(ch for ch in TITLE.title() if ch.isalnum()) + 'Slice'      # StrawberrySlice, CookiesCreamSlice, ...
+COAT = SPEC['coat']
+FULL = COAT['style'] == 'full'           # a coat all the way down the outside (else bare sides)
 
-def mesh_obj(name, bm, coll=None, smooth=True):
-    me = bpy.data.meshes.new(name)
-    bm.to_mesh(me); bm.free()
-    if smooth:
-        for p in me.polygons: p.use_smooth = True
-    return link(bpy.data.objects.new(name, me), coll)
+def mix_hex(a, b, k):
+    ca, cb = lin(a), lin(b)
+    return tuple(ca[i] * (1 - k) + cb[i] * k for i in range(3)) + (1.0,)
 
 # ---------------------------------------------------------------- materials
-def principled(name, base, rough=0.5, coat=0.0, coat_rough=0.05, sss=0.0, sss_radius=(1, .5, .3), sss_scale=0.02, spec=0.5):
-    m = bpy.data.materials.new(name); m.use_nodes = True
-    b = m.node_tree.nodes['Principled BSDF']
-    b.inputs['Base Color'].default_value = lin(base) if isinstance(base, str) else base
-    b.inputs['Roughness'].default_value = rough
-    b.inputs['Coat Weight'].default_value = coat
-    b.inputs['Coat Roughness'].default_value = coat_rough
-    b.inputs['Subsurface Weight'].default_value = sss
-    b.inputs['Subsurface Radius'].default_value = sss_radius
-    b.inputs['Subsurface Scale'].default_value = sss_scale
-    b.inputs['Specular IOR Level'].default_value = spec
-    return m
-
-class NT:
-    """Small helper for building node trees."""
-    def __init__(self, mat):
-        self.nt = mat.node_tree; self.n = self.nt.nodes; self.l = self.nt.links
-    def node(self, kind, **kw):
-        nd = self.n.new(kind)
-        for k, v in kw.items():
-            if k.startswith('in_'):
-                key = k[3:].replace('_', ' ')
-                nd.inputs[key].default_value = v
-            else:
-                setattr(nd, k, v)
-        return nd
-    def math(self, op, a, b=None, clamp=False):
-        nd = self.n.new('ShaderNodeMath'); nd.operation = op; nd.use_clamp = clamp
-        for i, x in enumerate((a, b)):
-            if x is None: continue
-            if isinstance(x, (int, float)): nd.inputs[i].default_value = x
-            else: self.l.new(x, nd.inputs[i])
-        return nd.outputs[0]
-    def link(self, out, inp): self.l.new(out, inp)
-    def ramp(self, fac, stops, interp='LINEAR'):
-        r = self.n.new('ShaderNodeValToRGB'); r.color_ramp.interpolation = interp
-        els = r.color_ramp.elements
-        while len(els) > len(stops): els.remove(els[-1])
-        while len(els) < len(stops): els.new(0.5)
-        for e, (pos, col) in zip(els, stops):
-            e.position = pos; e.color = col if len(col) == 4 else (*col, 1)
-        self.l.new(fac, r.inputs['Fac'])
-        return r.outputs['Color']
-    def mix(self, fac, a, b):
-        m = self.n.new('ShaderNodeMix'); m.data_type = 'RGBA'; m.blend_type = 'MIX'
-        if isinstance(fac, (int, float)): m.inputs['Factor'].default_value = fac
-        else: self.l.new(fac, m.inputs['Factor'])
-        for slot, x in (('A', a), ('B', b)):
-            if isinstance(x, tuple): m.inputs[slot].default_value = x
-            else: self.l.new(x, m.inputs[slot])
-        return m.outputs['Result']
-
-SPONGE, SPONGE_LIGHT, PORE, CRUST = lin('#F0C47A'), lin('#FADFA6'), lin('#DCA24F'), lin('#CF8442')
-CREAM = lin('#FFF6E8')
-INK = lin('#4A1626')
-# the cream bands (bottom and top, in z), riding one slow wave with the sponge
-CREAM_BANDS = [(0.2, 0.317), (0.43, 0.542)]
+SPG = SPEC['sponge']
+SPONGE, SPONGE_LIGHT, PORE, CRUST = lin(SPG['base']), lin(SPG['light']), lin(SPG['pore']), lin(SPG['crust'])
+INK = lin(SPEC['ink'])
+# the fillings (bottom to top, in z), riding one slow wave with the sponge
+CREAM_BANDS = [(lo, hi) for lo, hi, *_ in SPEC['bands']]
 CRUST_TOP = 0.085                  # about 12% of the height
 
 def sponge_material():
@@ -124,24 +58,31 @@ def sponge_material():
         return t.math('DIVIDE', t.math('SUBTRACT', ze, lo), hi - lo)
     def near(edge, w):             # 1 on a line at z = edge, fading out over w
         return t.math('SUBTRACT', 1.0, t.math('DIVIDE', t.math('ABSOLUTE', t.math('SUBTRACT', ze, edge)), w), clamp=True)
-    # cream: a mask, and a puffy rounded profile across each band
+    # the fillings, grouped by colour: a mask each; cream ones get a puffy rounded profile across the band
     e = 0.004
-    stops = [(0.0, (0, 0, 0))]
-    for lo, hi in CREAM_BANDS:
-        stops += [(lo - e, (0, 0, 0)), (lo + e, (1, 1, 1)), (hi - e, (1, 1, 1)), (hi + e, (0, 0, 0))]
-    cream_mask = t.ramp(ze, stops)
+    groups = {}
+    for lo, hi, col, shade, kind in SPEC['bands']:
+        groups.setdefault((col, shade, kind), []).append((lo, hi))
+    masks = []
+    for (col, shade, kind), bands in groups.items():
+        stops = [(0.0, (0, 0, 0))]
+        for lo, hi in bands:
+            stops += [(lo - e, (0, 0, 0)), (lo + e, (1, 1, 1)), (hi - e, (1, 1, 1)), (hi + e, (0, 0, 0))]
+        masks.append((t.ramp(ze, stops), col, shade, kind, bands))
     puff = None
-    for lo, hi in CREAM_BANDS:
-        bt = t.math('MINIMUM', t.math('MAXIMUM', band_t(lo, hi), 0.0), 1.0)
-        p = t.math('POWER', t.math('SINE', t.math('MULTIPLY', bt, math.pi)), 0.45)
-        puff = p if puff is None else t.math('MAXIMUM', puff, p)
-    # under each band the sponge sits in the cream's soft shadow
+    for mask, col, shade, kind, bands in masks:
+        if kind != 'cream': continue
+        for lo, hi in bands:
+            bt = t.math('MINIMUM', t.math('MAXIMUM', band_t(lo, hi), 0.0), 1.0)
+            p = t.math('POWER', t.math('SINE', t.math('MULTIPLY', bt, math.pi)), 0.45)
+            puff = p if puff is None else t.math('MAXIMUM', puff, p)
+    # under each band the sponge sits in the filling's soft shadow
     shade = None
     for lo, hi in CREAM_BANDS:
         sh = t.math('SUBTRACT', 1.0, t.math('DIVIDE', t.math('SUBTRACT', lo, ze), 0.04), clamp=True)
         sh = t.math('MULTIPLY', sh, t.math('LESS_THAN', ze, lo))
         shade = sh if shade is None else t.math('MAXIMUM', shade, sh)
-    # sponge: mottled, gold pores at half strength, a clean crust band with a wavy top
+    # sponge: mottled, pores at about a third strength, a clean crust band with a wavy top
     noi = t.node('ShaderNodeTexNoise', in_Scale=18.0, in_Detail=6.0, in_Roughness=0.6)
     t.link(tc.outputs['Object'], noi.inputs['Vector'])
     vor = t.node('ShaderNodeTexVoronoi', in_Scale=48.0, in_Randomness=1.0)
@@ -153,13 +94,17 @@ def sponge_material():
     pore_all = t.math('MAXIMUM', pores, t.math('MULTIPLY', pores2, 0.8))
     base = t.mix(noi.outputs['Fac'], SPONGE, SPONGE_LIGHT)
     base = t.mix(t.math('MULTIPLY', pore_all, 0.38), base, PORE)
-    base = t.mix(t.math('MULTIPLY', shade, 0.45), base, lin('#D9A160'))
+    base = t.mix(t.math('MULTIPLY', shade, 0.45), base, lin(SPG['shade']))
     crust_f = t.ramp(ze, [(0.0, (1, 1, 1)), (CRUST_TOP - 0.006, (1, 1, 1)), (CRUST_TOP + 0.006, (0, 0, 0)), (1.0, (0, 0, 0))])
-    crust_col = t.mix(t.ramp(ze, [(0.0, (1, 1, 1)), (0.03, (0, 0, 0)), (1.0, (0, 0, 0))]), CRUST, lin('#B9692F'))
+    crust_col = t.mix(t.ramp(ze, [(0.0, (1, 1, 1)), (0.03, (0, 0, 0)), (1.0, (0, 0, 0))]), CRUST, lin(SPG['crust_dark']))
     base = t.mix(crust_f, base, crust_col)
-    cream = t.mix(t.math('MULTIPLY', noi.outputs['Fac'], 0.1), CREAM, lin('#F4E2C8'))
-    col = t.mix(cream_mask, base, cream)
-    # ink lines at half weight along the edges of the cream and the top of the crust
+    col = base; any_mask = None; soft_mask = None
+    for mask, c, sh, kind, bands in masks:
+        fill = t.mix(t.math('MULTIPLY', noi.outputs['Fac'], 0.1), lin(c), lin(sh))
+        col = t.mix(mask, col, fill)
+        any_mask = mask if any_mask is None else t.math('MAXIMUM', any_mask, mask)
+        if kind == 'cream': soft_mask = mask if soft_mask is None else t.math('MAXIMUM', soft_mask, mask)
+    # ink lines at half weight along the edges of the fillings and the top of the crust
     ink = None
     for edge in [v for band in CREAM_BANDS for v in band] + [CRUST_TOP]:
         ln = near(edge, 0.0045)
@@ -167,60 +112,75 @@ def sponge_material():
     col = t.mix(t.math('MULTIPLY', ink, 0.7), col, INK)
     t.link(col, bsdf.inputs['Base Color'])
     rough = t.node('ShaderNodeMapRange', in_To_Min=0.85, in_To_Max=0.4)
-    t.link(cream_mask, rough.inputs['Value']); t.link(rough.outputs['Result'], bsdf.inputs['Roughness'])
+    t.link(any_mask, rough.inputs['Value']); t.link(rough.outputs['Result'], bsdf.inputs['Roughness'])
+    if soft_mask is not any_mask:              # jam, curd, ganache, caramel: glossier still
+        jam = t.math('SUBTRACT', any_mask, soft_mask) if soft_mask is not None else any_mask
+        r2 = t.node('ShaderNodeMapRange', in_To_Min=0.0, in_To_Max=-0.22)
+        t.link(jam, r2.inputs['Value'])
+        t.link(t.math('ADD', rough.outputs['Result'], r2.outputs['Result']), bsdf.inputs['Roughness'])
     # relief: puffy cream standing proud, the sponge full of little holes
-    h = t.math('SUBTRACT', t.math('MULTIPLY', puff, 1.0),
-               t.math('MULTIPLY', t.math('MULTIPLY', pore_all, 0.3), t.math('SUBTRACT', 1.0, cream_mask)))
+    h = t.math('SUBTRACT', t.math('MULTIPLY', puff, 1.0) if puff is not None else 0.0,
+               t.math('MULTIPLY', t.math('MULTIPLY', pore_all, 0.3), t.math('SUBTRACT', 1.0, any_mask)))
     h = t.math('ADD', h, t.math('MULTIPLY', noi.outputs['Fac'], 0.12))
     bump = t.node('ShaderNodeBump', in_Strength=0.75, in_Distance=0.012)
     t.link(h, bump.inputs['Height']); t.link(bump.outputs['Normal'], bsdf.inputs['Normal'])
     return m
 
-def glaze_material():
-    m = principled('Glaze', '#F7819F', rough=0.2, coat=0.55, coat_rough=0.09, sss=0.2, sss_radius=(1, .35, .4), sss_scale=0.03, spec=0.5)
+def coat_material():
+    """The coat: a glossy glaze (deeper toward its edges, where it turns away: wet depth) or a matte
+    buttercream / cream cheese frosting with a soft spatula texture."""
+    if COAT['kind'] == 'glaze':
+        m = principled('Glaze', COAT['base'], rough=COAT['rough'], coat=COAT['coat'], coat_rough=COAT['coat_rough'], sss=COAT['sss'],
+                       sss_radius=COAT['sss_radius'], sss_scale=0.03, spec=0.5)
+        t = NT(m); bsdf = t.n['Principled BSDF']
+        tc = t.node('ShaderNodeTexCoord'); sep = t.node('ShaderNodeSeparateXYZ'); t.link(tc.outputs['Object'], sep.inputs[0])
+        col = t.ramp(sep.outputs[2], [(p, lin(c)) for p, c in COAT['ramp']])
+        lw = t.node('ShaderNodeLayerWeight', in_Blend=0.45)
+        vd = t.node('ShaderNodeValue', name='ViewDep'); vd.outputs[0].default_value = 1.0     # 0 while baking
+        edge = t.math('MULTIPLY', t.math('POWER', lw.outputs['Facing'], 1.6), vd.outputs[0])
+        col = t.mix(t.math('MULTIPLY', edge, 0.75), col, lin(COAT['edge']))
+        t.link(col, bsdf.inputs['Base Color'])
+        noi = t.node('ShaderNodeTexNoise', in_Scale=6.0, in_Detail=2.0)
+        t.link(tc.outputs['Object'], noi.inputs['Vector'])
+        bump = t.node('ShaderNodeBump', in_Strength=0.06, in_Distance=0.01)
+        t.link(noi.outputs['Fac'], bump.inputs['Height']); t.link(bump.outputs['Normal'], bsdf.inputs['Normal'])
+        return m
+    m = principled('Glaze', COAT['base'], rough=COAT['rough'], coat=COAT['coat'], coat_rough=0.2, sss=COAT['sss'],
+                   sss_radius=COAT['sss_radius'], sss_scale=0.02, spec=0.4)
     t = NT(m); bsdf = t.n['Principled BSDF']
     tc = t.node('ShaderNodeTexCoord'); sep = t.node('ShaderNodeSeparateXYZ'); t.link(tc.outputs['Object'], sep.inputs[0])
-    col = t.ramp(sep.outputs[2], [(0.0, lin('#E2617F')), (0.55, lin('#EF7395')), (0.72, lin('#F48AA6'))])
-    # deeper toward the edges, where the glaze turns away from us: wet depth
-    lw = t.node('ShaderNodeLayerWeight', in_Blend=0.45)
-    vd = t.node('ShaderNodeValue', name='ViewDep'); vd.outputs[0].default_value = 1.0     # 0 while baking
-    edge = t.math('MULTIPLY', t.math('POWER', lw.outputs['Facing'], 1.6), vd.outputs[0])
-    col = t.mix(t.math('MULTIPLY', edge, 0.75), col, lin('#D8557A'))
-    t.link(col, bsdf.inputs['Base Color'])
-    noi = t.node('ShaderNodeTexNoise', in_Scale=6.0, in_Detail=2.0)
+    col = t.ramp(sep.outputs[2], [(p, lin(c)) for p, c in COAT['ramp']])
+    # buttercream: broad soft spatula strokes and a fine grain
+    noi = t.node('ShaderNodeTexNoise', in_Scale=4.5, in_Detail=3.0, in_Roughness=0.55)
     t.link(tc.outputs['Object'], noi.inputs['Vector'])
-    bump = t.node('ShaderNodeBump', in_Strength=0.06, in_Distance=0.01)
-    t.link(noi.outputs['Fac'], bump.inputs['Height']); t.link(bump.outputs['Normal'], bsdf.inputs['Normal'])
+    fine = t.node('ShaderNodeTexNoise', in_Scale=60.0, in_Detail=2.0)
+    t.link(tc.outputs['Object'], fine.inputs['Vector'])
+    col = t.mix(t.math('MULTIPLY', t.math('SUBTRACT', noi.outputs['Fac'], 0.5), 0.35), col, lin(COAT['ramp'][-1][1]))
+    pat = SPEC.get('pattern') or {}
+    if pat.get('kind') == 'dust':
+        # matcha dusted over the top: fine darker specks on what faces up
+        nz = t.node('ShaderNodeSeparateXYZ'); t.link(tc.outputs['Normal'], nz.inputs[0])
+        up = t.math('MULTIPLY', t.math('SUBTRACT', nz.outputs[2], 0.55, clamp=True), 2.2, clamp=True)
+        spk = t.node('ShaderNodeTexNoise', in_Scale=140.0, in_Detail=1.0)
+        t.link(tc.outputs['Object'], spk.inputs['Vector'])
+        dots = t.ramp(spk.outputs['Fac'], [(0.0, (0, 0, 0)), (0.58, (0, 0, 0)), (0.64, (1, 1, 1)), (1.0, (1, 1, 1))])
+        cloud = t.node('ShaderNodeTexNoise', in_Scale=9.0, in_Detail=2.0)
+        t.link(tc.outputs['Object'], cloud.inputs['Vector'])
+        dust = t.math('MULTIPLY', t.math('ADD', t.math('MULTIPLY', dots, 0.75), t.math('MULTIPLY', cloud.outputs['Fac'], 0.25)), up)
+        col = t.mix(t.math('MULTIPLY', dust, 0.8), col, lin(pat['colour']))
+    t.link(col, bsdf.inputs['Base Color'])
+    h = t.math('ADD', t.math('MULTIPLY', noi.outputs['Fac'], 1.0), t.math('MULTIPLY', fine.outputs['Fac'], 0.15))
+    bump = t.node('ShaderNodeBump', in_Strength=0.22, in_Distance=0.012)
+    t.link(h, bump.inputs['Height']); t.link(bump.outputs['Normal'], bsdf.inputs['Normal'])
     return m
 
 MAT = {
     'sponge': sponge_material(),
-    'glaze': glaze_material(),
-    'cream': principled('Whipped cream', '#FBF0DE', rough=0.48, coat=0.1, sss=0.35, sss_radius=(1, .9, .7), sss_scale=0.02),
-    'berry': None,
-    'seed': principled('Seed', '#F5E39A', rough=0.35, coat=0.3),
-    'leaf': None,
+    'glaze': coat_material(),
+    'cream': principled('Whipped cream', SPEC['pipe'] or '#FBF0DE', rough=0.48, coat=0.1, sss=0.35, sss_radius=(1, .9, .7), sss_scale=0.02),
     'plate': principled('Plate', '#FFFFFF', rough=0.18, coat=0.4),
     'plate_rim': principled('Plate rim', '#F6A8C2', rough=0.3, coat=0.3),
 }
-
-def berry_material():
-    m = principled('Strawberry', '#E2213B', rough=0.24, coat=0.75, coat_rough=0.04, sss=0.25, sss_radius=(1, .2, .2), sss_scale=0.015)
-    t = NT(m); bsdf = t.n['Principled BSDF']
-    tc = t.node('ShaderNodeTexCoord'); sep = t.node('ShaderNodeSeparateXYZ'); t.link(tc.outputs['Object'], sep.inputs[0])
-    col = t.ramp(sep.outputs[2], [(0.0, lin('#B8152E')), (0.3, lin('#DA1F38')), (0.7, lin('#E8283F')), (1.0, lin('#F0505A'))])
-    # the berry's own object z runs 0 (tip) .. 1 (shoulders)
-    t.link(col, bsdf.inputs['Base Color'])
-    return m
-MAT['berry'] = berry_material()
-
-def leaf_material():
-    m = principled('Leaf', '#4FAE3A', rough=0.4, coat=0.25, sss=0.15, sss_radius=(.4, 1, .3), sss_scale=0.01)
-    t = NT(m); bsdf = t.n['Principled BSDF']
-    tc = t.node('ShaderNodeTexCoord'); sep = t.node('ShaderNodeSeparateXYZ'); t.link(tc.outputs['Normal'], sep.inputs[0])
-    t.link(t.ramp(sep.outputs[2], [(0.3, lin('#2E7A2A')), (0.6, lin('#4FAE3A'))]), bsdf.inputs['Base Color'])
-    return m
-MAT['leaf'] = leaf_material()
 
 # ---------------------------------------------------------------- the sponge body
 def build_body():
@@ -250,8 +210,11 @@ DRIPS = {   # per cut face: (where along the face from the tip, how far down, ho
     # three broad drips a face, so even the low-poly glaze gives each a rounded tip
     'A': [(0.2, 0.065, 0.075), (0.5, 0.135, 0.08), (0.8, 0.095, 0.075)],
     'B': [(0.24, 0.1, 0.08), (0.55, 0.06, 0.075), (0.83, 0.125, 0.07)],
-}
-BAND = 0.095                       # how far the glaze reaches down a cut face between drips
+    # down bare sides (a naked cake's glaze): broad drips round the outside, none at the rim corners
+    'arc': [(0.18, 0.09, 0.06), (0.41, 0.15, 0.065), (0.62, 0.07, 0.055), (0.83, 0.12, 0.06)],
+} if COAT['drips'] == 'glaze' else {'A': [], 'B': [], 'arc': []}
+BAND = COAT['band']                # how far the coat reaches down a cut face between drips
+ARC_K = 0.4 if COAT['style'] == 'cap' else 1.0     # a thick cream cap sits nearly flush with the bare sides
 
 def edge_ts(n_edge):
     # even steps, plus a few close to the rim, where the coat turns the corner and runs to the counter
@@ -279,12 +242,20 @@ GLAZE_FLOOR = [0.012]
 def glaze_bottom(kind, t):
     """z of the bottom of the glaze skirt at this point of the outline."""
     full = GLAZE_FLOOR[0] + 0.006 * math.sin(t * 40)
-    if kind == 'arc':
+    if kind == 'arc' and FULL:
         return full
-    d = BAND + 0.01 * math.sin(t * 23 + (0 if kind == 'A' else 2))
+    if kind == 'arc':                                          # bare sides: a band round the outside, with drips
+        d = BAND + 0.008 * math.sin(t * 29) * math.sin(math.pi * t)
+        for c, ln, w in DRIPS['arc']:
+            d = max(d, BAND + ln * math.exp(-abs((t - c) / w) ** 2.2))
+        return H_TOP - d
+    wave = 0.01 * math.sin(t * 23 + (0 if kind == 'A' else 2))
+    if not FULL: wave *= 1 - smoothstep(0.85, 1.0, t)          # meets the outside's band level at the rim corner
+    d = BAND + wave
     for c, ln, w in DRIPS[kind]:
         d = max(d, BAND + ln * math.exp(-abs((t - c) / w) ** 2.2))
     z = H_TOP - d
+    if not FULL: return z
     # near the rim the coat runs all the way down: it is the frosting on the outside, seen in section
     return z + (full - z) * smoothstep(0.955, 1.0, t)
 
@@ -314,16 +285,18 @@ def build_glaze(name='Glaze', n_edge=40, n_arc=56, caps=(0.25, 0.5, 0.7, 0.84, 0
         row = []
         for p, n, k, t in P:
             z = zf(k, t)
-            off = off_arc if k == 'arc' else (off_cut * cut_k(z) if off_cut > 0 else off_cut)
+            # (a thick cream cap sits nearly flush down the sides, but its top edge rolls out like a glaze's: two
+            # rim points meeting at a corner then stay apart, and the outline shell does not fold between them)
+            off = off_arc * (ARC_K if off_arc >= 1.0 else 1.0) if k == 'arc' else (off_cut * cut_k(z) if off_cut > 0 else off_cut)
             # where the coat turns the rim corner it lies flat on the face; the smoothed (subdivided) coat
             # stands a little further off, or smoothing sinks it into the sponge
             # (the band's top row too, just enough near the rim that it does not reach into the next slice)
             flush = 0.2 if subsurf else 0.08
-            if k != 'arc' and off > 0:
+            if FULL and k != 'arc' and off > 0:
                 off = off + (flush - off) * smoothstep(0.9, 0.958, t)
-            elif k != 'arc' and off == 0 and subsurf:
+            elif FULL and k != 'arc' and off == 0 and subsurf:
                 off = 0.08 * smoothstep(0.9, 0.958, t)
-            if GLAZE_FLOOR[0] == 0.0 and zf is rows[-1][2] and (k == 'arc' and z < 0.04 or k != 'arc' and t > 0.985):
+            if FULL and GLAZE_FLOOR[0] == 0.0 and zf is rows[-1][2] and (k == 'arc' and z < 0.04 or k != 'arc' and t > 0.985):
                 z = 0.0                                          # the game mesh's coat meets the counter, no notch
             row.append((p + n * GLAZE_E * off).to_3d() + Vector((0, 0, z)))
         pos.append(row)
@@ -344,15 +317,19 @@ def build_glaze(name='Glaze', n_edge=40, n_arc=56, caps=(0.25, 0.5, 0.7, 0.84, 0
             for c in cols:
                 e = bm.edges.get((V[r][c], V[r + 1][c]))
                 if e: e.smooth = False
+        if COAT['kind'] == 'frosting':
+            # matte frosting shows smooth shading streaking along the long top triangles when the rim's normals
+            # lean out: keep the flat top's normals to itself (a glossy glaze keeps its smooth rolled highlight)
+            for i in range(N):
+                e = bm.edges.get((V[0][i], V[0][(i + 1) % N]))
+                if e: e.smooth = False
     obj = mesh_obj(name, bm)
     obj.data.materials.append(MAT['glaze'])
     if subsurf:
         sub = obj.modifiers.new('Smooth', 'SUBSURF'); sub.levels = 1; sub.render_levels = 2
     return obj
 
-# ---------------------------------------------------------------- piped cream
-TOP_SPOT = Vector((0.56 * math.cos(SEG / 2), 0.56 * math.sin(SEG / 2), H_TOP))
-
+# ---------------------------------------------------------------- piped cream (TOP_SPOT: where the topping stands)
 CREAM_H = 0.13                     # how tall the rosette rises
 
 def build_cream(name='Whipped cream', star_n=42, turns=2.8, n=84, res=8, core=(24, 12)):
@@ -393,6 +370,10 @@ def build_cream(name='Whipped cream', star_n=42, turns=2.8, n=84, res=8, core=(2
         cbm = bmesh.new(); cbm.from_mesh(me)
         bmesh.ops.create_uvsphere(cbm, u_segments=core[0], v_segments=core[1], radius=1.0,
                                   matrix=Matrix.Translation((0, 0, 0.075)) @ Matrix.Diagonal((0.085, 0.085, 0.065, 1)))
+        if SPEC['topping'] != 'strawberry':
+            # the berry fills the top of the swirl; a topping that sits higher would show its hollow, so fill it
+            bmesh.ops.create_uvsphere(cbm, u_segments=core[0], v_segments=core[1], radius=1.0,
+                                      matrix=Matrix.Translation((0, 0, 0.135)) @ Matrix.Diagonal((0.07, 0.07, 0.055, 1)))
         cbm.to_mesh(me); cbm.free()
     # the curve's bevel faces come out pointing inward: turn them out (engines cull back faces)
     cbm = bmesh.new(); cbm.from_mesh(me)
@@ -437,160 +418,89 @@ def build_cream_lod(name='Cream LOD', na=28, twist=1.6):
     obj.location = TOP_SPOT - Vector((0, 0, 0.03))
     return obj
 
-# The berry lies about 50 degrees over on the swirl, its point dipping into the cream and its leaves
-# leaning out toward the rim, so from the game camera it shows its side (cone, seeds, leaves).
-BERRY_TILT, BERRY_TURN = math.radians(float(arg('--tilt', '50'))), math.radians(-14)
-def berry_pose(S):
-    psi = SEG / 2 + BERRY_TURN                    # the leaves lean out toward the rim, the point dips into the swirl
-    d = Vector((math.cos(psi) * math.sin(BERRY_TILT), math.sin(psi) * math.sin(BERRY_TILT), math.cos(BERRY_TILT)))
-    centre = TOP_SPOT + Vector((0, 0, 0.13))
-    return centre - d * 0.5 * S, d.to_track_quat('Z', 'Y')
-
-# ---------------------------------------------------------------- the strawberry
-def berry_shape(u, v):
-    """unit point on the berry: u around (0..1), v from the tip (0) to the top (1)."""
-    a = u * math.tau
-    # a plump cone with a soft point, widest at the shoulders, then a rounded top: 1.3x taller than wide
-    if v <= 0.74:
-        prof = (v / 0.74 * 0.96 + 0.04) ** 0.6
-    else:
-        prof = math.sqrt(max(0.0, 1 - ((v - 0.74) / 0.26) ** 2)) ** 0.85
-    prof *= 1 + 0.035 * math.sin(a * 3 + v * 4)              # not a perfect solid of revolution
-    return Vector((math.cos(a) * prof * 0.385, math.sin(a) * prof * 0.385, v))
-
-def build_berry(lod=False):
-    S = 0.31                                                 # berry height
-    nu, nv = (10, 6) if lod else (48, 34)
-    seeds = []
-    golden = math.pi * (3 - math.sqrt(5))
-    for i in range(64):                                      # seeds on a sunflower spiral, none near the leaves
-        v = 0.09 + 0.84 * (i + 0.5) / 64
-        u = (i * golden / math.tau) % 1
-        seeds.append((u, v))
-    def dimple(u, v):
-        d = 0.0
-        for su, sv in seeds:
-            du = min(abs(u - su), 1 - abs(u - su)) * 2.2
-            dd = (du * du + (v - sv) ** 2 * 4) / 0.0028
-            if dd < 9: d = max(d, math.exp(-dd))
-        return d
-    bm = bmesh.new()
-    tip = bm.verts.new(berry_shape(0, 0) * S)
-    top = bm.verts.new(berry_shape(0, 1) * S)
-    rings = []
-    for j in range(1, nv):
-        v = j / nv; row = []
-        for i in range(nu):
-            u = i / nu
-            p = berry_shape(u, v)
-            n = Vector((p.x, p.y, 0)).normalized()
-            p -= n * 0.022 * dimple(u, v)
-            row.append(bm.verts.new(p * S))
-        rings.append(row)
-    for i in range(nu):
-        k = (i + 1) % nu
-        bm.faces.new((tip, rings[0][k], rings[0][i]))
-        bm.faces.new((top, rings[-1][i], rings[-1][k]))
-    for j in range(len(rings) - 1):
-        for i in range(nu):
-            k = (i + 1) % nu
-            bm.faces.new((rings[j][i], rings[j][k], rings[j + 1][k], rings[j + 1][i]))
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    surf = BVHTree.FromBMesh(bm) if lod else None
-    sfx = ' LOD' if lod else ''
-    berry = mesh_obj('Strawberry' + sfx, bm)
-    berry.data.materials.append(MAT['berry'])
-    if not lod:
-        sub = berry.modifiers.new('Smooth', 'SUBSURF'); sub.levels = 1; sub.render_levels = 1
-    # seeds, each sitting in its dimple and pointing along the surface
-    sbm = bmesh.new()
-    for su, sv in seeds:
-        p = berry_shape(su, sv) * S
-        n = Vector((p.x, p.y, 0.25 * (0.5 - sv))).normalized()
-        q = n.to_track_quat('Z', 'Y')
-        # sunk to the floor of its dimple: as big to the eye, but it barely stands proud of the outline
-        m = Matrix.Translation(p - n * S * 0.03) @ q.to_matrix().to_4x4() @ Matrix.Diagonal((S * 0.018, S * 0.018, S * 0.034, 1))
-        bmesh.ops.create_uvsphere(sbm, u_segments=8, v_segments=5, radius=1.0, matrix=m)
-    seeds_obj = mesh_obj('Seeds' + sfx, sbm)
-    seeds_obj.data.materials.append(MAT['seed'])
-    if lod:                                                  # the seeds go into the baked texture
-        bpy.data.objects.remove(seeds_obj); seeds_obj = None
-    # the calyx: six leaf-shaped sepals (about half the berry's width long, 35% as wide as long) lying in a
-    # star over the shoulders, so seen end-on the berry is a green star on red, and a short stalk
-    def top_z(r):                                            # the berry's surface height at radius r (units of S)
-        p = r / 0.385
-        if p <= 1: return 0.74 + 0.26 * math.sqrt(max(0.0, 1 - (p ** (1 / 0.85)) ** 2))
-        return 0.74 - (r - 0.385) * 1.6
-    lbm = bmesh.new()
-    nl = 6
-    for k in range(nl):
-        ang = k / nl * math.tau + 0.3
-        L = float(arg('--sepal', '0.2')) + 0.02 * math.sin(k * 2.7)    # about a quarter of the berry's width
-        Wm = L * (0.3 if lod else 0.22)                       # the game leaf tucks its edges in: start it wider
-        prev = None
-        segs = 3 if lod else 10
-        for st in range(segs + 1):
-            t = st / segs
-            w = Wm * math.sin(math.pi * min(1.0, t ** 0.7)) ** 0.6 + 0.004
-            r = 0.02 + L * t
-            z = top_z(r) + 0.012
-            c = Vector((math.cos(ang) * r, math.sin(ang) * r, z)) * S
-            side = Vector((-math.sin(ang), math.cos(ang), 0)) * w * S
-            lift = Vector((0, 0, 0.012 * S))                      # the edges curl up a little
-            pts = [c - side + lift, c, c + side + lift]
-            if lod:
-                # the game berry is faceted and sits lower than the smooth one: lie on its real surface, the
-                # midrib raised and the edges tucked under it, so the berry itself closes the leaf's underside
-                for q in pts:
-                    hit = surf.ray_cast(Vector((q.x, q.y, 2 * S)), Vector((0, 0, -1)))[0]
-                    assert hit is not None
-                    q.z = hit.z + (0.012 if q is pts[1] and 0 < st < segs else -0.003) * S
-            row = tuple(lbm.verts.new(q) for q in pts)
-            if prev:
-                lbm.faces.new((prev[0], row[0], row[1], prev[1]))
-                lbm.faces.new((prev[1], row[1], row[2], prev[2]))
-            prev = row
-    sepal_faces = list(lbm.faces)
-    sbm2 = bmesh.new()                                        # the stalk, closed, normals out
-    bmesh.ops.create_cone(sbm2, cap_ends=True, segments=5 if lod else 10, radius1=S * 0.03, radius2=S * 0.022, depth=S * 0.12,
-                          matrix=Matrix.Translation((S * 0.012, 0, S * 1.05)) @ Matrix.Rotation(0.25, 4, 'Y'))
-    bmesh.ops.recalc_face_normals(sbm2, faces=sbm2.faces)
-    cen = sum((v.co for v in sbm2.verts), Vector()) / len(sbm2.verts)
-    if sum(f.normal.dot(f.calc_center_median() - cen) for f in sbm2.faces) < 0: bmesh.ops.reverse_faces(sbm2, faces=sbm2.faces)
-    tmp_me = bpy.data.meshes.new('stalk'); sbm2.to_mesh(tmp_me); sbm2.free(); lbm.from_mesh(tmp_me); bpy.data.meshes.remove(tmp_me)
-    sep = sepal_faces
-    lbm.normal_update()
-    for f in sep:                                            # sepals face out, away from the berry's middle
-        if f.normal.dot(f.calc_center_median() - Vector((0, 0, S * 0.5))) < 0: f.normal_flip()
-    lbm.normal_update()
-    leaves = mesh_obj('Leaves' + sfx, lbm)
-    leaves.data.materials.append(MAT['leaf'])
-    if not lod:
-        sol = leaves.modifiers.new('Thickness', 'SOLIDIFY'); sol.thickness = S * 0.01
-        sub = leaves.modifiers.new('Smooth', 'SUBSURF'); sub.levels = 1; sub.render_levels = 2
-    # put the berry on the cream: leaves up, leaning toward us and to the right, its lower part in the swirl
-    root = link(bpy.data.objects.new('Berry', None))
-    for o in (berry, seeds_obj, leaves):
-        if o: o.parent = root
-    root.location, q = berry_pose(S)
-    root.rotation_mode = 'QUATERNION'; root.rotation_quaternion = q
-    return root, [o for o in (berry, seeds_obj, leaves) if o]
+# ---------------------------------------------------------------- ganache / caramel run down the outside
+def build_drip_skin(name='Drips'):
+    """A darker layer poured at the rim: over the rolled edge and down the frosted outside in drips. A thin
+    skin standing a little off the coat; its ends sit in the cut planes, so in a whole cake it is one ring."""
+    od = SPEC['outer_drips']
+    n_arc = 72
+    drips = [(0.1, 0.11, 0.045), (0.27, 0.2, 0.05), (0.46, 0.09, 0.04), (0.63, 0.24, 0.05), (0.84, 0.14, 0.045)]
+    def bottom(t):
+        d = 0.085 + 0.008 * math.sin(t * 31)
+        for c, ln, w in drips:
+            d = max(d, 0.085 + ln * math.exp(-abs((t - c) / w) ** 2.2))
+        return H_TOP - d
+    rows = [  # (on the top: how far in from the rim, off the outside, z)
+        (0.035, None, lambda t: H_TOP + 0.006),
+        (0.0, 0.55 + 0.38, lambda t: H_TOP - 0.001),
+        (0.0, 0.92 + 0.38, lambda t: H_TOP - 0.022),
+        (0.0, 1.0 + 0.36, lambda t: min(H_BODY - 0.01, bottom(t) + 0.04)),
+        (0.0, 1.0 + 0.34, lambda t: bottom(t) + 0.008),
+        (0.0, 1.0 + 0.12, lambda t: bottom(t) - 0.002),             # the rounded end of each drip, tucking in
+        (0.0, 1.0 + 0.0, lambda t: bottom(t) + 0.01),
+    ]
+    bm = bmesh.new(); V = []
+    for inset, off, zf in rows:
+        row = []
+        for i in range(n_arc + 1):
+            t = i / n_arc; a = SEG * t; n = Vector((math.cos(a), math.sin(a)))
+            p = n * (R - inset) if off is None else n * (R + GLAZE_E * off)
+            row.append(bm.verts.new((p.x, p.y, zf(t))))
+        V.append(row)
+    for r in range(len(V) - 1):
+        for i in range(n_arc):
+            bm.faces.new((V[r][i], V[r][i + 1], V[r + 1][i + 1], V[r + 1][i]))
+    bm.normal_update()
+    if sum(f.normal.dot(f.calc_center_median().to_2d().to_3d()) for f in bm.faces) < 0:
+        bmesh.ops.reverse_faces(bm, faces=bm.faces)
+    obj = mesh_obj(name, bm)
+    m = principled('Drip', od['colour'], rough=0.16, coat=0.7, coat_rough=0.05, sss=0.1, sss_radius=(1, .5, .25), sss_scale=0.02)
+    t_ = NT(m); bsdf = t_.n['Principled BSDF']
+    tc, sep = t_.obj_xyz()
+    t_.link(t_.ramp(sep.outputs[2], [(0.45, lin(od['colour'])), (0.72, lin(od['light']))]), bsdf.inputs['Base Color'])
+    obj.data.materials.append(m)
+    sub = obj.modifiers.new('Smooth', 'SUBSURF'); sub.levels = 1; sub.render_levels = 2
+    return obj
 
 # ---------------------------------------------------------------- assemble one slice
+def coat_height(coat, xy):
+    """The top of the (smoothed) coat at a point, so what sits on it sits on it."""
+    for m in coat.modifiers:
+        if m.type == 'SUBSURF': lv = m.levels; m.levels = m.render_levels
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get(); ev = coat.evaluated_get(dg); me = ev.to_mesh()
+    tree = BVHTree.FromPolygons([coat.matrix_world @ v.co for v in me.vertices], [tuple(p.vertices) for p in me.polygons])
+    ev.to_mesh_clear()
+    for m in coat.modifiers:
+        if m.type == 'SUBSURF': m.levels = lv
+    hit = tree.ray_cast(Vector((xy[0], xy[1], 2.0)), Vector((0, 0, -1)))[0]
+    return tree, hit.z
+
 def build_slice():
-    coll = bpy.data.collections.new('Strawberry slice'); scene.collection.children.link(coll)
-    parts = [build_body(), build_glaze(), build_cream()]
-    root, berry_parts = build_berry()
-    parts += berry_parts
-    slice_root = bpy.data.objects.new('Strawberry slice', None)
+    coll = bpy.data.collections.new(TITLE + ' slice'); scene.collection.children.link(coll)
+    parts = [build_body(), build_glaze()]
+    if SPEC['pipe']: parts.append(build_cream())
+    tree, top_z = coat_height(parts[1], TOP_SPOT.xy)
+    env = dict(top_z=top_z, coat_tree=tree, piped=bool(SPEC['pipe']), lod=False)
+    TOPPING.update(TOP.build(SPEC, env))
+    parts += TOPPING['parts']
+    extras = []
+    if SPEC.get('outer_drips'): extras.append(build_drip_skin())
+    if SPEC.get('pattern'): extras += TOP.build_pattern(SPEC, env)
+    parts += extras
+    slice_root = bpy.data.objects.new(TITLE + ' slice', None)
     coll.objects.link(slice_root)
+    root = TOPPING['root']
     for o in parts + [root]:
         for c in o.users_collection: c.objects.unlink(o)
         coll.objects.link(o)
-    for o in parts[:3] + [root]: o.parent = slice_root
-    return slice_root, coll, parts
+    for o in parts[:3 if SPEC['pipe'] else 2] + extras + [root]: o.parent = slice_root
+    return slice_root, coll, parts, extras
 
-slice_root, slice_coll, PARTS = build_slice()
+TOPPING = {}
+slice_root, slice_coll, PARTS, EXTRAS = build_slice()
+BODY, COAT_OBJ = PARTS[0], PARTS[1]
+CREAM_OBJ = PARTS[2] if SPEC['pipe'] else None
 
 # ---------------------------------------------------------------- stats for the technical review
 def stats():
@@ -680,8 +590,8 @@ def setup_look():
         LINE_WEIGHTS.append((l.linestyle, rel))
     LINE_WEIGHTS.append((ls.linestyle, 1.0))
     lineset('Berry ink', berry_c, False, INK[:3], 0.8)
-    lineset('Cream ink', cream_c, False, lin('#8A5A40')[:3], 0.5)
-    lineset('Leaf ink', leaf_c, False, lin('#1E4D22')[:3], 0.55)
+    lineset('Cream ink', cream_c, False, (lin('#8A5A40') if CAKE == 'strawberry' else mix_hex(SPEC['pipe'] or '#FBF0DE', SPEC['ink'], 0.55))[:3], 0.5)
+    lineset('Leaf ink', leaf_c, False, lin(TOPPING.get('detail_ink', '#1E4D22'))[:3], 0.55)
     return nol, berry_c, cream_c, leaf_c
 
 LINE_WEIGHTS = []
@@ -689,11 +599,15 @@ def set_line_weight(px):
     for style, rel in LINE_WEIGHTS: style.thickness = px * rel
 
 NO_LINES, BERRY_LINES, CREAM_LINES, LEAF_LINES = setup_look()
-part = lambda name: next(o for o in PARTS if o.name == name)
-for o in (part('Seeds'), part('Strawberry'), part('Whipped cream'), part('Leaves')): NO_LINES.objects.link(o)
-# the seeds share the berry's outline, so one sitting on the edge carries the line instead of breaking it
-# (it is external contour only: seeds on the berry's face, with the berry behind them, get no line)
-BERRY_LINES.objects.link(part('Strawberry')); BERRY_LINES.objects.link(part('Seeds')); CREAM_LINES.objects.link(part('Whipped cream')); LEAF_LINES.objects.link(part('Leaves'))
+# the topping and the cream get their own lines (contour only), the pattern on top none
+for o in TOPPING['parts'] + ([CREAM_OBJ] if CREAM_OBJ else []) + [o for o in EXTRAS if o.name != 'Drips']: NO_LINES.objects.link(o)
+# (the strawberry's seeds share the berry's outline, so one sitting on the edge carries the line instead of breaking
+# it: it is external contour only, so seeds on the berry's face, with the berry behind them, get no line)
+for o in TOPPING['parts']:
+    grp = TOPPING['lines'].get(o.name)
+    if grp == 'main': BERRY_LINES.objects.link(o)
+    elif grp == 'detail': LEAF_LINES.objects.link(o)
+if CREAM_OBJ: CREAM_LINES.objects.link(CREAM_OBJ)
 
 # ---------------------------------------------------------------- tiling: a slice against rotated copies of itself
 from mathutils.bvhtree import BVHTree
@@ -732,15 +646,24 @@ def overlap_report(objs, label):
     return out
 
 # ---------------------------------------------------------------- the game asset: one low-poly mesh, a baked atlas
-PART_IDS = {'Sponge': 0, 'Sponge hidden': 0, 'Glaze': 1, 'Whipped cream': 2, 'Strawberry': 3, 'Leaf': 4}
-BAKE_SOURCES = {'Sponge': ['Sponge'], 'Sponge hidden': ['Sponge'], 'Glaze': ['Glaze'], 'Whipped cream': ['Whipped cream'],
-                'Strawberry': ['Strawberry', 'Seeds'], 'Leaf': ['Leaves']}
+# Each part of the game mesh, by its material: its id (kept in a 'part' attribute through the join), the hi-res
+# objects it is baked from, a flat colour or a flat normal instead of a projected bake, and its share of texels.
+# Ids: 0 the sponge (cut faces; hidden top and bottom), 5 the sponge's bare outside, 1 the coat, 2 the cream,
+# 3 and 4 the topping (its main piece and its detail).
+REG = {
+    'Sponge': dict(part=0, src=['Sponge']),
+    'Sponge hidden': dict(part=0, src=['Sponge'], uv=0.02),
+    'Sponge outside': dict(part=5, src=['Sponge']),
+    'Glaze': dict(part=1, src=['Glaze'] + [o.name for o in EXTRAS], **(dict(cage=0.06, ray=0.14) if EXTRAS else {})),
+    'Whipped cream': dict(part=2, src=['Whipped cream'], flat_colour=True, flat_normal=True, uv=0.35),
+}
 
 def build_lod():
     parts = []
     # sponge: a closed wedge, so the outline shell has a volume to follow; only the two cut faces are
     # ever seen (the top, the outside and the bottom are covered), so those get no texture space
     hidden = MAT['sponge'].copy(); hidden.name = 'Sponge hidden'
+    outside = MAT['sponge'].copy(); outside.name = 'Sponge outside'   # a bare-sided cake shows its layers outside
     bm = bmesh.new(); n_arc = 10
     ring = [Vector((0, 0))] + [Vector((math.cos(SEG * i / n_arc), math.sin(SEG * i / n_arc))) for i in range(n_arc + 1)]
     bot = [bm.verts.new((p.x, p.y, 0)) for p in ring]; top = [bm.verts.new((p.x, p.y, SPONGE_TOP)) for p in ring]
@@ -750,34 +673,41 @@ def build_lod():
         j = (i + 1) % n
         f = bm.faces.new((bot[i], bot[j], top[j], top[i]))
         cut = i == 0 or j == 0
-        f.material_index = 0 if cut else 1; f.smooth = not cut
+        f.material_index = 0 if cut else (1 if FULL else 2); f.smooth = not cut
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     for e in bm.edges: e.smooth = all(f.smooth for f in e.link_faces)
     sp = mesh_obj('Sponge LOD', bm, smooth=False)
     sp.data.materials.append(MAT['sponge']); sp.data.materials.append(hidden)
+    if not FULL: sp.data.materials.append(outside)
     parts.append(sp)
     GLAZE_FLOOR[0] = 0.0                                      # reach the counter: there is no sponge outside behind it
     parts.append(build_glaze('Glaze LOD', n_edge=18, n_arc=14, caps=(), rows=[GLAZE_ROWS[i] for i in (0, 2, 4)],
                              subsurf=False, sharp_corners=True))
     GLAZE_FLOOR[0] = 0.012
-    parts.append(build_cream_lod())
-    root, bparts = build_berry(lod=True)
+    if SPEC['pipe']: parts.append(build_cream_lod())
+    tl = TOP.build(SPEC, dict(TOPPING['env'], lod=True))
+    REG.update(tl['reg'])
+    root, bparts = tl['root'], tl['parts']
     parts += bparts
     bpy.context.view_layer.update()
     for o in parts:
         mw = o.matrix_world.copy(); o.parent = None; o.matrix_world = mw
         # remember which part each point belongs to (it survives the join)
         att = o.data.attributes.new('part', 'INT', 'POINT')
-        for v in o.data.vertices:
-            att.data[v.index].value = PART_IDS[o.data.materials[0].name]
-    bpy.data.objects.remove(root)
+        fat = o.data.attributes.new('part_face', 'INT', 'FACE')        # exact per face (a point can sit on two parts)
+        for poly in o.data.polygons:
+            pid_ = REG[o.data.materials[poly.material_index].name]['part']
+            fat.data[poly.index].value = pid_
+            for vi in poly.vertices:
+                att.data[vi].value = pid_
+    if root: bpy.data.objects.remove(root)
     bpy.ops.object.select_all(action='DESELECT')
     for o in parts: o.select_set(True)
     bpy.context.view_layer.objects.active = parts[0]
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     bpy.ops.object.join()
     lod = bpy.context.view_layer.objects.active
-    lod.name = lod.data.name = 'StrawberrySlice'
+    lod.name = lod.data.name = ASSET
     # tris and quads only (end caps and cones make n-gons; tangents and engines want neither)
     bm = bmesh.new(); bm.from_mesh(lod.data)
     bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 4])
@@ -792,18 +722,14 @@ def unwrap(lod):
     bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.01, area_weight=0.0, scale_to_bounds=False)
     bpy.ops.object.mode_set(mode='OBJECT')
-    # give the topping more texels: it is small but it is what tells the cakes apart
+    # give the topping more texels: it is small but it is what tells the cakes apart; one flat colour (the
+    # cream) needs little space; what is never seen (the sponge under the coat) shrinks to a speck
     me = lod.data; uv = me.uv_layers.active.data
-    big = {i for i, m in enumerate(me.materials) if m.name in ('Strawberry', 'Leaf')}
-    hid = {i for i, m in enumerate(me.materials) if m.name == 'Sponge hidden'}
-    flat = {i for i, m in enumerate(me.materials) if m.name == 'Whipped cream'}
+    scale = {i: REG[m.name].get('uv', 1.0) for i, m in enumerate(me.materials)}
     for p in me.polygons:
-        if p.material_index in big:
-            for li in p.loop_indices: uv[li].uv *= 2.2
-        elif p.material_index in flat:                           # one flat colour: a little space is plenty
-            for li in p.loop_indices: uv[li].uv *= 0.35
-        elif p.material_index in hid:                            # never seen: shrink to a speck
-            for li in p.loop_indices: uv[li].uv *= 0.02
+        k = scale[p.material_index]
+        if k != 1.0:
+            for li in p.loop_indices: uv[li].uv *= k
     scene.tool_settings.use_uv_select_sync = True              # mesh selection = UV selection, so the pack sees every island
     bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.uv.pack_islands(rotate=True, margin=0.02)
@@ -835,7 +761,7 @@ def outline_normals(lod):
         # the averaged normal points down and out); 0.25 the cream: no shell and no ink; 0 the berry and its
         # leaves: no shell (it would poke through the cream), inked by the shader at grazing angles instead
         pv = part[v.index].value
-        w_ = (0.5 if pv == 1 and v.co.z < 0.03 else 1.0) if pv <= 1 else (0.25 if pv == 2 else 0.0)
+        w_ = 1.0 if pv in (0, 5) else (0.5 if FULL and v.co.z < 0.03 else 1.0) if pv == 1 else (0.25 if pv == 2 else 0.0)
         attr.data[v.index].color = (n.x * 0.5 + 0.5, n.y * 0.5 + 0.5, n.z * 0.5 + 0.5, w_)
     # for the engine: the same normal in glTF space (x, z, -y), with the shell weight, in TEXCOORD_1 and
     # TEXCOORD_2 (the exporter writes v as 1 - v, so store 1 - value to read back the value)
@@ -861,10 +787,10 @@ def bake(lod, size=1024):
     is baked only from its own hi-res part, so nothing bleeds across (no glaze pink in the cream)."""
     for m in bpy.data.materials:                             # nothing view-dependent in a bake
         if m.node_tree and 'ViewDep' in m.node_tree.nodes: m.node_tree.nodes['ViewDep'].outputs[0].default_value = 0.0
-    alb = bpy.data.images.new('StrawberrySlice_albedo', size, size, alpha=True); alb.generated_color = (0, 0, 0, 0)
-    nrm = bpy.data.images.new('StrawberrySlice_normal', size, size, alpha=True); nrm.colorspace_settings.name = 'Non-Color'
+    alb = bpy.data.images.new(ASSET + '_albedo', size, size, alpha=True); alb.generated_color = (0, 0, 0, 0)
+    nrm = bpy.data.images.new(ASSET + '_normal', size, size, alpha=True); nrm.colorspace_settings.name = 'Non-Color'
     nrm.generated_color = (0.5, 0.5, 1.0, 0.0)
-    mat = bpy.data.materials.new('StrawberrySlice'); mat.use_nodes = True
+    mat = bpy.data.materials.new(ASSET); mat.use_nodes = True
     nt = mat.node_tree; bsdf = nt.nodes['Principled BSDF']
     ta = nt.nodes.new('ShaderNodeTexImage'); ta.image = alb
     tn = nt.nodes.new('ShaderNodeTexImage'); tn.image = nrm
@@ -879,10 +805,11 @@ def bake(lod, size=1024):
     jobs, flat_normal, flat_colour = [], set(), {}
     for o in pieces:
         mname = o.data.materials[o.data.polygons[0].material_index].name
-        src = [bpy.data.objects[nm_] for nm_ in BAKE_SOURCES[mname]]
-        if mname in ('Whipped cream', 'Leaf'): flat_normal.add(o)     # their game meshes already carry the shape
-        if mname == 'Whipped cream':                                   # one colour: take it from the material, so no
-            flat_colour[o] = tuple(MAT['cream'].node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value)  # ray can miss
+        reg = REG[mname]; o['reg_name'] = mname
+        src = [bpy.data.objects[nm_] for nm_ in reg['src']]
+        if reg.get('flat_normal'): flat_normal.add(o)                 # its game mesh already carries the shape
+        if reg.get('flat_colour'):                                     # one colour: take it from the material, so no
+            flat_colour[o] = tuple(o.data.materials[0].node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value)  # ray can miss
         o.data.materials.clear(); o.data.materials.append(mat)
         for p in o.data.polygons: p.material_index = 0
         jobs.append((o, src))
@@ -893,6 +820,8 @@ def bake(lod, size=1024):
     for node, kind in ((ta, 'DIFFUSE'), (tn, 'NORMAL')):
         nt.nodes.active = node
         for o, src in jobs:
+            reg = REG[o['reg_name']]
+            bk.cage_extrusion = reg.get('cage', 0.02); bk.max_ray_distance = reg.get('ray', 0.06)
             bpy.ops.object.select_all(action='DESELECT')
             for x in src: x.hide_render = False; x.select_set(True)
             o.hide_render = False; o.select_set(True); bpy.context.view_layer.objects.active = o
@@ -912,7 +841,7 @@ def bake(lod, size=1024):
     for o, _ in jobs: o.select_set(True)
     bpy.context.view_layer.objects.active = jobs[0][0]
     bpy.ops.object.join()
-    lod = bpy.context.view_layer.objects.active; lod.name = lod.data.name = 'StrawberrySlice'
+    lod = bpy.context.view_layer.objects.active; lod.name = lod.data.name = ASSET
     fill_background(alb, None); fill_background(nrm, (0.5, 0.5, 1.0))
     os.makedirs(os.path.join(OUT, 'textures'), exist_ok=True)
     for img in (alb, nrm):
@@ -948,7 +877,7 @@ def fill_background(img, colour, grow=24):
 def preview_material(mat):
     """For the previews only: ink the topping at grazing angles (in Unity the slice shader does the same,
     driven by the outline colour's alpha), since the topping is left out of the outline shell."""
-    m = mat.copy(); m.name = 'StrawberrySlice preview'; nt = m.node_tree
+    m = mat.copy(); m.name = ASSET + ' preview'; nt = m.node_tree
     bsdf = nt.nodes['Principled BSDF']; base_link = bsdf.inputs['Base Color'].links[0].from_socket
     at = nt.nodes.new('ShaderNodeAttribute'); at.attribute_name = 'OutlineNormal'
     lw = nt.nodes.new('ShaderNodeLayerWeight'); lw.inputs['Blend'].default_value = 0.2
@@ -967,7 +896,7 @@ def outline_hull(lod, width=0.015):
     """The inverted-hull outline Unity will draw: the mesh pushed out along the averaged outline normals,
     faces flipped, ink on the side facing away. Cycles has no backface culling, so the near side of the
     hull is made transparent with the Backfacing output instead."""
-    me = lod.data.copy(); me.name = 'StrawberrySlice outline'
+    me = lod.data.copy(); me.name = ASSET + ' outline'
     attr = me.color_attributes['OutlineNormal']
     for v in me.vertices:
         c = attr.data[v.index].color
@@ -996,14 +925,15 @@ def tri_count(o):
 
 def seam_rays(lod, step=0.012):
     """Six copies of the game mesh as a whole cake; cast a grid of rays from the game camera's pitch at
-    several headings and count the ones whose first hit is sponge (seen from outside = a gap)."""
-    me = lod.data; me.calc_loop_triangles(); part = me.attributes['part'].data
+    several headings and count the ones whose first hit is a sponge cut face (seen from outside = a gap).
+    The grid is kept off the seam planes (see backface_hits): a ray exactly in one grazes the cut faces."""
+    me = lod.data; me.calc_loop_triangles(); part = me.attributes['part_face'].data
     verts, polys, pid = [], [], []
     for k in range(6):
         Rk = Matrix.Rotation(SEG * k, 4, 'Z'); base = len(verts)
         verts += [Rk @ (lod.matrix_world @ v.co) for v in me.vertices]
         for t in me.loop_triangles:
-            polys.append(tuple(base + i for i in t.vertices)); pid.append(part[t.vertices[0]].value)
+            polys.append(tuple(base + i for i in t.vertices)); pid.append(part[t.polygon_index].value)
     tree = BVHTree.FromPolygons(verts, polys)
     p = math.radians(42.84); hits = leaks = 0
     for az in (0, 15, 30, 45):
@@ -1013,7 +943,7 @@ def seam_rays(lod, step=0.012):
         n = int(2.8 / step)
         for i in range(n):
             for j in range(n):
-                o = right * (-1.4 + i * step) + up * (-1.4 + j * step) + Vector((0, 0, 0.35)) - d * 6
+                o = right * (-1.4 + (i + 0.37) * step) + up * (-1.4 + (j + 0.37) * step) + Vector((0, 0, 0.35)) - d * 6
                 loc, nor, idx, dist = tree.ray_cast(o, d, 20)
                 if idx is None: continue
                 hits += 1; leaks += pid[idx] == 0
@@ -1035,7 +965,7 @@ def backface_hits(objs, step=0.006, label=''):
                 verts += [mw @ v.co for v in me.vertices]; polys += [tuple(base + i for i in t.vertices) for t in me.loop_triangles]
                 o.evaluated_get(bpy.context.evaluated_depsgraph_get()).to_mesh_clear()
         tree = BVHTree.FromPolygons(verts, polys)
-        p = math.radians(42.84); back = hits = 0
+        p = math.radians(42.84); back = hits = graze = 0
         for az in range(0, 360, 30):
             a = math.radians(az)
             d = Vector((math.sin(a) * math.cos(p), math.cos(a) * math.cos(p), -math.sin(p)))
@@ -1047,8 +977,17 @@ def backface_hits(objs, step=0.006, label=''):
                     o_ = c0 + right * (-n * step / 2 + (i + 0.37) * step) + up * (-n * step / 2 + (j + 0.37) * step) - d * 6
                     loc, nor, idx, dist = tree.ray_cast(o_, d, 20)
                     if idx is None: continue
-                    hits += 1; back += nor.dot(d) > 0
-        out[name] = {'rays_hitting': hits, 'first_hits_on_back_faces': back}
+                    hits += 1
+                    if nor.dot(d) > 0:
+                        # a hole lets neighbouring rays through too; a lone ray that slips between two triangles
+                        # exactly on their shared edge (the ray caster is not watertight; a GPU is) is not a hole
+                        near = 0
+                        for e in (right, -right, up, -up):
+                            h = tree.ray_cast(o_ + e * 0.0005, d, 20)
+                            near += h[2] is not None and h[1].dot(d) > 0
+                        if near >= 3: back += 1
+                        else: graze += 1
+        out[name] = {'rays_hitting': hits, 'first_hits_on_back_faces': back, 'lone_edge_grazes': graze}
     print('BACKFACES', label, json.dumps(out))
     return out
 
@@ -1134,7 +1073,7 @@ def bake_check(o, imgs):
             # glaze pink on the topping is bleed (cream is light, the berry deep red, the leaves green)
             if r > 0.8 and 0.42 < g < 0.72 and b > 0.5: red += 1
     return {'topping_texels_sampled': cnt, 'bent_normals_pct': round(100 * bent / max(1, cnt), 2),
-            'glaze_pink_on_topping': red}
+            'glaze_pink_on_topping': red if CAKE == 'strawberry' else None}
 
 def verify_glb(path):
     """Re-import the exported file into an empty scene and check what Unity will get."""
@@ -1183,27 +1122,39 @@ def verify_glb(path):
 
 def write_readme(st):
     g = st['glb_check']; u = st['unity_decode']
-    txt = f"""# Strawberry slice (Cake Sort)
+    top = TOPPING.get('readme', '')
+    lines = [
+        f"| Visible overlaps with neighbours (hi-res / game) | {[v['visible_pairs'] for v in st['overlap_hires'].values()]} / {[v['visible_pairs'] for v in st['overlap_lod'].values()]} |",
+        f"| Rays reaching sponge cut faces from outside (whole cake) | {st['seam_rays']['rays_hitting_sponge_from_outside']} of {st['seam_rays']['rays_hitting_cake']:,} |",
+        f"| First hits on back faces (game mesh: lone slice / whole cake; 12 headings, a ray every 0.006, grid kept off the seam planes) | {st['backfaces_lod']['lone slice']['first_hits_on_back_faces']} of {st['backfaces_lod']['lone slice']['rays_hitting']:,} / {st['backfaces_lod']['whole cake']['first_hits_on_back_faces']} of {st['backfaces_lod']['whole cake']['rays_hitting']:,} |",
+        f"| Topping normals bent past tangent z 0.3 | {g['bake_check']['bent_normals_pct']}% of {g['bake_check']['topping_texels_sampled']} samples |",
+    ]
+    if CAKE == 'strawberry':
+        lines += [f"| Glaze pink baked onto the topping | {g['bake_check']['glaze_pink_on_topping']} samples |",
+                  f"| Green share round each berry, slots 0-5 | {st['green_share_by_slot']} |"]
+    lip_note = "; 0.5: the coat's lip at the counter (where the normal points down and out)" if FULL else ''
+    side = {'full': 'frosted all the way down the outside', 'naked': 'bare-sided (its layers show outside) under a glaze that drips down',
+            'cap': 'bare-sided (its layers show outside) under a thick cream top'}[COAT['style']]
+    txt = f"""# {TITLE} slice (Cake Sort)
 
-The game asset for the Strawberry cake's slice, built by `strawberry_slice.py` in Blender 4.2 and
-checked by the same script. Everything here is generated; rebuild with:
+The game asset for the {TITLE} cake's slice: {side}. Built by `../cake_slice.py` in Blender 4.2 and checked
+by the same script; everything here is generated. Rebuild with (from `playbox/art/cake-sort/`):
 
-    blender -b -P strawberry_slice.py -- --out DIR --glb --views hero,game,single,lodviews
+    blender -b -P cake_slice.py -- --cake {CAKE} --out {CAKE} --glb --views hero,game,single,lodviews
 
 ## Files
 
 | File | What it is |
 | --- | --- |
-| `strawberry_slice.glb` | The game mesh: one mesh, one material, {g['triangles']} triangles, 512 albedo + normal atlas (embedded) |
-| `textures/StrawberrySlice_albedo.png`, `StrawberrySlice_normal.png` | The same atlas as loose files (512); `*_1024.png` are the bake masters |
+| `{CAKE}_slice.glb` | The game mesh: one mesh, one material, {g['triangles']} triangles, 512 albedo + normal atlas (embedded) |
+| `textures/{ASSET}_albedo.png`, `{ASSET}_normal.png` | The same atlas as loose files (512); `*_1024.png` are the bake masters |
 | `renders/hero.png`, `game_cake.png`, `game_single.png` | The hi-res model (render only, about {st['tris_render']:,} triangles) |
 | `renders/lod_game_cake.png`, `lod_game_single.png` | The GLB as the game camera sees it, with the outline drawn by an inverted hull |
 | `renders/*_alpha_0001.png` | Each render again on a transparent background (for UI art) |
 | `stats.json` | Every check's numbers from the last build |
-| `strawberry_slice.py` | Builds both versions, bakes, exports, verifies, renders, writes this file |
 
-The build also saves `strawberry_slice.blend` (both versions, lights and cameras) next to these; it is
-not kept in the repository, since the script rebuilds it.
+The build also saves `{CAKE}_slice.blend` (both versions, lights and cameras) next to these; it is not kept in the
+repository, since the script rebuilds it.
 
 ## Units and orientation
 
@@ -1213,27 +1164,27 @@ not kept in the repository, since the script rebuilds it.
   XZ plane from +X toward -Z. glTFast and UnityGLTF negate X, so in Unity it runs from -X toward -Z.
   Slot k of a plate is the slice turned 60 k degrees about Y.
 - Six slices tile a whole cake: no visible overlap with copies at +60/-60/180 degrees, and no ray from
-  the game camera reaches a sponge face from outside (see Checks).
+  the game camera reaches a sponge cut face from outside (see Checks).
 
 ## Material
 
 One material: base colour and tangent-space normal from the atlas, roughness 0.45, single-sided
-(backface culling on). The sponge's top, outside and bottom are in the mesh only so the outline shell
-has a closed volume; they get no texture space. The material also carries Blender's clearcoat and
-specular values (KHR_materials_clearcoat, KHR_materials_specular); URP ignores them, and the slice's
-look comes from the toon slice shader, not from these.
+(backface culling on). Sponge faces that are always covered get no texture space. The material also carries
+Blender's clearcoat and specular values (KHR_materials_clearcoat, KHR_materials_specular); URP ignores them,
+and the slice's look comes from the toon slice shader, not from these.{top}
 
 ## The outline (an inverted hull, in the slice shader's outline pass)
 
-Smooth normals for the shell are stored in the second and third texture-coordinate sets, because the
-cut faces split the shading normals and a hull built from them would crack at the corners.
+Ink colour for this cake: `{SPEC['ink']}`. Smooth normals for the shell are stored in the second and third
+texture-coordinate sets, because the cut faces split the shading normals and a hull built from them would
+crack at the corners.
 
 In Unity, after glTFast or UnityGLTF (both negate X on positions and normals and flip v on every
 texture-coordinate set):
 
     outlineNormal = normalize(float3(-uv1.x, 1 - uv1.y, uv2.x))   // object space
     weight        = 1 - uv2.y
-    // shell: cull front faces, colour #4A1626, and push each vertex out by a fixed number of screen
+    // shell: cull front faces, colour {SPEC['ink']}, and push each vertex out by a fixed number of screen
     // pixels, so the line keeps its weight at every plate size (in object units it would vanish: at the
     // counter a plate is about 76 px across at 2x, R about 29 px, so 0.015 R is under half a pixel):
     float4 pos = TransformObjectToHClip(positionOS);
@@ -1243,10 +1194,10 @@ texture-coordinate set):
     pos.xy    += nCS * (2.0 * px / _ScreenParams.xy) * pos.w;
     // (if it must stay in object units, use about 0.09 R at the 76 px plate.) The previews here draw
     // the shell in object units, 0.015 R, which is about 4 px at their 900 px scale.
-    // weight 1: the cake; 0.5: the glaze's lip at the counter (where the normal points down and out)
-    // weight 0.25: the cream: no shell, no ink
-    // weight 0: the berry and its leaves: no shell (it would poke through the cream); instead ink the
-    //           surface at grazing angles: lerp(albedo, #4A1626, smoothstep(0.62, 0.8, facing)),
+    // weight 1: the cake{lip_note}
+    // weight 0.25: piped cream: no shell, no ink
+    // weight 0: the topping: no shell (it would poke through what it sits on); instead ink the
+    //           surface at grazing angles: lerp(albedo, ink, smoothstep(0.62, 0.8, facing)),
     //           facing = 1 - |dot(N, V)| (Blender's Layer Weight 'Facing', blend 0.2)
 
 As written in the file (glTF space, before any importer): TEXCOORD_1 = (nx, ny), TEXCOORD_2 =
@@ -1254,6 +1205,7 @@ As written in the file (glTF space, before any importer): TEXCOORD_1 = (nx, ny),
 finds {u['dot_over_0.5']} of {u['smooth_vertices_with_shell']} smooth shell vertices with dot(outline normal,
 normal) over 0.5 (worst {u['worst_dot']}); at hard edges ({u['hard_edge_vertices']} vertices) the shell normal is the
 bisector of the faces that meet there (worst dot {u['hard_edge_worst_dot']}); weights found: {u['weights_found']}.
+TEXCOORD_0 (the atlas) spans {u['texcoord0_range']} and never equals TEXCOORD_1.
 
 ## Checks (from the last build)
 
@@ -1261,13 +1213,7 @@ bisector of the faces that meet there (worst dot {u['hard_edge_worst_dot']}); we
 | --- | --- |
 | GLB re-imported | {g['meshes']} mesh, {g['triangles']} triangles, origin {g['origin']}, materials {len(g['materials'])}, double-sided {g['double_sided']}, vertex colours {g['color_attributes'] or 'none'} |
 | Top of the cake stays in the wedge | {g['angle_span_above_sponge_deg']} degrees |
-| Visible overlaps with neighbours (hi-res / game) | {[v['visible_pairs'] for v in st['overlap_hires'].values()]} / {[v['visible_pairs'] for v in st['overlap_lod'].values()]} |
-| Rays reaching sponge from outside (whole cake) | {st['seam_rays']['rays_hitting_sponge_from_outside']} of {st['seam_rays']['rays_hitting_cake']:,} |
-| First hits on back faces (game mesh: lone slice / whole cake; 12 headings, a ray every 0.006, grid kept off the seam planes) | {st['backfaces_lod']['lone slice']['first_hits_on_back_faces']} of {st['backfaces_lod']['lone slice']['rays_hitting']:,} / {st['backfaces_lod']['whole cake']['first_hits_on_back_faces']} of {st['backfaces_lod']['whole cake']['rays_hitting']:,} |
-| Topping normals bent past tangent z 0.3 | {g['bake_check']['bent_normals_pct']}% of {g['bake_check']['topping_texels_sampled']} samples |
-| Glaze pink baked onto the topping | {g['bake_check']['glaze_pink_on_topping']} samples |
-| Green share round each berry, slots 0-5 | {st['green_share_by_slot']} |
-"""
+""" + '\n'.join(lines) + '\n'
     with open(os.path.join(OUT, 'README.md'), 'w') as f: f.write(txt)
 
 # ---------------------------------------------------------------- cameras and views
@@ -1305,7 +1251,7 @@ def show_only(objs):
             o.hide_render = o not in objs
     for o in extra: o.hide_render = o not in objs
 
-slice_objs = PARTS + [slice_root] + [o for o in scene.objects if o.name == 'Berry']
+slice_objs = PARTS + [slice_root] + ([TOPPING['root']] if TOPPING['root'] else [])
 
 if 'hero' in VIEWS:
     # like the reference: point to the left, a cut face toward us, the outside on the right
@@ -1349,7 +1295,7 @@ if 'game' in VIEWS or 'single' in VIEWS:
         gc = game_cam('Game', (0, 0, 0.3), 3.1)
         render(gc, os.path.join(RENDERS, 'game_cake.png'), 900, 760)
         BERRY_SLOTS = [Matrix.Rotation(SEG * k, 3, 'Z') @ (TOP_SPOT + Vector((0, 0, 0.13))) for k in range(6)]
-        GREEN['hi-res game_cake'] = green_share(os.path.join(RENDERS, 'game_cake.png'), gc, BERRY_SLOTS)
+        if CAKE == 'strawberry': GREEN['hi-res game_cake'] = green_share(os.path.join(RENDERS, 'game_cake.png'), gc, BERRY_SLOTS)
     if 'single' in VIEWS:
         show_only(slice_objs)
         slice_root.rotation_euler = (0, 0, math.radians(-22))      # a slice on its own, a cut face to the camera
@@ -1362,7 +1308,7 @@ st['green_share_by_slot'] = GREEN; print('GREEN', json.dumps(GREEN))
 with open(os.path.join(OUT, 'stats.json'), 'w') as f: json.dump(st, f, indent=1)
 print('STATS', json.dumps(st))
 st['overlap_hires'] = overlap_report(PARTS, 'hi-res')
-st['backfaces_hires'] = backface_hits([o for o in PARTS if o.name in ('Whipped cream', 'Strawberry', 'Leaves')], step=0.01, label='hi-res topping')
+st['backfaces_hires'] = backface_hits(TOPPING['parts'] + ([CREAM_OBJ] if CREAM_OBJ else []), step=0.01, label='hi-res topping')
 if '--glb' in argv:
     lod = build_lod()
     unwrap(lod)
@@ -1372,8 +1318,9 @@ if '--glb' in argv:
     st['seam_rays'] = seam_rays(lod)
     print('SEAMS', json.dumps(st['seam_rays']))
     st['lod_triangles'] = tri_count(lod)
+    assert st['lod_triangles'] <= 1200, f"game mesh over budget: {st['lod_triangles']} triangles (1,200)"
     bpy.ops.object.select_all(action='DESELECT'); lod.select_set(True); bpy.context.view_layer.objects.active = lod
-    glb = os.path.join(OUT, 'strawberry_slice.glb')
+    glb = os.path.join(OUT, CAKE + '_slice.glb')
     lod_mat.use_backface_culling = True                      # single-sided in the engine
     kw = dict(filepath=glb, use_selection=True, export_apply=True, export_yup=True, export_tangents=True, export_image_format='AUTO')
     try: bpy.ops.export_scene.gltf(export_vertex_color='NONE', **kw)
@@ -1403,7 +1350,7 @@ if '--glb' in argv:
         show_only([lod] + insts + hulls + plate_objs)
         lc = gcam('LOD cake cam', (0, 0, 0.3), 3.1)
         render(lc, os.path.join(RENDERS, 'lod_game_cake.png'), 900, 760)
-        GREEN['game asset lod_game_cake'] = green_share(os.path.join(RENDERS, 'lod_game_cake.png'), lc,
+        if CAKE == 'strawberry': GREEN['game asset lod_game_cake'] = green_share(os.path.join(RENDERS, 'lod_game_cake.png'), lc,
             [Matrix.Rotation(SEG * k, 3, 'Z') @ (TOP_SPOT + Vector((0, 0, 0.13))) for k in range(6)])
         st['green_share_by_slot'] = GREEN; print('GREEN', json.dumps(GREEN))
         show_only([lod, hulls[0]]); lod.rotation_euler = hulls[0].rotation_euler = (0, 0, math.radians(-22))
@@ -1413,5 +1360,5 @@ if '--glb' in argv:
         lod.data.materials[0] = lod_mat
     with open(os.path.join(OUT, 'stats.json'), 'w') as f: json.dump(st, f, indent=1)
     write_readme(st)
-bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, 'strawberry_slice.blend'))
+bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, CAKE + '_slice.blend'))
 print('DONE')

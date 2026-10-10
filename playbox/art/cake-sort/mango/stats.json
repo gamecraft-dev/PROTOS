@@ -2,72 +2,54 @@
  "objects": {
   "Sponge": 892,
   "Glaze": 57120,
-  "Whipped cream": 56300,
-  "Strawberry": 12864,
-  "Seeds": 4096,
-  "Leaves": 13248
+  "Mango cube 1": 300,
+  "Mango cube 2": 300,
+  "Mango cube 3": 300
  },
- "tris_render": 144520,
+ "tris_render": 58912,
  "body_angle_range_deg": [
   0.0,
   60.0
  ],
  "body_max_radius": 1.0,
  "bounds_min": [
-  -0.0098,
+  -0.0073,
   -0.0227,
   0.0
  ],
  "bounds_max": [
   1.0237,
-  0.8817,
-  0.9966
+  0.8816,
+  0.9278
  ],
  "pivot": [
   0.0,
   0.0,
   0.0
  ],
- "green_share_by_slot": {
-  "hi-res game_cake": [
-   0.07,
-   0.01,
-   0.03,
-   0.18,
-   0.26,
-   0.24
-  ],
-  "game asset lod_game_cake": [
-   0.05,
-   0.02,
-   0.03,
-   0.09,
-   0.15,
-   0.14
-  ]
- },
+ "green_share_by_slot": {},
  "overlap_hires": {
   "+60deg": {
    "visible_pairs": 0,
-   "buried_pairs": 1667
+   "buried_pairs": 1732
   },
   "-60deg": {
    "visible_pairs": 0,
-   "buried_pairs": 1649
+   "buried_pairs": 1735
   },
   "+180deg": {
    "visible_pairs": 0,
-   "buried_pairs": 224
+   "buried_pairs": 160
   }
  },
  "backfaces_hires": {
   "lone slice": {
-   "rays_hitting": 12560,
+   "rays_hitting": 4988,
    "first_hits_on_back_faces": 0,
    "lone_edge_grazes": 0
   },
   "whole cake": {
-   "rays_hitting": 75246,
+   "rays_hitting": 30084,
    "first_hits_on_back_faces": 0,
    "lone_edge_grazes": 0
   }
@@ -75,11 +57,11 @@
  "overlap_lod": {
   "+60deg": {
    "visible_pairs": 0,
-   "buried_pairs": 189
+   "buried_pairs": 179
   },
   "-60deg": {
    "visible_pairs": 0,
-   "buried_pairs": 185
+   "buried_pairs": 172
   },
   "+180deg": {
    "visible_pairs": 0,
@@ -87,35 +69,35 @@
   }
  },
  "seam_rays": {
-  "rays_hitting_cake": 90830,
+  "rays_hitting_cake": 89052,
   "rays_hitting_sponge_from_outside": 0
  },
- "lod_triangles": 1156,
- "glb_bytes": 540276,
+ "lod_triangles": 456,
+ "glb_bytes": 545432,
  "glb_check": {
   "meshes": 1,
-  "triangles": 1156,
+  "triangles": 456,
   "origin": [
    0.0,
    0.0,
    0.0
   ],
   "bounds_min": [
-   -0.0197,
+   -0.0159,
    -0.0228,
    0.0
   ],
   "bounds_max": [
    1.024,
    0.8868,
-   0.9905
+   0.9296
   ],
   "angle_span_above_sponge_deg": [
    0.0,
    60.0
   ],
   "materials": [
-   "StrawberrySlice.001"
+   "MangoSlice.001"
   ],
   "uv_layers": 3,
   "color_attributes": [],
@@ -129,14 +111,14 @@
   },
   "textures": [
    [
-    "StrawberrySlice_albedo.001",
+    "MangoSlice_albedo.001",
     [
      512,
      512
     ]
    ],
    [
-    "StrawberrySlice_normal.001",
+    "MangoSlice_normal.001",
     [
      512,
      512
@@ -144,37 +126,35 @@
    ]
   ],
   "bake_check": {
-   "topping_texels_sampled": 2340,
+   "topping_texels_sampled": 376,
    "bent_normals_pct": 0.0,
-   "glaze_pink_on_topping": 0
+   "glaze_pink_on_topping": null
   }
  },
  "unity_decode": {
   "smooth_vertices_with_shell": 232,
   "dot_over_0.5": 232,
   "worst_dot": 1.0,
-  "hard_edge_vertices": 68,
+  "hard_edge_vertices": 65,
   "hard_edge_worst_dot": 0.354,
   "weights_found": {
-   "0.0": 208,
-   "0.25": 703,
-   "0.5": 21,
-   "1.0": 279
+   "0.0": 288,
+   "1.0": 297
   },
   "texcoord0_range": [
-   0.01,
-   0.991
+   0.008,
+   0.992
   ],
   "texcoord0_same_as_texcoord1": 0
  },
  "backfaces_lod": {
   "lone slice": {
-   "rays_hitting": 291975,
+   "rays_hitting": 285580,
    "first_hits_on_back_faces": 0,
    "lone_edge_grazes": 0
   },
   "whole cake": {
-   "rays_hitting": 1090752,
+   "rays_hitting": 1069140,
    "first_hits_on_back_faces": 0,
    "lone_edge_grazes": 0
   }

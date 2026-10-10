@@ -2,12 +2,13 @@
  "objects": {
   "Sponge": 892,
   "Glaze": 57120,
-  "Whipped cream": 56300,
-  "Strawberry": 12864,
-  "Seeds": 4096,
-  "Leaves": 13248
+  "Hazelnut": 9792,
+  "Caramel dollop": 5120,
+  "Drips": 13824,
+  "Drizzle": 2300,
+  "Salt flakes": 220
  },
- "tris_render": 144520,
+ "tris_render": 89268,
  "body_angle_range_deg": [
   0.0,
   60.0
@@ -19,33 +20,16 @@
   0.0
  ],
  "bounds_max": [
-  1.0237,
-  0.8817,
-  0.9966
+  1.0324,
+  0.8941,
+  0.9633
  ],
  "pivot": [
   0.0,
   0.0,
   0.0
  ],
- "green_share_by_slot": {
-  "hi-res game_cake": [
-   0.07,
-   0.01,
-   0.03,
-   0.18,
-   0.26,
-   0.24
-  ],
-  "game asset lod_game_cake": [
-   0.05,
-   0.02,
-   0.03,
-   0.09,
-   0.15,
-   0.14
-  ]
- },
+ "green_share_by_slot": {},
  "overlap_hires": {
   "+60deg": {
    "visible_pairs": 0,
@@ -62,12 +46,12 @@
  },
  "backfaces_hires": {
   "lone slice": {
-   "rays_hitting": 12560,
+   "rays_hitting": 6868,
    "first_hits_on_back_faces": 0,
    "lone_edge_grazes": 0
   },
   "whole cake": {
-   "rays_hitting": 75246,
+   "rays_hitting": 41179,
    "first_hits_on_back_faces": 0,
    "lone_edge_grazes": 0
   }
@@ -90,11 +74,11 @@
   "rays_hitting_cake": 90830,
   "rays_hitting_sponge_from_outside": 0
  },
- "lod_triangles": 1156,
- "glb_bytes": 540276,
+ "lod_triangles": 490,
+ "glb_bytes": 503664,
  "glb_check": {
   "meshes": 1,
-  "triangles": 1156,
+  "triangles": 490,
   "origin": [
    0.0,
    0.0,
@@ -108,14 +92,14 @@
   "bounds_max": [
    1.024,
    0.8868,
-   0.9905
+   0.9615
   ],
   "angle_span_above_sponge_deg": [
    0.0,
    60.0
   ],
   "materials": [
-   "StrawberrySlice.001"
+   "CaramelSlice.001"
   ],
   "uv_layers": 3,
   "color_attributes": [],
@@ -129,14 +113,14 @@
   },
   "textures": [
    [
-    "StrawberrySlice_albedo.001",
+    "CaramelSlice_albedo.001",
     [
      512,
      512
     ]
    ],
    [
-    "StrawberrySlice_normal.001",
+    "CaramelSlice_normal.001",
     [
      512,
      512
@@ -144,32 +128,31 @@
    ]
   ],
   "bake_check": {
-   "topping_texels_sampled": 2340,
+   "topping_texels_sampled": 408,
    "bent_normals_pct": 0.0,
-   "glaze_pink_on_topping": 0
+   "glaze_pink_on_topping": null
   }
  },
  "unity_decode": {
-  "smooth_vertices_with_shell": 232,
-  "dot_over_0.5": 232,
+  "smooth_vertices_with_shell": 233,
+  "dot_over_0.5": 233,
   "worst_dot": 1.0,
-  "hard_edge_vertices": 68,
+  "hard_edge_vertices": 64,
   "hard_edge_worst_dot": 0.354,
   "weights_found": {
-   "0.0": 208,
-   "0.25": 703,
+   "0.0": 160,
    "0.5": 21,
-   "1.0": 279
+   "1.0": 276
   },
   "texcoord0_range": [
-   0.01,
-   0.991
+   0.007,
+   0.993
   ],
   "texcoord0_same_as_texcoord1": 0
  },
  "backfaces_lod": {
   "lone slice": {
-   "rays_hitting": 291975,
+   "rays_hitting": 292002,
    "first_hits_on_back_faces": 0,
    "lone_edge_grazes": 0
   },
