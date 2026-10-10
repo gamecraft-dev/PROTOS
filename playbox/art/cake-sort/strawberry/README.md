@@ -61,7 +61,7 @@ texture-coordinate set):
     // weight 0.25: piped cream: no shell, no ink
     // weight 0: the topping: no shell (it would poke through what it sits on); instead ink the
     //           surface at grazing angles: lerp(albedo, ink, smoothstep(0.62, 0.8, facing)),
-    //           facing = 1 - |dot(N, V)| (Blender's Layer Weight 'Facing', blend 0.2)
+    //           facing = 1 - pow(|dot(N, V)|, 0.4) (Blender's Layer Weight 'Facing', blend 0.2; N unbumped)
 
 As written in the file (glTF space, before any importer): TEXCOORD_1 = (nx, ny), TEXCOORD_2 =
 (nz, weight). A check that reads the GLB the way those importers do and applies the formula above

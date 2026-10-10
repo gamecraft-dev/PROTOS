@@ -37,8 +37,9 @@ Blender's clearcoat and specular values (KHR_materials_clearcoat, KHR_materials_
 and the slice's look comes from the toon slice shader, not from these.
 
 The candle's flame is part of the mesh, baked as a flat warm yellow (#FFC94A). The game's 2D candle flickers;
-in Unity give the flame's few triangles (the topmost, above y 1.08) an unlit or emissive look in the slice
-shader, or hide them and draw a flame sprite or particle at the wick (about y 1.09 at the slice's middle).
+in Unity give the flame's triangles (y 1.108 to 1.208; everything above y 1.10, over the wick and the candle's
+top at 1.09) an unlit or emissive look in the slice shader, or hide them and draw a flame sprite or particle
+at the wick (about y 1.10 at the slice's middle).
 
 ## The outline (an inverted hull, in the slice shader's outline pass)
 
@@ -65,7 +66,7 @@ texture-coordinate set):
     // weight 0.25: piped cream: no shell, no ink
     // weight 0: the topping: no shell (it would poke through what it sits on); instead ink the
     //           surface at grazing angles: lerp(albedo, ink, smoothstep(0.62, 0.8, facing)),
-    //           facing = 1 - |dot(N, V)| (Blender's Layer Weight 'Facing', blend 0.2)
+    //           facing = 1 - pow(|dot(N, V)|, 0.4) (Blender's Layer Weight 'Facing', blend 0.2; N unbumped)
 
 As written in the file (glTF space, before any importer): TEXCOORD_1 = (nx, ny), TEXCOORD_2 =
 (nz, weight). A check that reads the GLB the way those importers do and applies the formula above

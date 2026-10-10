@@ -534,8 +534,9 @@ def birthday(spec, env):
                 readme="""
 
 The candle's flame is part of the mesh, baked as a flat warm yellow (#FFC94A). The game's 2D candle flickers;
-in Unity give the flame's few triangles (the topmost, above y 1.08) an unlit or emissive look in the slice
-shader, or hide them and draw a flame sprite or particle at the wick (about y 1.09 at the slice's middle).""")
+in Unity give the flame's triangles (y 1.108 to 1.208; everything above y 1.10, over the wick and the candle's
+top at 1.09) an unlit or emissive look in the slice shader, or hide them and draw a flame sprite or particle
+at the wick (about y 1.10 at the slice's middle).""")
 
 # ================================================================ mango: three juicy cubes
 def _mango_material():
